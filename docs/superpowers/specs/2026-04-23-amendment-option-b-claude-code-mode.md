@@ -11,11 +11,12 @@
 
 **For the build swarm (Spec #1):** run in **Claude Code Subscription mode**. Workers invoke the local `claude` CLI (leveraging the user's existing Claude Code subscription) instead of routing through LiteLLM proxy to a metered Anthropic API key.
 
-**For the Product (Spec #2):** at runtime on SIFT, the Product accepts two credential modes:
-1. **Claude Code harness present** (dev / user's own machine): invoke `claude` CLI directly.
-2. **Claude Code harness absent** (typical judge environment): require `ANTHROPIC_API_KEY` env var; error out at startup if not set.
+**For the Product (Spec #2):** at runtime on SIFT, the Product accepts **three** credential modes in priority order:
+1. **Claude Code OAuth token** (env var `CLAUDE_CODE_OAUTH_TOKEN`): the long-lived non-interactive token produced by `claude setup-token`. Inference-only scope; ideal for judges who already have a Claude Code subscription and want a script-friendly credential with no interactive OAuth flow.
+2. **Claude Code session** (`~/.claude/` from `claude auth login`): interactive-login credentials. Used in dev.
+3. **Anthropic API key** (env var `ANTHROPIC_API_KEY`): direct metered API access. Used when no Claude Code is available.
 
-The API key is the judge-facing fallback. It is NOT required for the user to build.
+`scripts/install.sh` detects in this order and errors clearly if none are present. All three paths are judge-valid — the user does NOT need an API key to build. Judges choose whichever they already have.
 
 ---
 
@@ -92,38 +93,51 @@ Add to `services/agent/config.py`:
 ```python
 # services/agent/config.py — addition sketch
 
-def resolve_credentials() -> Literal["claude_code", "api_key"]:
+def resolve_credentials() -> Literal["oauth_token", "claude_code_session", "api_key"]:
     """
     Detect which Claude credential path to use.
     Order of precedence:
-      1. CLAUDE_CODE_HARNESS=1 explicit opt-in → use `claude` CLI
-      2. ~/.claude/ directory exists with valid session → use `claude` CLI
-      3. ANTHROPIC_API_KEY env var set → use direct API
-      4. Otherwise → fail with clear error message
+      1. CLAUDE_CODE_OAUTH_TOKEN env var set (from `claude setup-token`)
+         → use `claude` CLI with token injected via env
+      2. ~/.claude/ directory exists with a valid interactive session
+         (from `claude auth login`) → use `claude` CLI directly
+      3. ANTHROPIC_API_KEY env var set → use direct Anthropic API
+      4. Otherwise → fail fast with a message documenting all three options
     """
     ...
 ```
 
-`services/agent/graph.py` routes to the appropriate Claude invocation based on the result.
+`services/agent/graph.py` routes to the appropriate Claude invocation based on the result. Modes 1 and 2 both invoke the local `claude` CLI subprocess; mode 1 passes the token via env, mode 2 relies on on-disk session state. Mode 3 uses the `anthropic` SDK directly (metered).
 
 ### 3.2 New Install-Time Check: `scripts/install.sh`
 
-Add a pre-flight credential check:
+Add a pre-flight credential check (checks all three modes in priority order):
 
 ```bash
 # scripts/install.sh — addition
 
-if command -v claude &> /dev/null && [ -d ~/.claude ]; then
-    echo "[find-evil] Detected Claude Code harness — will use subscription auth."
+if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && command -v claude &> /dev/null; then
+    echo "[find-evil] Detected CLAUDE_CODE_OAUTH_TOKEN — will use long-lived Claude Code token."
+elif command -v claude &> /dev/null && [ -d ~/.claude ]; then
+    echo "[find-evil] Detected Claude Code interactive session — will use subscription auth."
+elif [ -n "$ANTHROPIC_API_KEY" ]; then
+    echo "[find-evil] Will use ANTHROPIC_API_KEY for direct Anthropic API calls."
 else
-    if [ -z "$ANTHROPIC_API_KEY" ]; then
-        echo "ERROR: find-evil requires one of:"
-        echo "  (a) Claude Code CLI installed and logged in (see https://code.claude.com)"
-        echo "  (b) ANTHROPIC_API_KEY env var set to a valid Anthropic API key"
-        echo "      (get one at https://console.anthropic.com)"
-        exit 1
-    fi
-    echo "[find-evil] Will use ANTHROPIC_API_KEY for Claude calls."
+    echo "ERROR: find-evil requires one of (any works — pick whichever you have):"
+    echo ""
+    echo "  (1) CLAUDE_CODE_OAUTH_TOKEN env var — non-interactive, script-friendly."
+    echo "      Generate with: claude setup-token"
+    echo "      Requires a Claude Code subscription; token is inference-only."
+    echo ""
+    echo "  (2) Claude Code interactive session — for dev/demo use."
+    echo "      Install: https://code.claude.com"
+    echo "      Then run: claude auth login"
+    echo ""
+    echo "  (3) ANTHROPIC_API_KEY env var — direct Anthropic API, metered."
+    echo "      Get a key at: https://console.anthropic.com"
+    echo "      Expected cost: <\$1 per standard SIFT evidence run."
+    echo ""
+    exit 1
 fi
 ```
 
@@ -131,13 +145,15 @@ fi
 
 Add section "Credentials Required":
 
-> **find-evil** requires access to Claude Opus or Sonnet to run the analysis agents. Provide one of:
+> **find-evil** requires access to Claude Opus or Sonnet to run the analysis agents. Pick whichever credential you already have — all three are supported and equally valid:
 >
-> 1. **Claude Code** (recommended for live development). Install from https://code.claude.com and run `claude auth login`. The tool will detect your session automatically.
+> 1. **Claude Code long-lived token** (recommended for judges with a Claude Code subscription). Run `claude setup-token` once on the judging machine and export `CLAUDE_CODE_OAUTH_TOKEN=<token>`. Non-interactive — works in batch/CI without any OAuth flow. Token is inference-only (safe to keep in env).
 >
-> 2. **Anthropic API key** (recommended for judges and CI). Set `ANTHROPIC_API_KEY=sk-ant-...` in your environment. Get a key at https://console.anthropic.com/. Expected per-case cost: <$1 for a standard SIFT evidence run.
+> 2. **Claude Code interactive session** (recommended for live development). Install from https://code.claude.com and run `claude auth login`. The tool detects your session automatically from `~/.claude/`.
 >
-> The tool fails fast at startup with a clear error if neither is present. No other credentials are required.
+> 3. **Anthropic API key** (recommended for judges with no Claude Code). Set `ANTHROPIC_API_KEY=sk-ant-...` in your environment. Get a key at https://console.anthropic.com/. Expected per-case cost: <$1 for a standard SIFT evidence run.
+>
+> The tool fails fast at startup with a clear error listing all three options if none are present. No other credentials are required.
 
 ### 3.4 AC-10 Updated (runtime entry points)
 
