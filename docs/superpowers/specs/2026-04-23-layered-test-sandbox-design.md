@@ -342,6 +342,7 @@ jobs:
 
 ## 11. Open questions (for user)
 
-None critical. Two minor:
-1. Does the existing OVA pathname match `sift-2026.03.24.ova` exactly for Packer input? (I'll use the literal filename I saw.)
-2. Do you want `main` branch protection enabled to require L0+L1 green before merge? (Strongly recommend yes; default in implementation.)
+Only one:
+1. Do you want `main` branch protection enabled to require L0+L1 green before merge? (Strongly recommend yes; default in implementation unless you object.)
+
+(OVA filename `sift-2026.03.24.ova` confirmed present at repo root; Packer reads it from there directly.)
