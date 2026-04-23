@@ -1,0 +1,68 @@
+# Large binaries / evidence / VMs
+*.ova
+*.qcow2
+*.vmdk
+*.vdi
+*.E01
+*.e01
+*.dd
+*.raw
+*.mem
+*.aff
+*.aff4
+*.vhd
+*.vhdx
+
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Claude
+.claude-cache/
+
+# Build artifacts
+/build/
+/dist/
+
+# Logs
+*.log
+
+# Local state
+/state/
+/checkpoints/
+*.sqlite
+*.sqlite-journal
