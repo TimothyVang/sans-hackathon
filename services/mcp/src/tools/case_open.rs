@@ -13,7 +13,7 @@
 //!    `cases/<id>/case.json` for later tools.
 //!
 //! Downstream tools (`evtx_query`, `mft_timeline`, etc.) assume the
-//! case dir exists. `libewf`-based E01 mount + DuckDB schema init
+//! case dir exists. `libewf`-based E01 mount + `DuckDB` schema init
 //! land in Week 2 Task A4 / A11 — kept out of this MVP so the first
 //! tool is independently testable.
 
@@ -55,14 +55,14 @@ pub struct CaseOpenInput {
 /// Registered case handle — the typed return value.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct CaseHandle {
-    /// UUIDv4 assigned at registration.
+    /// `UUIDv4` assigned at registration.
     pub id: String,
 
     /// Absolute path to the case directory, e.g.
     /// `/home/sansforensics/.findevil/cases/7c3f9a2e-.../`.
     pub case_dir: PathBuf,
 
-    /// Future DuckDB evidence database path — created by a later
+    /// Future `DuckDB` evidence database path — created by a later
     /// tool but the canonical location is reserved here.
     pub db_path: PathBuf,
 
@@ -93,9 +93,7 @@ pub enum CaseOpenError {
         source: io::Error,
     },
 
-    #[error(
-        "image hash mismatch: expected {expected}, got {actual}"
-    )]
+    #[error("image hash mismatch: expected {expected}, got {actual}")]
     ImageHashMismatch { expected: String, actual: String },
 
     #[error("could not determine FINDEVIL_HOME (no HOME, no override)")]
@@ -128,8 +126,8 @@ pub enum CaseOpenError {
 pub fn case_open(input: &CaseOpenInput) -> Result<CaseHandle, CaseOpenError> {
     // 1. Resolve + verify the image path.
     let image_path = &input.image_path;
-    let meta = fs::metadata(image_path)
-        .map_err(|_| CaseOpenError::ImageNotFound(image_path.clone()))?;
+    let meta =
+        fs::metadata(image_path).map_err(|_| CaseOpenError::ImageNotFound(image_path.clone()))?;
     if !meta.is_file() {
         return Err(CaseOpenError::ImageNotRegular(image_path.clone()));
     }
@@ -161,9 +159,7 @@ pub fn case_open(input: &CaseOpenInput) -> Result<CaseHandle, CaseOpenError> {
     // Reserve the DuckDB path; not created yet.
     let db_path = case_dir.join("evidence.ddb");
 
-    let registered_at = chrono::Utc::now()
-        .format("%Y-%m-%dT%H:%M:%SZ")
-        .to_string();
+    let registered_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     let handle = CaseHandle {
         id: case_id,
@@ -176,10 +172,7 @@ pub fn case_open(input: &CaseOpenInput) -> Result<CaseHandle, CaseOpenError> {
 
     // 5. Persist a minimal manifest for later tools + audit.
     let manifest_path = case_dir.join("case.json");
-    let manifest = serde_json::to_string_pretty(&CaseManifest::from_handle(
-        &handle,
-        input,
-    ))?;
+    let manifest = serde_json::to_string_pretty(&CaseManifest::from_handle(&handle, input))?;
     fs::write(&manifest_path, manifest).map_err(|source| CaseOpenError::ManifestWrite {
         path: manifest_path,
         source,

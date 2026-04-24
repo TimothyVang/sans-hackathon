@@ -9,7 +9,7 @@
 //!   * `xpath` — reserved for a future iteration; today the field
 //!     round-trips unused but is accepted so the Python agent can
 //!     forward it without a schema migration.
-//!   * `limit` — caps the returned row count. Default 10_000.
+//!   * `limit` — caps the returned row count. Default `10_000`.
 //!
 //! Row shape matches Spec #2 §6's `EvtxRow` contract:
 //!   `{ event_id: u32, ts: ISO8601Z, channel: String,
@@ -42,16 +42,16 @@ pub struct EvtxQueryInput {
     /// Absolute or relative path to the `.evtx` file to parse.
     pub evtx_path: PathBuf,
 
-    /// Optional EventID filter. When present, only matching records
+    /// Optional `EventID` filter. When present, only matching records
     /// are returned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub eids: Option<Vec<u32>>,
 
-    /// Optional XPath filter. Reserved — not applied today.
+    /// Optional `XPath` filter. Reserved — not applied today.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xpath: Option<String>,
 
-    /// Optional limit. Defaults to 10_000.
+    /// Optional limit. Defaults to `10_000`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
 }
@@ -90,11 +90,14 @@ pub enum EvtxError {
         source: std::io::Error,
     },
 
+    // `evtx::err::EvtxError` is ~144 bytes and blows out the enum's
+    // size (clippy::result_large_err). Box it so `Result<_, EvtxError>`
+    // stays cheap to move — the error path is rare anyway.
     #[error("evtx parser failed to open {path}: {source}")]
     EvtxOpen {
         path: PathBuf,
         #[source]
-        source: evtx::err::EvtxError,
+        source: Box<evtx::err::EvtxError>,
     },
 
     #[error("every record in {path} failed to parse ({errors} errors)")]
@@ -106,19 +109,14 @@ pub fn evtx_query(input: &EvtxQueryInput) -> Result<EvtxQueryOutput, EvtxError> 
     if !input.evtx_path.exists() {
         return Err(EvtxError::EvtxNotFound(input.evtx_path.clone()));
     }
-    let meta = std::fs::metadata(&input.evtx_path).map_err(|source| {
-        EvtxError::EvtxUnreadable {
-            path: input.evtx_path.clone(),
-            source,
-        }
+    let meta = std::fs::metadata(&input.evtx_path).map_err(|source| EvtxError::EvtxUnreadable {
+        path: input.evtx_path.clone(),
+        source,
     })?;
     if !meta.is_file() {
         return Err(EvtxError::EvtxUnreadable {
             path: input.evtx_path.clone(),
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "not a regular file",
-            ),
+            source: std::io::Error::new(std::io::ErrorKind::InvalidInput, "not a regular file"),
         });
     }
 
@@ -127,12 +125,11 @@ pub fn evtx_query(input: &EvtxQueryInput) -> Result<EvtxQueryOutput, EvtxError> 
     let mut parse_errors: usize = 0;
     let mut records_seen: usize = 0;
 
-    let mut parser = EvtxParser::from_path(&input.evtx_path).map_err(|source| {
-        EvtxError::EvtxOpen {
+    let mut parser =
+        EvtxParser::from_path(&input.evtx_path).map_err(|source| EvtxError::EvtxOpen {
             path: input.evtx_path.clone(),
-            source,
-        }
-    })?;
+            source: Box::new(source),
+        })?;
 
     // Stream records. Per-record errors are tolerated; the outer
     // fatal-error path fires only when we get zero rows AND every
@@ -235,6 +232,7 @@ fn pick_event_id(system: &serde_json::Value) -> Option<u32> {
 
 /// Pure helper — also exported so the integration-test harness can
 /// assert on a file's presence without pulling in evtx internals.
+#[must_use]
 pub fn path_looks_like_evtx(p: &Path) -> bool {
     p.extension()
         .and_then(|e| e.to_str())

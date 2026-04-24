@@ -8,20 +8,41 @@
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use findevil_mcp::{CaseHandle, CaseOpenError, CaseOpenInput, case_open};
+use findevil_mcp::{case_open, CaseHandle, CaseOpenError, CaseOpenInput};
 
-/// Test-local guard that pins `FINDEVIL_HOME` to a scratch dir for
-/// the test's duration, restoring the prior value on drop so tests
-/// don't leak into one another when cargo runs them in parallel.
+/// Global lock that serializes env-var manipulation across every
+/// test in this file. Cargo runs tests in parallel by default and
+/// `std::env::set_var("FINDEVIL_HOME", …)` is a process-global
+/// mutation — without this mutex, two tests racing to set their
+/// own HOME value will stomp each other's tempdir override.
+fn env_lock() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// RAII guard around `FINDEVIL_HOME` that (1) acquires the global
+/// env-lock so parallel tests serialize, and (2) restores the prior
+/// value on drop. Hold it for the entire body of a test.
+///
+/// The `_lock` field is only used for its `Drop` impl; clippy
+/// correctly notices it's underscore-prefixed but structurally used
+/// — the allow-list below acknowledges the pattern is intentional.
+#[allow(clippy::used_underscore_binding)]
 struct HomeGuard {
     prev: Option<String>,
+    _lock: MutexGuard<'static, ()>,
 }
+#[allow(clippy::used_underscore_binding)]
 impl HomeGuard {
     fn set(new: &std::path::Path) -> Self {
+        let _lock = env_lock();
         let prev = std::env::var("FINDEVIL_HOME").ok();
         std::env::set_var("FINDEVIL_HOME", new);
-        Self { prev }
+        Self { prev, _lock }
     }
 }
 impl Drop for HomeGuard {
@@ -47,7 +68,7 @@ fn case_open_registers_case_and_hashes_image() {
     let image = write_evidence_image(tmp.path(), b"hello evidence world");
 
     let input = CaseOpenInput {
-        image_path: image.clone(),
+        image_path: image,
         expected_sha256: None,
         label: Some("integration-smoke".to_string()),
     };
@@ -55,7 +76,10 @@ fn case_open_registers_case_and_hashes_image() {
     let handle: CaseHandle = case_open(&input).expect("case_open ok");
 
     // Shape assertions.
-    assert_eq!(handle.image_size_bytes, b"hello evidence world".len() as u64);
+    assert_eq!(
+        handle.image_size_bytes,
+        b"hello evidence world".len() as u64
+    );
     assert_eq!(handle.image_hash.len(), 64, "sha256 hex is 64 chars");
     assert!(handle
         .image_hash
@@ -64,9 +88,7 @@ fn case_open_registers_case_and_hashes_image() {
     assert!(handle.id.len() == 36, "uuid v4 canonical form");
     assert!(handle.case_dir.is_dir(), "case dir created");
     assert!(
-        handle
-            .case_dir
-            .starts_with(tmp.path().join("cases")),
+        handle.case_dir.starts_with(tmp.path().join("cases")),
         "case dir under FINDEVIL_HOME/cases/"
     );
     assert_eq!(handle.db_path, handle.case_dir.join("evidence.ddb"));
@@ -94,8 +116,7 @@ fn case_open_rejects_mismatched_expected_hash() {
     let input = CaseOpenInput {
         image_path: image,
         expected_sha256: Some(
-            "0000000000000000000000000000000000000000000000000000000000000000"
-                .to_string(),
+            "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
         ),
         label: None,
     };
@@ -154,8 +175,7 @@ fn case_open_hashes_match_known_vector() {
     let handle = case_open(&CaseOpenInput {
         image_path: image,
         expected_sha256: Some(
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                .to_string(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
         ),
         label: None,
     })

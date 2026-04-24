@@ -23,10 +23,7 @@ pub mod tools;
 pub const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Re-exports for test + binary convenience.
-pub use crate::tools::case_open::{
-    CaseHandle, CaseOpenError, CaseOpenInput, case_open,
-};
+pub use crate::tools::case_open::{case_open, CaseHandle, CaseOpenError, CaseOpenInput};
 pub use crate::tools::evtx_query::{
-    EvtxError, EvtxQueryInput, EvtxQueryOutput, EvtxRow, evtx_query,
-    path_looks_like_evtx,
+    evtx_query, path_looks_like_evtx, EvtxError, EvtxQueryInput, EvtxQueryOutput, EvtxRow,
 };

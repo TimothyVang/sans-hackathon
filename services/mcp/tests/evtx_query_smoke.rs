@@ -15,9 +15,7 @@
 
 use std::path::{Path, PathBuf};
 
-use findevil_mcp::{
-    EvtxError, EvtxQueryInput, EvtxQueryOutput, evtx_query, path_looks_like_evtx,
-};
+use findevil_mcp::{evtx_query, path_looks_like_evtx, EvtxError, EvtxQueryInput, EvtxQueryOutput};
 
 fn sample_input(path: PathBuf) -> EvtxQueryInput {
     EvtxQueryInput {
