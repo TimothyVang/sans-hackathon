@@ -1,0 +1,105 @@
+# Spec #2 §4.2 + Amendment A1. Python agent service — LangGraph ACH
+# graph + FastAPI + crypto chain-of-custody. Runs inside a single
+# process; the Rust MCP server is a stdio subprocess per Spec #2 §3.
+
+[project]
+name = "findevil-agent"
+version = "0.1.0"
+description = "Find Evil! agent runtime — LangGraph ACH graph, FastAPI SSE, crypto chain-of-custody."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "Find Evil! team" },
+]
+
+# Pinned exact ranges per Spec #2 §16. Upgrading any of these
+# without a spec amendment is a silent contract break.
+dependencies = [
+  # LangGraph 1.0+ durable graph. The Product uses the sqlite
+  # checkpointer; Postgres is reserved for the Build Swarm.
+  "langgraph>=1.0.0,<2.0.0",
+  "langgraph-checkpoint-sqlite>=2.0.0,<3.0.0",
+
+  # Claude Agent SDK for specialist subagents.
+  "anthropic>=0.45,<1.0",
+
+  # FastAPI SSE stack.
+  "fastapi>=0.115,<1.0",
+  "uvicorn[standard]>=0.32,<1.0",
+  "sse-starlette>=2.1,<3.0",
+
+  # Pydantic v2 for the AgentEvent union + all typed models.
+  "pydantic>=2.7,<3.0",
+  # Generate TypeScript from Pydantic for apps/web/lib/events.ts.
+  "pydantic-to-typescript>=2.0",
+
+  # M2 cryptographic chain-of-custody stack per
+  # project_crypto_custody_stack.md. Pinned per Spec #2 §16.
+  "sigstore==3.*",
+  "opentimestamps-client==0.7.2",
+
+  # L1 DuckDB per case.
+  "duckdb>=0.10",
+
+  # MITRE ATT&CK technique lookup (official maintainer).
+  "mitreattack-python>=5.4,<6.0",
+
+  # Structured logging.
+  "structlog>=24.4",
+
+  # HTTP client for /spend lookup, webhook posts.
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=5.0",
+  "ruff>=0.7.4",
+  "mypy>=1.11",
+  "respx>=0.21",
+]
+
+[project.scripts]
+# Spec #2 §2.1. The `find-evil` CLI entry point.
+find-evil = "findevil_agent.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["findevil_agent"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["logs/**", ".venv/**"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+  "integration: requires SIFT tooling or a live claude CLI",
+  "slow: takes longer than ~5s",
+]
+asyncio_mode = "auto"
+filterwarnings = [
+  "error",
+  "ignore::DeprecationWarning:langgraph.*",
+  "ignore::DeprecationWarning:pydantic.*",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+disallow_untyped_defs = true
+warn_unused_ignores = true
