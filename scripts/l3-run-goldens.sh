@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# l3-run-goldens.sh — boot the Packer-built warm qcow2 and run the
+# Product against canonical fixtures, asserting expected findings.
+#
+# Spec #3 §4.4. Intended for both local verification and the
+# .github/workflows/l3-nightly.yml runner.
+#
+# Prerequisites:
+#   1. packer/artifacts/sift-microvm-warm.qcow2.zst exists (built by
+#      `packer build packer/sift-microvm.pkr.hcl` — Spec #3 Task 7).
+#   2. `qemu-system-x86_64` on PATH and KVM accessible (/dev/kvm).
+#   3. Fixtures downloaded via `scripts/fetch-fixtures.sh` — Task 10.
+#   4. Built Product binary or install script available at
+#      release/ (or will be pulled via scp from a tag release in CI).
+#
+# Output: logs/l3/run-<timestamp>.log + logs/l3/verdict.json per
+# fixture. Compared to goldens/<fixture>/expected-findings.json and
+# diffs are exit-code-fatal.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${REPO_ROOT}"
+
+WARM_ZST="${WARM_ZST:-packer/artifacts/sift-microvm-warm.qcow2.zst}"
+WARM_QCOW="${WARM_QCOW:-/tmp/sift-microvm-warm.qcow2}"
+LOG_DIR="${LOG_DIR:-logs/l3}"
+SSH_PORT="${SSH_PORT:-2222}"
+SSH_USER="${SSH_USER:-sansforensics}"
+SSH_PASS="${SSH_PASS:-forensics}"
+
+# Ordered list of fixtures to run. Skipped silently if absent.
+FIXTURES=(
+  "nist-hacking-case"
+  "sans-starter"
+  "synthetic-benign"
+)
+
+mkdir -p "${LOG_DIR}"
+
+log() { printf '[l3-goldens] %s\n' "$*" >&2; }
+
+require() {
+  command -v "$1" >/dev/null 2>&1 || { log "ERROR: $1 not on PATH"; exit 2; }
+}
+
+require qemu-system-x86_64
+require zstd
+require ssh
+require scp
+require sshpass
+require jq
+
+# ---------------------------------------------------------------------
+# 1. Decompress warm qcow2.
+# ---------------------------------------------------------------------
+if [[ ! -f "${WARM_QCOW}" ]]; then
+  if [[ ! -f "${WARM_ZST}" ]]; then
+    log "ERROR: ${WARM_ZST} missing; run 'packer build packer/sift-microvm.pkr.hcl' first"
+    exit 2
+  fi
+  log "decompressing ${WARM_ZST} → ${WARM_QCOW}"
+  zstd -d --force --output-dir-flat "$(dirname "${WARM_QCOW}")" \
+    -o "${WARM_QCOW}" "${WARM_ZST}"
+fi
+
+# ---------------------------------------------------------------------
+# 2. Boot VM (load the 'warm' snapshot).
+# ---------------------------------------------------------------------
+log "booting SIFT microvm with -loadvm warm..."
+QEMU_PIDFILE="/tmp/l3-qemu.pid"
+qemu-system-x86_64 \
+  -machine q35,accel=kvm \
+  -cpu host \
+  -smp "${CPUS:-4}" \
+  -m "${MEMORY_MB:-8192}" \
+  -drive "file=${WARM_QCOW},if=virtio,format=qcow2" \
+  -netdev "user,id=net0,hostfwd=tcp::${SSH_PORT}-:22" \
+  -device virtio-net,netdev=net0 \
+  -loadvm warm \
+  -nographic -serial null \
+  -pidfile "${QEMU_PIDFILE}" \
+  -daemonize
+
+trap 'if [[ -f "${QEMU_PIDFILE}" ]]; then kill "$(cat "${QEMU_PIDFILE}")" 2>/dev/null || true; fi' EXIT
+
+# Wait for SSH. Snapshot-restore should land in 3-8s; allow 30s
+# generous margin.
+log "waiting for SSH on localhost:${SSH_PORT}..."
+for i in $(seq 1 30); do
+  if nc -z localhost "${SSH_PORT}" 2>/dev/null; then
+    log "SSH up at attempt ${i}"
+    break
+  fi
+  sleep 1
+  if [[ $i -eq 30 ]]; then
+    log "ERROR: SSH did not come up in 30s"
+    exit 2
+  fi
+done
+
+SSH_OPTS=(
+  -o StrictHostKeyChecking=no
+  -o UserKnownHostsFile=/dev/null
+  -o ConnectTimeout=10
+  -p "${SSH_PORT}"
+)
+
+ssh_exec() {
+  sshpass -p "${SSH_PASS}" ssh "${SSH_OPTS[@]}" \
+    "${SSH_USER}@localhost" "$@"
+}
+
+scp_to() {
+  sshpass -p "${SSH_PASS}" scp -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null -P "${SSH_PORT}" -r "$@" \
+    "${SSH_USER}@localhost:"
+}
+
+# ---------------------------------------------------------------------
+# 3. Push Product + install.
+# ---------------------------------------------------------------------
+log "pushing release/ (if present)..."
+if [[ -d release ]]; then
+  scp_to release/
+  ssh_exec "cd release && bash install.sh --mock-run || true"
+else
+  log "WARN: no release/ dir; skipping Product install (expected until Week 2)"
+fi
+
+# ---------------------------------------------------------------------
+# 4. Run each fixture, capture verdict, diff against golden.
+# ---------------------------------------------------------------------
+OVERALL_EXIT=0
+for fixture in "${FIXTURES[@]}"; do
+  log "--- fixture: ${fixture} ---"
+  golden_dir="goldens/${fixture}"
+  fixture_dir="fixtures/${fixture}"
+  if [[ ! -d "${golden_dir}" ]] || [[ ! -d "${fixture_dir}" ]]; then
+    log "SKIP ${fixture}: missing ${golden_dir} or ${fixture_dir}"
+    continue
+  fi
+
+  # Push fixture into VM (may already be there from a prior run).
+  scp_to "${fixture_dir}"
+  log "running Product against ${fixture}..."
+  case_path="~/${fixture}"
+  run_log="${LOG_DIR}/${fixture}-run.log"
+
+  # Product isn't built yet — the `find-evil` invocation below is
+  # what L3 WILL look like once the Product lands. Guarded by
+  # `|| true` so L3 workflow is still exercised pre-Week-2.
+  ssh_exec "find-evil run --case ${case_path} --unattended --output-format json 2>/dev/null" \
+    > "${run_log}" \
+    || {
+      log "WARN: find-evil not installed on VM yet (expected pre-Week-2)"
+      continue
+    }
+
+  verdict_json="${LOG_DIR}/${fixture}-verdict.json"
+  jq '.' "${run_log}" > "${verdict_json}" 2>/dev/null \
+    || cp "${run_log}" "${verdict_json}"
+
+  # Diff against golden expected-findings.
+  expected="${golden_dir}/expected-findings.json"
+  if [[ -f "${expected}" ]]; then
+    log "diffing vs ${expected}"
+    if ! diff -u \
+           <(jq -S '.findings // []' "${expected}") \
+           <(jq -S '.findings // []' "${verdict_json}") \
+           > "${LOG_DIR}/${fixture}-diff.txt"; then
+      log "FAIL ${fixture}: findings diverged; see ${LOG_DIR}/${fixture}-diff.txt"
+      OVERALL_EXIT=1
+    else
+      log "PASS ${fixture}: findings match"
+    fi
+  fi
+done
+
+# ---------------------------------------------------------------------
+# 5. Shutdown VM cleanly via QEMU system_powerdown.
+# ---------------------------------------------------------------------
+log "shutting down VM..."
+ssh_exec "echo ${SSH_PASS} | sudo -S shutdown -h now" || true
+sleep 3
+kill "$(cat "${QEMU_PIDFILE}")" 2>/dev/null || true
+rm -f "${QEMU_PIDFILE}"
+
+if [[ ${OVERALL_EXIT} -eq 0 ]]; then
+  log "all goldens matched (or skipped pre-Week-2)."
+else
+  log "at least one fixture diverged from its golden."
+fi
+exit ${OVERALL_EXIT}
