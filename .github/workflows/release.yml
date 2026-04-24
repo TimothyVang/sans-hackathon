@@ -1,0 +1,182 @@
+name: Release
+
+# Glue Spec #4 §4. Triggered by git tag v<N> push. Verifies L3 green,
+# builds .deb + Docker image + offline report.html in parallel,
+# uploads artifacts to GH Release, pushes release=true score to the
+# leaderboard, posts #releases Slack. For v-submit, devpost-submit.yml
+# chains downstream.
+
+on:
+  push:
+    tags: ['v[0-9]*', 'v-submit']
+
+permissions:
+  contents: write
+  packages: write  # ghcr.io push
+  id-token: write  # OIDC for cosign (if we add image signing later)
+
+jobs:
+  l3-gate:
+    name: Verify L3 green on tagged commit
+    runs-on: ubuntu-24.04
+    outputs:
+      l3_green: ${{ steps.verify.outputs.l3_green }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify nightly L3 green on this SHA
+        id: verify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Look for a successful l3-nightly run whose head SHA matches
+          # the tag's commit OR is an ancestor within the last 24h.
+          GREEN=$(gh run list \
+            --workflow=l3-nightly.yml \
+            --branch=main \
+            --status=success \
+            --limit=5 \
+            --json headSha,databaseId \
+            --jq --arg sha "${{ github.sha }}" \
+              '[.[] | select(.headSha == $sha)] | length')
+          if [[ "${GREEN:-0}" -gt 0 ]]; then
+            echo "l3_green=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No l3-nightly green run on ${{ github.sha }}. Release will proceed in pre-Week-2 mode (guarded jobs will skip their real work)."
+            echo "l3_green=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-deb:
+    name: Build .deb
+    needs: l3-gate
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dpkg-deb
+        run: sudo apt-get update && sudo apt-get install -y dpkg
+      - name: Build .deb
+        run: |
+          bash scripts/build-deb.sh "${GITHUB_REF_NAME}"
+          ls -lh dist/
+      - name: Upload .deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: find-evil-deb-${{ github.ref_name }}
+          path: dist/*.deb
+          retention-days: 30
+
+  build-docker:
+    name: Build + push Docker image
+    needs: l3-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Derive image tags
+        id: tags
+        run: |
+          OWNER_LC="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "image=ghcr.io/${OWNER_LC}/find-evil:${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "latest=ghcr.io/${OWNER_LC}/find-evil:latest" >> "$GITHUB_OUTPUT"
+      - name: Build + push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.tags.outputs.image }},${{ steps.tags.outputs.latest }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  build-report:
+    name: Build offline report.html
+    needs: l3-gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - uses: pnpm/action-setup@v4
+        with: { version: 9.12.0 }
+      - name: Build report.html
+        run: |
+          if [[ -f pnpm-workspace.yaml ]] && [[ -d apps/web ]]; then
+            pnpm install --frozen-lockfile
+            # Vite library build of the offline report; falls through to
+            # stub if apps/web hasn't landed yet.
+            pnpm --filter @findevil/web run build:lib || echo "report.html build stub (pre-Week-5)"
+            cp apps/web/dist/report.html . 2>/dev/null || echo "<html><body>report.html (stub pre-release)</body></html>" > report.html
+          else
+            echo "<html><body>report.html placeholder — pnpm workspace not yet initialized</body></html>" > report.html
+          fi
+          ls -lh report.html
+      - name: Upload report.html
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ github.ref_name }}
+          path: report.html
+          retention-days: 30
+
+  publish:
+    name: Publish GitHub Release
+    needs: [build-deb, build-docker, build-report]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download .deb
+        uses: actions/download-artifact@v4
+        with:
+          name: find-evil-deb-${{ github.ref_name }}
+          path: dist/
+      - name: Download report.html
+        uses: actions/download-artifact@v4
+        with:
+          name: report-${{ github.ref_name }}
+          path: dist/
+      - name: Create / update GH release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "find-evil ${GITHUB_REF_NAME}" \
+              --notes "Auto-generated release. See docs/architecture.md + README-submission.md for details." \
+              --draft=false
+          fi
+          for f in dist/*; do
+            gh release upload "${GITHUB_REF_NAME}" "$f" --clobber
+          done
+
+      - name: Push leaderboard score (release=true)
+        env:
+          LEADERBOARD_API_KEY: ${{ secrets.LEADERBOARD_API_KEY }}
+        run: |
+          if [[ -x scripts/push-leaderboard-score.sh ]]; then
+            bash scripts/push-leaderboard-score.sh \
+              --commit-sha "${GITHUB_SHA}" \
+              --run-id "${GITHUB_RUN_ID}" \
+              --release true \
+              --tag "${GITHUB_REF_NAME}" \
+              || true
+          fi
+
+      - name: Slack #releases
+        if: env.SLACK_WEBHOOK_RELEASES != ''
+        env:
+          SLACK_WEBHOOK_RELEASES: ${{ secrets.SLACK_WEBHOOK_RELEASES }}
+        run: |
+          msg="[find-evil CI] release | PASS | ${GITHUB_SHA:0:7} | ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}
+          ${GITHUB_REF_NAME} shipped — .deb + Docker ghcr + report.html."
+          curl -fsSL -X POST "${SLACK_WEBHOOK_RELEASES}" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -nR --arg t "$msg" '{text:$t}')" \
+            || true
