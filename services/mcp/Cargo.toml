@@ -1,0 +1,60 @@
+[package]
+name = "findevil-mcp"
+version = "0.1.0"
+description = "Find Evil! typed Rust MCP server — narrow DFIR tool surface, no execute_shell."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Per Spec #2 §1: a single binary + a library face so tests can
+# import tool modules without spinning up the full stdio server.
+[lib]
+name = "findevil_mcp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "findevil-mcp"
+path = "src/main.rs"
+
+# Dependency pins per Spec #2 §16.
+# rmcp, evtx, rs_merkle, duckdb versions are locked; do not upgrade
+# without a spec amendment.
+[dependencies]
+# rmcp is the Rust MCP SDK. Import kept dormant in this first crate
+# until the full tool surface lands — lib.rs exposes types the
+# server will consume, plus an in-process test harness.
+# rmcp = { version = "=0.16.0", features = ["server", "transport-io"] }
+
+# Hashing — stdlib-friendly sha2 crate. No pin across workspace
+# since this is a transitive of downstream tools too.
+sha2 = "0.10"
+
+# UUID v4 for deterministic case_id generation.
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Serde for the typed JSON schema the MCP server will hand to rmcp.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# thiserror for structured, documented error types.
+thiserror = "1"
+
+# Async runtime — required when rmcp integration lands; harmless now.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "io-util"] }
+
+# Time/chrono for ISO-8601 timestamps in the eventual audit trail.
+chrono = { version = "0.4", features = ["serde"] }
+
+# Tracing for structured logs; lightweight.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+# tempfile for per-test scratch dirs.
+tempfile = "3"
+# Byte slice assertion helpers.
+hex = "0.4"
+
+[lints]
+workspace = true
