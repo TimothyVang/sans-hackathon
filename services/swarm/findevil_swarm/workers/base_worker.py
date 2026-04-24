@@ -184,6 +184,26 @@ class BaseWorker:
 
             if inp.dry_run:
                 # Test mode: don't invoke real claude; simulate a clean run.
+                # Also touch a sentinel file inside the worktree so the
+                # subsequent git diff is non-empty — otherwise the critic
+                # pre-check rejects every mock-workers run for "empty diff"
+                # before we ever exercise the critic itself. We stage the
+                # file but do NOT commit, so `git diff HEAD` sees it.
+                sentinel = worktree_dir / f".swarm-mock-{spec.pr_id}.txt"
+                sentinel.write_text(
+                    f"# Swarm mock worker output for {spec.pr_id}\n"
+                    f"# Week: {spec.week}  Language: {self.language}\n"
+                    f"# Generated at worker dry_run time.\n"
+                    f"# The real worker would have edited: {spec.files_expected}\n",
+                    encoding="utf-8",
+                )
+                # Stage but don't commit — keeps diff HEAD non-empty.
+                subprocess.run(
+                    ["git", "-C", str(worktree_dir), "add", sentinel.name],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
                 claude_exit = 0
                 claude_stdout = "[dry-run] prompt length=" + str(len(prompt))
                 claude_stderr = ""
