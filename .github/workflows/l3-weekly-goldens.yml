@@ -1,0 +1,74 @@
+name: L3 Weekly Goldens
+
+# Glue Spec #4 §3. Sunday 23:00 UTC full golden matrix — used as
+# the "authoritative score" feed for the leaderboard. Same tooling
+# as l3-nightly.yml but runs every fixture regardless of change
+# detection.
+
+on:
+  schedule:
+    - cron: '0 23 * * 0'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  weekly-golden:
+    name: Weekly L3 golden matrix
+    runs-on: ubuntu-latest-4-core-kvm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with: { lfs: true }
+
+      - name: Verify KVM
+        run: |
+          test -c /dev/kvm || { echo "::warning::no /dev/kvm on this runner; skipping"; exit 0; }
+
+      - name: Install host deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils zstd sshpass netcat-openbsd jq
+
+      - name: Restore warm qcow2
+        uses: actions/cache@v4
+        with:
+          path: packer/artifacts/sift-microvm-warm.qcow2.zst
+          key: sift-warm-${{ hashFiles('packer/sift-microvm.pkr.hcl', 'scripts/sift-provision.sh') }}
+
+      - name: Fetch fixtures
+        run: |
+          if [[ -x scripts/fetch-fixtures.sh ]]; then
+            bash scripts/fetch-fixtures.sh
+          fi
+
+      - name: Run full golden matrix
+        env:
+          CPUS: 4
+          MEMORY_MB: 8192
+        run: |
+          bash scripts/l3-run-goldens.sh
+
+      - name: Upload verdicts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: l3-weekly-verdicts
+          path: logs/l3/**
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Push weekly score to leaderboard
+        if: env.LEADERBOARD_API_KEY != ''
+        env:
+          LEADERBOARD_API_KEY: ${{ secrets.LEADERBOARD_API_KEY }}
+        run: |
+          if [[ -x scripts/push-leaderboard-score.sh ]]; then
+            bash scripts/push-leaderboard-score.sh \
+              --commit-sha "${GITHUB_SHA}" \
+              --run-id "${GITHUB_RUN_ID}" \
+              --release false \
+              || true
+          fi
