@@ -30,6 +30,11 @@ path = "src/main.rs"
 # since this is a transitive of downstream tools too.
 sha2 = "0.10"
 
+# omerbenamram's EVTX parser — MIT/Apache-2.0, ~1600x faster than
+# python-evtx. Linked in-process per Spec #2 §16. Pinned exact per
+# the spec's library version table.
+evtx = "=0.11.2"
+
 # UUID v4 for deterministic case_id generation.
 uuid = { version = "1", features = ["v4", "serde"] }
 

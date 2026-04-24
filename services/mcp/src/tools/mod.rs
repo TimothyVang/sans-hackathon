@@ -16,6 +16,11 @@
 //!     under `services/mcp/tests/`.
 
 pub mod case_open;
+pub mod evtx_query;
 
 /// Convenience re-exports.
 pub use case_open::{CaseHandle, CaseOpenError, CaseOpenInput, case_open};
+pub use evtx_query::{
+    EvtxError, EvtxQueryInput, EvtxQueryOutput, EvtxRow, evtx_query,
+    path_looks_like_evtx,
+};
