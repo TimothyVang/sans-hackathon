@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# setup-branch-protection.sh — apply glue Spec #4 §6 to the `main` branch.
+#
+# Run ONCE after repo creation (or after any protection reset). The
+# critic subagent's GitHub account must be a collaborator with
+# 'write' role before this takes effect, since the subagent's
+# `gh pr review --approve` will be what satisfies the required
+# review count.
+#
+# Required: gh CLI authenticated to a user with admin rights on
+# this repo.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${REPO_ROOT}"
+
+log() { printf '[branch-protection] %s\n' "$*" >&2; }
+
+if ! command -v gh >/dev/null 2>&1; then
+  log "ERROR: gh CLI not found"; exit 2
+fi
+
+# Resolve owner/repo from git remote or env override.
+REPO_SLUG="${REPO_SLUG:-}"
+if [[ -z "${REPO_SLUG}" ]]; then
+  REPO_SLUG="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
+fi
+if [[ -z "${REPO_SLUG}" ]]; then
+  log "ERROR: could not resolve REPO_SLUG; set REPO_SLUG=owner/repo"
+  exit 2
+fi
+
+log "applying main-branch protection to ${REPO_SLUG}"
+
+# Spec #4 §6. Required checks: l0-static + l1-unit. L2 is advisory.
+# L3 is nightly, not a per-PR gate.
+gh api \
+  "repos/${REPO_SLUG}/branches/main/protection" \
+  --method PUT \
+  --field 'required_status_checks[strict]=true' \
+  --field 'required_status_checks[contexts][]=l0-static / workflow-lint' \
+  --field 'required_status_checks[contexts][]=l0-static / shell-lint' \
+  --field 'required_status_checks[contexts][]=l0-static / python-lint' \
+  --field 'required_status_checks[contexts][]=l0-static / rust-lint' \
+  --field 'required_status_checks[contexts][]=l0-static / typescript-lint' \
+  --field 'required_status_checks[contexts][]=l0-static / docs-consistency' \
+  --field 'required_status_checks[contexts][]=l0-static / amendment-option-b-guard' \
+  --field 'required_status_checks[contexts][]=l1-unit / unit-build' \
+  --field 'enforce_admins=true' \
+  --field 'required_pull_request_reviews[required_approving_review_count]=1' \
+  --field 'required_pull_request_reviews[dismiss_stale_reviews]=true' \
+  --field 'required_pull_request_reviews[require_code_owner_reviews]=false' \
+  --field 'restrictions=null' \
+  --field 'allow_force_pushes=false' \
+  --field 'allow_deletions=false'
+
+log "main-branch protection applied."
+log "Verify: gh api repos/${REPO_SLUG}/branches/main/protection --jq '.required_status_checks.contexts'"
