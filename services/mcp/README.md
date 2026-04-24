@@ -32,7 +32,7 @@ Per Spec #2 §6:
 |---|---|---|
 | `case_open` | `tools/case_open.rs` | ✅ |
 | `mft_timeline` | `tools/mft_timeline.rs` | ⏳ |
-| `evtx_query` | `tools/evtx_query.rs` | ⏳ |
+| `evtx_query` | `tools/evtx_query.rs` | ✅ (in-process via `evtx = 0.11.2`) |
 | `hayabusa_scan` | `tools/hayabusa_scan.rs` | ⏳ |
 | `vol_pslist` | `tools/vol_pslist.rs` | ⏳ |
 | `vol_malfind` | `tools/vol_malfind.rs` | ⏳ |

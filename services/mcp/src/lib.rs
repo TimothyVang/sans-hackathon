@@ -26,3 +26,7 @@ pub const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub use crate::tools::case_open::{
     CaseHandle, CaseOpenError, CaseOpenInput, case_open,
 };
+pub use crate::tools::evtx_query::{
+    EvtxError, EvtxQueryInput, EvtxQueryOutput, EvtxRow, evtx_query,
+    path_looks_like_evtx,
+};
