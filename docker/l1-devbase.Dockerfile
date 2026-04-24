@@ -43,10 +43,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
  && ln -sf /usr/bin/python3.11 /usr/bin/python
 
-# Rust 1.83 (pinned — specs use stable feature surface available in 1.83).
+# Rust 1.88 (bumped from 1.83 — transitive deps increasingly need
+# edition 2024 stabilization, which landed in 1.85). See
+# rust-toolchain.toml for the authoritative pin.
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y \
-        --default-toolchain 1.83.0 \
+        --default-toolchain 1.88.0 \
         --profile minimal \
         --component clippy,rustfmt \
  && /root/.cargo/bin/rustup --version \

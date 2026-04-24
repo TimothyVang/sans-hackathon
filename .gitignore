@@ -16,7 +16,9 @@
 # Rust
 target/
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock IS committed — this is an application workspace with
+# a shipped binary (findevil-mcp), not a library. See Rust book
+# §"Cargo and Cargo.lock" for the convention.
 
 # Python
 __pycache__/
