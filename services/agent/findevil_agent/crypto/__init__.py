@@ -28,19 +28,47 @@ from findevil_agent.crypto.audit_log import (
     canonicalize_json,
     hash_line,
 )
+from findevil_agent.crypto.manifest import (
+    MANIFEST_VERSION,
+    ManifestLeaf,
+    ManifestVerification,
+    RunManifest,
+    build_manifest,
+    verify_manifest,
+    write_manifest,
+)
 from findevil_agent.crypto.merkle import (
     MerkleError,
     MerkleTree,
     verify_inclusion_proof,
+)
+from findevil_agent.crypto.signer import (
+    SignedBundle,
+    Signer,
+    SigstoreSigner,
+    StubSigner,
+    make_signer,
 )
 
 __all__ = [
     "AuditLog",
     "AuditLogError",
     "AuditRecord",
+    "MANIFEST_VERSION",
+    "ManifestLeaf",
+    "ManifestVerification",
     "MerkleError",
     "MerkleTree",
+    "RunManifest",
+    "SignedBundle",
+    "Signer",
+    "SigstoreSigner",
+    "StubSigner",
+    "build_manifest",
     "canonicalize_json",
     "hash_line",
+    "make_signer",
     "verify_inclusion_proof",
+    "verify_manifest",
+    "write_manifest",
 ]
