@@ -66,3 +66,9 @@ Thumbs.db
 /checkpoints/
 *.sqlite
 *.sqlite-journal
+
+# External reference clones (research-only, never ship in submission)
+/openclaw/
+/hermes-agent/
+/Linear-Coding-Agent-Harness/
+/.playwright-mcp/
