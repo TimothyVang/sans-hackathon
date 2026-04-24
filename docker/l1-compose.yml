@@ -1,0 +1,83 @@
+services:
+  # Spec #3 §4.2 — L1 dev-base runs `cargo test / pytest / pnpm build+test`
+  # inside an Ubuntu 22.04 image that matches SIFT's base. Used both for
+  # local iteration and inside GHA (.github/workflows/l1-unit.yml).
+  #
+  # Usage:
+  #   docker compose -f docker/l1-compose.yml up --build --exit-code-from l1
+  #
+  # The `--exit-code-from l1` surfaces L1's exit code so CI fails on a
+  # red test run without parsing logs.
+  l1:
+    build:
+      context: ..
+      dockerfile: docker/l1-devbase.Dockerfile
+      args:
+        DEV_UID: "${UID:-1000}"
+        DEV_GID: "${GID:-1000}"
+    image: findevil/l1-devbase:local
+    container_name: findevil-l1
+    # Running as `dev` matches the unprivileged-user invariant from Spec #2 §1.
+    user: "${UID:-1000}:${GID:-1000}"
+    working_dir: /workspace
+    volumes:
+      # Mount repo read-write for test output (target/, .pytest_cache/, etc.).
+      - ..:/workspace
+      # Share cargo / pnpm / uv caches across runs for speed.
+      - l1-cargo-registry:/home/dev/.cargo/registry
+      - l1-cargo-git:/home/dev/.cargo/git
+      - l1-cargo-target:/workspace/target
+      - l1-uv-cache:/home/dev/.cache/uv
+      - l1-pnpm-store:/home/dev/.local/share/pnpm/store
+    environment:
+      CARGO_HOME: /home/dev/.cargo
+      RUSTFLAGS: "-D warnings"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      UV_CACHE_DIR: /home/dev/.cache/uv
+      UV_SYSTEM_PYTHON: "true"
+    # Self-skipping test sequence — matches the command exact-match in
+    # BUILD_PLAN_v2.md §10 and sandbox plan Task 3.
+    command:
+      - bash
+      - -lc
+      - |
+        set -euo pipefail
+
+        if [ -f Cargo.toml ]; then
+          echo "== cargo test --workspace --locked =="
+          cargo test --workspace --locked
+          echo "== cargo build --release --locked =="
+          cargo build --workspace --release --locked
+        else
+          echo "-- no Cargo.toml yet, skipping Rust --"
+        fi
+
+        if [ -f pyproject.toml ]; then
+          echo "== uv sync =="
+          uv sync --frozen 2>/dev/null || uv sync
+          echo "== uv run pytest -xvs --cov =="
+          uv run pytest -xvs --cov
+        else
+          echo "-- no pyproject.toml yet, skipping Python --"
+        fi
+
+        if [ -f pnpm-workspace.yaml ] || [ -f package.json ]; then
+          echo "== pnpm install --frozen-lockfile =="
+          pnpm install --frozen-lockfile
+          echo "== pnpm -r build =="
+          pnpm -r build
+          echo "== pnpm -r test =="
+          pnpm -r test
+        else
+          echo "-- no pnpm workspace yet, skipping Node --"
+        fi
+
+        echo "L1 complete."
+
+volumes:
+  l1-cargo-registry:
+  l1-cargo-git:
+  l1-cargo-target:
+  l1-uv-cache:
+  l1-pnpm-store:
