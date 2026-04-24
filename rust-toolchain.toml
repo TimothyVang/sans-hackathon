@@ -1,0 +1,8 @@
+# Pin the Rust toolchain so every CI + local invocation uses the
+# same compiler. Matches Spec #2 §16 library pins + the L1 dev-base
+# Dockerfile.
+
+[toolchain]
+channel = "1.83.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
