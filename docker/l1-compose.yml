@@ -53,13 +53,21 @@ services:
           echo "-- no Cargo.toml yet, skipping Rust --"
         fi
 
-        if [ -f pyproject.toml ]; then
-          echo "== uv sync =="
-          uv sync --frozen 2>/dev/null || uv sync
-          echo "== uv run pytest -xvs --cov =="
-          uv run pytest -xvs --cov
-        else
-          echo "-- no pyproject.toml yet, skipping Python --"
+        # Run pytest in every services/*/pyproject.toml directory. There is
+        # no repo-root pyproject — each Python service is its own uv project
+        # (services/agent, services/agent_mcp, services/swarm) so we iterate.
+        python_any=false
+        for proj in services/agent services/agent_mcp services/swarm; do
+          if [ -f "$proj/pyproject.toml" ]; then
+            python_any=true
+            echo "== ($proj) uv sync --extra dev =="
+            (cd "$proj" && (uv sync --extra dev --frozen 2>/dev/null || uv sync --extra dev))
+            echo "== ($proj) uv run pytest -xvs --cov =="
+            (cd "$proj" && uv run pytest -xvs --cov)
+          fi
+        done
+        if [ "$python_any" = "false" ]; then
+          echo "-- no Python projects yet, skipping --"
         fi
 
         if [ -f pnpm-workspace.yaml ] || [ -f package.json ]; then

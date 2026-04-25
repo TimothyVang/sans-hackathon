@@ -2,18 +2,20 @@
 
 **Devpost Required Component #3** — architecture diagram with trust boundaries, distinguishing prompt-based guardrails from architectural guardrails.
 
-This document is the single-page visual summary judges reach first. Full detail lives in `docs/superpowers/specs/2026-04-25-the-product-design.md` (seven-layer product), `docs/superpowers/specs/2026-04-24-autonomous-build-swarm-design.md` (build swarm), and `docs/superpowers/specs/2026-04-23-amendment-option-b-claude-code-mode.md` (three credential modes).
+This document is the single-page visual summary judges reach first. Full detail lives in `docs/superpowers/specs/2026-04-25-the-product-design.md` (seven-layer product), `docs/superpowers/specs/2026-04-24-autonomous-build-swarm-design.md` (build swarm), `docs/superpowers/specs/2026-04-23-amendment-option-b-claude-code-mode.md` (Amendment A1, three credential modes), and `docs/superpowers/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md` (**Amendment A2, active**, Claude Code as primary interface).
 
 ---
 
-## Architectural pattern claimed
+## Architectural pattern claimed (under Amendment A2)
 
-Per SANS Find Evil! rules, submissions declare which of four supported patterns they implement. Our submission uses **two** primary patterns:
+Per SANS Find Evil! rules, submissions declare which of four supported patterns they implement. Our submission combines **two** patterns:
 
-1. **Custom MCP Server** (rules §2) — a purpose-built Rust MCP server exposing 11 typed functions. The agent physically cannot run destructive commands because the server does not expose them. No `execute_shell` tool exists anywhere in the MCP surface.
-2. **Multi-Agent Framework (LangGraph)** (rules §3) — the agent graph is decomposed into a supervisor, two competing-hypothesis worker pools, a judge node, a verifier, and a correlator. Each specialist has its own context window.
+1. **Direct Agent Extension** (rules §1) — Claude Code IS the agent. The judge runs `scripts/find-evil` (or `claude-code .`) at the repo root; `.mcp.json` auto-spawns both MCP servers; Claude Code drives the investigation as supervisor + Pool A/B subagents (`CLAUDE_CODE_FORK_SUBAGENT=1`). The SANS rules call this "the fastest path to a working submission."
+2. **Custom MCP Server** (rules §2) — two purpose-built MCP servers expose the typed tool surface:
+   - `findevil-mcp` (Rust) — DFIR primitives (case_open, evtx_query, mft_timeline, hayabusa_scan, vol_pslist, vol_malfind, yara_scan, usnjrnl_query, registry_query, prefetch_parse, vel_collect). Read-only on evidence; SHA-256 every output. **NO `execute_shell`.**
+   - `findevil-agent-mcp` (Python) — crypto + ACH plumbing (audit_append/verify, manifest_finalize/verify, ots_stamp/verify, verify_finding, detect_contradictions, judge_findings, correlate_findings).
 
-Both patterns are implemented together. The typed MCP server is called by every specialist agent in the LangGraph graph; no agent ever reaches a raw shell.
+The combination is the architectural claim: Claude Code's agent loop never touches a raw shell because the only verbs it has are MCP-typed function calls into one of the two servers.
 
 ---
 
@@ -33,65 +35,65 @@ flowchart TB
         YARA[YARA + Forge Core<br/>subprocess scan]
     end
 
-    subgraph Trust2["**TRUST BOUNDARY 2** — Typed Rust MCP Server (rmcp 0.16)"]
-        MCP["11 typed tools<br/>NO execute_shell<br/>NO arbitrary command exec<br/>---<br/>case_open, mft_timeline,<br/>evtx_query, hayabusa_scan,<br/>vol_pslist, vol_malfind,<br/>yara_scan, usnjrnl_query,<br/>registry_query, prefetch_parse,<br/>vel_collect"]
+    subgraph Trust2["**TRUST BOUNDARY 2** — Two MCP Servers (typed tool surface)"]
+        RustMcp["**findevil-mcp** (Rust, rmcp 0.16)<br/>11 typed DFIR tools<br/>NO execute_shell<br/>---<br/>case_open, mft_timeline,<br/>evtx_query, hayabusa_scan,<br/>vol_pslist, vol_malfind,<br/>yara_scan, usnjrnl_query,<br/>registry_query, prefetch_parse,<br/>vel_collect"]
+        AgentMcp["**findevil-agent-mcp** (Python, mcp SDK 1.x)<br/>10 typed crypto/ACH tools<br/>---<br/>audit_append/verify,<br/>manifest_finalize/verify,<br/>ots_stamp/verify,<br/>verify_finding,<br/>detect_contradictions,<br/>judge_findings,<br/>correlate_findings"]
         EvtxCrate["evtx crate<br/>MIT, in-process<br/>1600× python-evtx"]
         Merkle["rs_merkle 1.4.0<br/>append-only tree"]
         DuckDB["DuckDB 0.10<br/>L1 case store"]
     end
 
-    subgraph Trust3["**TRUST BOUNDARY 3** — Agent Graph (LangGraph + M4 ACH pattern)"]
-        Supervisor[Supervisor<br/>plan decomposition<br/>PlanProposed event]
-        PoolA["Pool A<br/>PERSISTENCE-BIASED<br/>prior:<br/>Scheduled Tasks, Services,<br/>WMI, Run keys, IFEO, LOLBins"]
-        PoolB["Pool B<br/>EXFIL-BIASED<br/>prior:<br/>net connections, staging dirs,<br/>certutil, bitsadmin, cloud sync,<br/>USB writes"]
-        Contradiction["Contradiction<br/>Detection Node<br/>FIRES BEFORE JUDGE"]
-        Judge["Judge Node<br/>credibility-weighted<br/>Estornell ICML 2025"]
-        Verifier["Verifier<br/>re-executes tool_calls<br/>vetos uncited Findings"]
-        Correlator["Correlator<br/>≥2 artifact classes<br/>for execution claims"]
+    subgraph Trust3["**TRUST BOUNDARY 3** — Claude Code agent loop (A2 — replaces LangGraph)"]
+        Supervisor["Claude Code main agent<br/>= supervisor<br/>reads agent-config/SOUL.md<br/>+ AGENTS.md + MEMORY.md"]
+        PoolA["Pool A subagent<br/>CLAUDE_CODE_FORK_SUBAGENT=1<br/>persistence-biased prompt:<br/>Tasks, Services, WMI,<br/>Run, IFEO, LOLBins"]
+        PoolB["Pool B subagent<br/>CLAUDE_CODE_FORK_SUBAGENT=1<br/>exfil-biased prompt:<br/>net connections, staging,<br/>certutil/bitsadmin, cloud sync,<br/>USB writes"]
+        Contradiction["detect_contradictions<br/>(MCP tool call into agent_mcp)<br/>FIRES BEFORE JUDGE"]
+        Judge["judge_findings<br/>credibility-weighted<br/>Estornell ICML 2025"]
+        Verifier["verify_finding<br/>re-executes cited tool calls<br/>vetos uncited Findings"]
+        Correlator["correlate_findings<br/>≥2 artifact classes<br/>for execution claims"]
     end
 
-    subgraph Trust4["**TRUST BOUNDARY 4** — Agent Runtime + Crypto Custody"]
-        FastAPI[FastAPI + SSE<br/>uvicorn :8080]
-        SqliteSaver[LangGraph SqliteSaver<br/>resume after SIGKILL]
+    subgraph Trust4["**TRUST BOUNDARY 4** — Crypto Custody (M2)"]
         Sigstore["sigstore 3.x<br/>keyless Fulcio signing<br/>Rekor transparency log"]
         OTS["OpenTimestamps 0.7.2<br/>Bitcoin anchor<br/>FRE 902(14) self-authenticating"]
         AuditJSONL["audit.jsonl<br/>hash-chained, append-only<br/>prev_hash per line"]
+        Manifest["run.manifest.json<br/>signs Merkle root +<br/>audit-log final hash"]
     end
 
-    subgraph Trust5["**TRUST BOUNDARY 5** — Presentation (human-in-loop)"]
-        NextJS[Next.js 15 SPA<br/>NarrativePane + EvidenceCanvas<br/>HypothesisBoard + VerdictCard<br/>ContradictionSurface]
-        MCPWidgets[MCP App widgets SEP-1865<br/>timeline + heatmap + diff<br/>Claude Desktop / ChatGPT / Cursor]
-        CLI[find-evil CLI<br/>serve / run / verify<br/>--unattended mode]
-        Notify[notify-send + Slack webhook<br/>RunVerdict toast]
+    subgraph Trust5["**TRUST BOUNDARY 5** — Presentation (DEFERRED to bonus per A2)"]
+        Terminal["Claude Code terminal<br/>findings / contradictions /<br/>plans rendered as text<br/>(primary UX under A2)"]
+        FindEvilSh["scripts/find-evil<br/>thin bash wrapper<br/>= claude-code ."]
+        NextJS["Next.js 15 SPA<br/>(deferred — week-7 bonus)"]
+        MCPWidgets["MCP App widgets SEP-1865<br/>(deferred — week-7 bonus)"]
     end
 
-    Human((Analyst /<br/>Judge)) -->|drop .e01| CLI
-    Human -->|drop .e01| NextJS
-    Human -->|prompt| MCPWidgets
+    Human((Analyst /<br/>Judge)) -->|scripts/find-evil| FindEvilSh
+    Human -->|claude-code .| Terminal
+
+    FindEvilSh --> Terminal
+    Terminal --> Supervisor
 
     Evidence -.->|read-only mount| Trust1
-    Trust1 -->|stdout parsed<br/>subprocess boundary| Trust2
-    Trust2 -->|typed JSON-RPC<br/>stdio transport| Trust3
+    Trust1 -->|stdout parsed<br/>subprocess boundary| RustMcp
+    RustMcp -->|typed JSON-RPC<br/>stdio transport| Trust3
+    AgentMcp -->|typed JSON-RPC<br/>stdio transport| Trust3
 
     Supervisor --> PoolA
     Supervisor --> PoolB
     PoolA --> Contradiction
     PoolB --> Contradiction
-    Contradiction -->|ContradictionFound<br/>event emitted FIRST| Human
+    Contradiction -->|ContradictionFound<br/>event surfaced FIRST| Terminal
     Contradiction --> Judge
     Judge --> Verifier
     Verifier --> Correlator
     Correlator --> Trust4
 
     Trust3 --> Sigstore
-    Trust2 -.->|Merkle leaf per<br/>tool call| Merkle
-    Merkle --> OTS
+    RustMcp -.->|tool output digest<br/>becomes Merkle leaf| Merkle
+    AgentMcp -->|manifest_finalize| Manifest
+    Merkle --> Manifest
+    Manifest --> OTS
     Sigstore --> AuditJSONL
-
-    Trust4 --> NextJS
-    Trust4 --> MCPWidgets
-    Trust4 --> CLI
-    Trust4 --> Notify
 
     Human -->|approve / reject<br/>plan + contradictions| Trust3
 
@@ -109,10 +111,10 @@ flowchart TB
 |---|---|---|---|
 | 0 | Evidence vault | **Architectural:** `mount -o ro` + `chmod 444`; `inotifywait` in L3 asserts zero writes to `/evidence` | Filesystem-enforced |
 | 1 | SIFT tool subprocesses | **Architectural:** unprivileged user (no root, no CAP_SYS_ADMIN), 120s wall-clock budget per call, cpulimit 50%, tmpfs `/tmp/case-<id>-work/`, binary allowlist (no curl/wget/nc) | OS-enforced |
-| 2 | Typed Rust MCP Server | **Architectural:** type system forbids `execute_shell`; tool surface is fixed at compile time in `services/mcp/src/tools/mod.rs`; adding a shell passthrough would require a code change + PR + review | Compiler-enforced |
-| 3 | Agent Graph | **Mixed:** agent system prompts (`agent-config/SOUL.md` — epistemic hierarchy, AGENTS.md — roles) are **prompt-based guardrails**; verifier veto (no Finding without `tool_call_id`) is **architectural** (Pydantic schema-level) | Mixed — prompt guards behavior, Pydantic guards data |
-| 4 | Crypto Custody | **Architectural:** sigstore signing and Merkle root computation happen server-side before any finding is user-visible; OpenTimestamps anchoring is a subprocess call outside the agent's reach | Cryptographic |
-| 5 | Presentation | **Architectural:** Next.js SSE bus is read-only from the frontend; analyst approval requires POST to `/cases/{id}/plan/approve` with session auth; `--unattended` mode auto-approves with `approved_by: "auto"` label in the audit log | Auth-enforced |
+| 2 | Two typed MCP servers | **Architectural:** Rust `findevil-mcp` type system forbids `execute_shell`; Python `findevil-agent-mcp` Pydantic input models use `extra="forbid"`; tool surfaces fixed at compile/build time. Adding a shell passthrough would require a code change + PR + review | Compiler/schema-enforced |
+| 3 | Claude Code agent loop | **Mixed:** agent system prompts (`agent-config/SOUL.md` — epistemic hierarchy, AGENTS.md — roles) are **prompt-based guardrails**; verifier veto (no Finding without `tool_call_id`) is **architectural** (Pydantic schema-level enforced at the `findevil-agent-mcp` boundary) | Mixed — prompt guards behavior, Pydantic guards data |
+| 4 | Crypto Custody | **Architectural:** sigstore signing and Merkle root computation happen inside `findevil-agent-mcp` before any finding is user-visible; OpenTimestamps anchoring is a subprocess call outside the agent's reach | Cryptographic |
+| 5 | Presentation | **DEFERRED to bonus (A2 §2.1).** The terminal IS the primary UX. Optional Next.js SSE bus (when shipped) is read-only from the frontend; `--unattended` mode logs `approved_by: "auto"` to the audit chain. | Auth-enforced (when present) |
 
 ### Prompt-based vs architectural guardrails — explicit distinction
 
@@ -126,13 +128,13 @@ These are **testable for bypass** in L3 golden runs — a prompt-injection fixtu
 
 **Architectural guardrails (structural controls that PHYSICALLY PREVENT bad outcomes):**
 - Read-only evidence mount (filesystem-enforced; even root can't mutate original .e01)
-- Typed Rust MCP server with no `execute_shell` (compiler-enforced; adding shell passthrough requires a code change and PR review)
-- Pydantic schema on `Finding` events requires `tool_call_id` (schema-enforced; unvalidated Findings can't exit the graph)
-- LangGraph SqliteSaver checkpoints before every node (durability-enforced)
-- sigstore signing of tool calls at the Rust MCP layer (agent cannot forge signatures)
-- Merkle tree append-only at the Rust MCP layer (agent cannot backdate audit entries)
+- Typed Rust MCP server (`findevil-mcp`) with no `execute_shell` (compiler-enforced; adding shell passthrough requires a code change and PR review)
+- Typed Python MCP server (`findevil-agent-mcp`) with Pydantic `extra="forbid"` on every input model (boundary-enforced; unknown fields surface as validation errors)
+- Pydantic schema on `Finding` events requires `tool_call_id` (schema-enforced; unvalidated Findings can't exit the agent_mcp boundary)
+- Hash-chained `audit.jsonl` (`prev_hash` per line; chain replay catches any backdated/mutated entry)
+- sigstore signing of the run manifest at the `findevil-agent-mcp` layer (agent cannot forge signatures)
+- Merkle tree append-only at the `findevil-agent-mcp` layer (agent cannot rebuild the tree to favor a different leaf set)
 - OpenTimestamps subprocess anchoring (agent does not own the OTS calendar or the Bitcoin blockchain)
-- FastAPI session auth on approval endpoints (agent cannot self-approve its own plan)
 
 **Cisco `mcp-scanner` run pre-submission** asserts zero findings for `execute_shell` or equivalent arbitrary-execution patterns in `services/mcp/` — the architectural claim is machine-verified.
 
@@ -236,23 +238,21 @@ All three modes are **judge-valid**. Judges pick whichever they already have —
 
 ---
 
-## Data flow — a single investigation from `.e01` to verdict
+## Data flow — a single investigation from `.e01` to verdict (under A2)
 
-1. Analyst drops `case.e01` into the Next.js SPA (or runs `find-evil run --case case.e01 --unattended`)
-2. FastAPI creates a new `case_id` UUID, returns it, redirects browser to `/case/{id}`
-3. Rust MCP `case_open` tool SHA-256-verifies the image; opens it via libewf in read-only mode; initializes DuckDB at `~/.findevil/cases/<id>/evidence.ddb`
-4. LangGraph supervisor emits `PlanProposed` event; analyst approves (or auto-approves in unattended)
-5. Supervisor scatters identical plan to Pool A (persistence) and Pool B (exfil) in parallel
-6. Each pool's specialists (disk/memory/log analysts) invoke MCP tools via stdio JSON-RPC; each call is sigstore-signed and its SHA-256 output hash is appended to the Merkle tree
-7. Pool findings merged into `contradiction.py` node — emits `ContradictionFound` events to the UI **before** reconciliation
-8. Analyst resolves contradictions (Trust A / Trust B / Flag) in the SPA, or `--unattended` auto-passes them to the judge
-9. Judge node credibility-weighted-merges into final finding set
-10. Verifier re-executes tool calls behind every Finding; vetos any without `tool_call_id`
-11. Correlator enforces SOUL.md cross-artifact rule (≥2 artifact classes for execution claims)
-12. Supervisor assembles `RunVerdict`; Rust MCP finalizes the Merkle root; `opentimestamps-client` stamps the root to Bitcoin asynchronously
-13. `run.manifest.json` written; `audit.jsonl` hash-chain finalized; OTS receipt saved
-14. `notify-send` + optional Slack webhook fires
-15. `find-evil verify run.manifest.json` on any machine with internet validates the entire run offline, citing FRE 902(14)
+1. Judge runs `scripts/find-evil` (or `claude-code .`) at the repo root. Claude Code reads `.mcp.json`, spawns both MCP servers, ingests `CLAUDE.md` + `agent-config/*` as system context.
+2. Judge prompts: "investigate fixtures/nist-hacking-case/SCHARDT.001". Claude Code (acting as supervisor) calls `case_open` (Rust MCP) — SHA-256 verifies the image, opens via libewf read-only, initializes DuckDB at `~/.findevil/cases/<id>/evidence.ddb`, calls `audit_append` (Python MCP) for the open event.
+3. Claude Code emits a plan as text (no `PlanProposed` event needed — the terminal IS the channel) and forks two subagents with `CLAUDE_CODE_FORK_SUBAGENT=1`: one with the Pool A persistence prompt, one with Pool B exfil.
+4. Each pool subagent invokes Rust MCP DFIR tools (`evtx_query`, `mft_timeline`, `hayabusa_scan`, etc.); each call's SHA-256 output digest is `audit_append`-ed and contributes a Merkle leaf at `manifest_finalize` time.
+5. Both subagents return Findings (each citing a `tool_call_id`). Supervisor calls `detect_contradictions` (Python MCP) which surfaces Pool A vs Pool B disagreements **before** the judge fires.
+6. Analyst resolves contradictions (Trust A / Trust B / Flag) in the terminal, or `--unattended` mode auto-passes them.
+7. Supervisor calls `verify_finding` (Python MCP) for each candidate Finding — the wrapper spawns its own short-lived `findevil-mcp` subprocess and re-runs the cited tool call. Drift downgrades the Finding by one tier.
+8. Supervisor calls `judge_findings` (Python MCP) — credibility-weighted merge per Estornell ICML 2025.
+9. Supervisor calls `correlate_findings` (Python MCP) — SOUL.md cross-artifact rule downgrades execution claims that lack ≥2 artifact-class corroboration; Amcache-only execution gets the hard-coded downgrade.
+10. Supervisor calls `manifest_finalize` (Python MCP) — builds Merkle root, signs the canonicalized body via sigstore (or StubSigner for offline demo), writes `run.manifest.json`. The audit chain is finalized.
+11. Supervisor calls `ots_stamp` (Python MCP) — `opentimestamps-client` submits the manifest to OTS calendar servers; receipt saved as `run.manifest.ots`.
+12. Supervisor renders the `RunVerdict` to the terminal with paths to the manifest + receipt.
+13. Offline replay: `manifest_verify` + `ots_verify` (or any third-party OTS verifier with a Bitcoin header) reproduce the proof end-to-end, citing FRE 902(14).
 
 ---
 
@@ -260,12 +260,13 @@ All three modes are **judge-valid**. Judges pick whichever they already have —
 
 | Dimension | Valhuntir (reference) | Us |
 |---|---|---|
-| MCP server | Python, 8 servers via sift-gateway, 100+ tools | Rust rmcp, 1 server, 11 typed tools, no execute_shell |
-| Chain-of-custody | Password-gated HMAC (PBKDF2 2M iter) | sigstore + Merkle + OpenTimestamps Bitcoin anchor (FRE 902(14)) |
-| Agent pattern | Single agent + human approval | ACH dual-agent (persistence vs exfil) + judge + contradiction surface |
+| MCP server | Python, 8 servers via sift-gateway, 100+ tools | **Two** typed MCP servers — Rust `findevil-mcp` (11 DFIR tools) + Python `findevil-agent-mcp` (10 crypto/ACH tools); no execute_shell |
+| Agent runtime | Custom Python harness | **Claude Code** itself (SANS rules §1 "Direct Agent Extension") — no custom orchestrator to maintain |
+| Chain-of-custody | Password-gated HMAC (PBKDF2 2M iter) | sigstore + Merkle + OpenTimestamps Bitcoin anchor (FRE 902(14) self-authenticating) |
+| Agent pattern | Single agent + human approval | ACH dual-agent (persistence vs exfil) via Claude Code forked subagents + judge + contradiction surface |
 | Benchmarks published | **None** (their README: "no performance metrics disclosed") | DFIR-Metric + public leaderboard |
-| UI | Browser Examiner Portal | Next.js SPA + MCP Apps widgets (SEP-1865) |
-| Install pattern | `curl ... | bash` one-liner | `curl ... | bash` one-liner (same pattern, our repo) |
+| UI | Browser Examiner Portal | Claude Code terminal (primary); Next.js SPA + MCP Apps widgets (week-7 polish bonus, deferred) |
+| Install pattern | `curl ... \| bash` one-liner | `curl ... \| bash` one-liner (same pattern, our repo) |
 | Credential mode | 1 (their gateway config) | 3 (CLAUDE_CODE_OAUTH_TOKEN / interactive / API key) |
 
 We match Valhuntir's architectural discipline and exceed it on three dimensions that are documented, measurable, and legally framed.
