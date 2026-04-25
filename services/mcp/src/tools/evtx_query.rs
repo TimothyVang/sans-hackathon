@@ -25,12 +25,13 @@
 use std::path::{Path, PathBuf};
 
 use evtx::EvtxParser;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 const DEFAULT_LIMIT: usize = 10_000;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EvtxQueryInput {
     /// Case ID from a prior `case_open` call. Not required at the

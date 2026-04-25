@@ -17,6 +17,7 @@
 #![forbid(unsafe_code)]
 
 pub mod crypto;
+pub mod server;
 pub mod tools;
 
 /// Crate version baked in at compile time — surfaced in the MCP
@@ -28,4 +29,10 @@ pub use crate::crypto::merkle::{verify_inclusion_proof, InclusionProof, MerkleEr
 pub use crate::tools::case_open::{case_open, CaseHandle, CaseOpenError, CaseOpenInput};
 pub use crate::tools::evtx_query::{
     evtx_query, path_looks_like_evtx, EvtxError, EvtxQueryInput, EvtxQueryOutput, EvtxRow,
+};
+pub use crate::tools::mft_timeline::{
+    mft_timeline, path_looks_like_mft, MftEntryRow, MftError, MftInput, MftOutput,
+};
+pub use crate::tools::prefetch_parse::{
+    path_looks_like_prefetch, prefetch_parse, PrefetchError, PrefetchInput, PrefetchOutput,
 };

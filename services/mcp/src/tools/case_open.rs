@@ -21,6 +21,7 @@ use std::fs::{self, File};
 use std::io::{self, BufReader, Read};
 use std::path::{Path, PathBuf};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -32,7 +33,7 @@ const SHA_BUFFER_SIZE: usize = 1 << 20; // 1 MiB — good streaming tradeoff
 ///
 /// Only the image path is required today; Spec #2 §6 reserves
 /// optional fields (`expected_sha256`, `label`) for later additions.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CaseOpenInput {
     /// Absolute or relative path to the evidence image (`.e01`,
