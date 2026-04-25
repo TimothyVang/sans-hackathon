@@ -192,6 +192,7 @@ def main() -> int:
                 "registry_query",
                 "yara_scan",
                 "usnjrnl_query",
+                "hayabusa_scan",
             ]
         )
         if names != expected:
@@ -359,7 +360,22 @@ def main() -> int:
         )
         log("  -> -32603 with 'UsnJrnl file not found' as expected")
 
-        # ---- 11. unknown tool dispatch is rejected ----------------------
+        # ---- 11. hayabusa_scan (error path) -----------------------------
+        log("hayabusa_scan: missing-evtx-dir error path...")
+        expect_error_response(
+            "tools/call",
+            {
+                "name": "hayabusa_scan",
+                "arguments": {
+                    "case_id": handle["id"],
+                    "evtx_dir": str(workdir / "nope-evtx-dir"),
+                },
+            },
+            "evtx_dir not found",
+        )
+        log("  -> -32603 with 'evtx_dir not found' as expected")
+
+        # ---- 12. unknown tool dispatch is rejected ----------------------
         log("unknown tool: expect JSON-RPC error...")
         client.send(
             {
@@ -377,7 +393,7 @@ def main() -> int:
         print()
         print("=" * 60)
         print("OK — Rust MCP server speaks 2024-11-05 over stdio.")
-        print("  All 7 tools dispatchable, error paths well-formed.")
+        print("  All 8 tools dispatchable, error paths well-formed.")
         print("=" * 60)
         return 0
     finally:

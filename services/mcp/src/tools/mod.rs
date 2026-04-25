@@ -17,6 +17,7 @@
 
 pub mod case_open;
 pub mod evtx_query;
+pub mod hayabusa_scan;
 pub mod mft_timeline;
 pub mod prefetch_parse;
 pub mod registry_query;
@@ -27,6 +28,9 @@ pub mod yara_scan;
 pub use case_open::{case_open, CaseHandle, CaseOpenError, CaseOpenInput};
 pub use evtx_query::{
     evtx_query, path_looks_like_evtx, EvtxError, EvtxQueryInput, EvtxQueryOutput, EvtxRow,
+};
+pub use hayabusa_scan::{
+    hayabusa_scan, HayabusaAlert, HayabusaError, HayabusaInput, HayabusaOutput,
 };
 pub use mft_timeline::{
     mft_timeline, path_looks_like_mft, MftEntryRow, MftError, MftInput, MftOutput,
