@@ -1,20 +1,25 @@
 //! Find Evil! MCP server binary.
 //!
-//! Spec #2 §2 + §3. Stdio transport for the rmcp server. Today this
-//! is a minimal runtime that validates the library face compiles +
-//! exposes a `--version` flag; the full rmcp `ServerHandler` wire-up
-//! arrives in the Week 2-3 tasks once every tool module is in
-//! place. Keeping a compilable binary now means the L0/L1 GHA jobs
-//! exercise real Rust code instead of self-skipping.
+//! Spec #2 §2 + §3 + Amendment A2. Stdio transport for the MCP server.
+//!
+//! Argument handling:
+//!   * `--version` / `-V` — print version and exit.
+//!   * `--help` / `-h`    — print usage and exit.
+//!   * (no args)          — run the stdio JSON-RPC server until stdin closes.
+//!
+//! Logs go to stderr. Stdout is the JSON-RPC channel — anything that
+//! is not a valid response line corrupts the protocol stream.
 
 #![forbid(unsafe_code)]
 
 use std::env;
 
-use findevil_mcp::CRATE_VERSION;
+use findevil_mcp::{server, CRATE_VERSION};
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = env::args().collect();
+
+    // Configure logging to stderr ONLY. Stdout is the JSON-RPC wire.
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -38,17 +43,26 @@ fn main() -> std::process::ExitCode {
                --version, -V   Print version and exit\n\
                --help, -h      Print this help\n\
              \n\
-             Without arguments, runs the MCP stdio server. Currently\n\
-             returns exit 0 with a placeholder message; full server\n\
-             starts landing in Week 2-3 (Spec #2 §6).\n"
+             Without arguments, runs the MCP stdio JSON-RPC server until\n\
+             stdin closes. Speaks MCP 2024-11-05 over line-delimited JSON.\n\
+             Logs to stderr; stdout is the protocol channel.\n"
         );
         return std::process::ExitCode::SUCCESS;
     }
 
     tracing::info!(
         target = "findevil_mcp",
-        "findevil-mcp {CRATE_VERSION} started (pre-server stub)"
+        "findevil-mcp {CRATE_VERSION} starting stdio server"
     );
-    // Intentionally exit 0: pre-Week-2 this binary is wire-up only.
-    std::process::ExitCode::SUCCESS
+
+    match server::run_stdio_server() {
+        Ok(()) => {
+            tracing::info!(target = "findevil_mcp", "stdio server exited cleanly");
+            std::process::ExitCode::SUCCESS
+        }
+        Err(err) => {
+            tracing::error!(target = "findevil_mcp", "stdio server I/O error: {err}");
+            std::process::ExitCode::FAILURE
+        }
+    }
 }
