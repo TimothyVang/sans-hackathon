@@ -40,9 +40,10 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use crate::tools::{
-    case_open, evtx_query::evtx_query, mft_timeline::mft_timeline, prefetch_parse::prefetch_parse,
-    registry_query::registry_query, usnjrnl_query::usnjrnl_query, yara_scan::yara_scan,
-    CaseOpenInput, EvtxQueryInput, MftInput, PrefetchInput, RegistryInput, UsnJrnlInput, YaraInput,
+    case_open, evtx_query::evtx_query, hayabusa_scan::hayabusa_scan, mft_timeline::mft_timeline,
+    prefetch_parse::prefetch_parse, registry_query::registry_query, usnjrnl_query::usnjrnl_query,
+    yara_scan::yara_scan, CaseOpenInput, EvtxQueryInput, HayabusaInput, MftInput, PrefetchInput,
+    RegistryInput, UsnJrnlInput, YaraInput,
 };
 use crate::CRATE_VERSION;
 
@@ -266,6 +267,34 @@ fn build_registry() -> Vec<ToolEntry> {
             schema: || schema_for::<UsnJrnlInput>(),
             handler: |args| dispatch_usnjrnl_query(args),
         },
+        ToolEntry {
+            name: "hayabusa_scan",
+            description: "Run Hayabusa (Sigma rules engine for Windows EVTX) against a \
+                 directory of .evtx files and parse its alerts. AGPL — invoked as a \
+                 SUBPROCESS only per Spec #2 invariant. Pool A persistence detector: \
+                 Hayabusa's bundled rule set surfaces suspicious logons, service \
+                 installs, scheduled-task creates, persistence-classified events, \
+                 and detection-rule patterns from the SIGMA project. \
+                 Use AFTER case_open with evtx_dir pointing at the case's extracted \
+                 EVTX directory. min_level filters Sigma severity (informational, low, \
+                 medium, high, critical) — default 'low' (informational floods). \
+                 Optional rule_set overrides the default rules dir; usually omit. \
+                 Hayabusa binary discovery: $HAYABUSA_BIN env var first, then PATH \
+                 lookup. Default limit 10000 alerts. \
+                 Returns alerts[] (timestamp_iso, rule, level, channel, event_id, \
+                 computer, details map) + alerts_seen + stderr_tail. The details map \
+                 carries event-specific fields (SubjectUserName, TargetFilename, etc.) \
+                 that vary by event type. \
+                 ERRORS: EvtxDirNotFound / EvtxDirNotDirectory (verify path), \
+                 RuleSetNotFound (path doesn't exist), BinaryNotFound (install Hayabusa \
+                 from https://github.com/Yamato-Security/hayabusa/releases or set \
+                 $HAYABUSA_BIN to its location), SubprocessFailed (Hayabusa returned \
+                 non-zero — check stderr_tail), OutputParse (JSON malformed; rare and \
+                 indicates a Hayabusa version mismatch — pin a known-good version), \
+                 InvalidMinLevel (must be one of the 5 standard levels).",
+            schema: || schema_for::<HayabusaInput>(),
+            handler: |args| dispatch_hayabusa_scan(args),
+        },
     ]
 }
 
@@ -465,6 +494,20 @@ fn dispatch_usnjrnl_query(args: Value) -> Result<Value, ToolError> {
     }
 }
 
+fn dispatch_hayabusa_scan(args: Value) -> Result<Value, ToolError> {
+    let input: HayabusaInput = parse_args(args)?;
+    // InvalidMinLevel is user-input; surface as -32602.
+    match hayabusa_scan(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(e @ crate::tools::HayabusaError::InvalidMinLevel(_)) => {
+            Err(ToolError::InvalidParams(format!("{e}")))
+        }
+        Err(e) => Err(ToolError::Internal(format!("hayabusa_scan: {e}"))),
+    }
+}
+
 fn parse_args<T: DeserializeOwned>(args: Value) -> Result<T, ToolError> {
     serde_json::from_value(args).map_err(|e| ToolError::InvalidParams(format!("invalid args: {e}")))
 }
@@ -558,6 +601,7 @@ mod tests {
             "registry_query",
             "yara_scan",
             "usnjrnl_query",
+            "hayabusa_scan",
         ];
         assert_eq!(names.len(), expected.len());
         for want in expected {

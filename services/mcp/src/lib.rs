@@ -30,6 +30,9 @@ pub use crate::tools::case_open::{case_open, CaseHandle, CaseOpenError, CaseOpen
 pub use crate::tools::evtx_query::{
     evtx_query, path_looks_like_evtx, EvtxError, EvtxQueryInput, EvtxQueryOutput, EvtxRow,
 };
+pub use crate::tools::hayabusa_scan::{
+    hayabusa_scan, HayabusaAlert, HayabusaError, HayabusaInput, HayabusaOutput,
+};
 pub use crate::tools::mft_timeline::{
     mft_timeline, path_looks_like_mft, MftEntryRow, MftError, MftInput, MftOutput,
 };
