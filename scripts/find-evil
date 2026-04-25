@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# scripts/find-evil — convenience launcher for the SANS Find Evil! agent.
+#
+# Per Amendment A2 the Product is Claude Code invoked in this repo,
+# with two MCP servers registered via .mcp.json (findevil-mcp Rust +
+# findevil-agent-mcp Python). The judge can run this script OR
+# `claude-code .` directly — the two are equivalent.
+#
+# This wrapper exists only to give the SANS judge a memorable command
+# matching the project name and to ensure the cwd is right.
+
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${REPO}"
+
+if ! command -v claude-code >/dev/null 2>&1; then
+  echo "error: claude-code not on PATH." >&2
+  echo "Install: https://docs.anthropic.com/en/docs/claude-code/install" >&2
+  echo "Then re-run scripts/find-evil." >&2
+  exit 127
+fi
+
+if [[ ! -f "${REPO}/.mcp.json" ]]; then
+  echo "error: ${REPO}/.mcp.json missing — Amendment A2 expects it at repo root." >&2
+  exit 1
+fi
+
+exec claude-code . "$@"

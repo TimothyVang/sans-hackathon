@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/specification/main/schema/draft/schema.json",
+  "mcpServers": {
+    "findevil-mcp": {
+      "type": "stdio",
+      "command": "cargo",
+      "args": ["run", "--release", "-p", "findevil-mcp", "--quiet"],
+      "cwd": "."
+    },
+    "findevil-agent-mcp": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "services/agent_mcp",
+        "python",
+        "-m",
+        "findevil_agent_mcp.server"
+      ],
+      "cwd": "."
+    }
+  }
+}
