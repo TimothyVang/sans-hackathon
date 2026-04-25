@@ -19,6 +19,7 @@ pub mod case_open;
 pub mod evtx_query;
 pub mod mft_timeline;
 pub mod prefetch_parse;
+pub mod registry_query;
 
 /// Convenience re-exports.
 pub use case_open::{case_open, CaseHandle, CaseOpenError, CaseOpenInput};
@@ -30,4 +31,8 @@ pub use mft_timeline::{
 };
 pub use prefetch_parse::{
     path_looks_like_prefetch, prefetch_parse, PrefetchError, PrefetchInput, PrefetchOutput,
+};
+pub use registry_query::{
+    path_looks_like_hive, registry_query, RegistryEntry, RegistryError, RegistryInput,
+    RegistryOutput, RegistryValue,
 };

@@ -41,7 +41,8 @@ use sha2::{Digest, Sha256};
 
 use crate::tools::{
     case_open, evtx_query::evtx_query, mft_timeline::mft_timeline, prefetch_parse::prefetch_parse,
-    CaseOpenInput, EvtxQueryInput, MftInput, PrefetchInput,
+    registry_query::registry_query, CaseOpenInput, EvtxQueryInput, MftInput, PrefetchInput,
+    RegistryInput,
 };
 use crate::CRATE_VERSION;
 
@@ -188,6 +189,30 @@ fn build_registry() -> Vec<ToolEntry> {
                  (since_iso/until_iso must be RFC 3339 / ISO-8601, e.g. 2026-04-25T00:00:00Z).",
             schema: || schema_for::<MftInput>(),
             handler: |args| dispatch_mft_timeline(args),
+        },
+        ToolEntry {
+            name: "registry_query",
+            description: "Read keys + values from an offline Windows Registry hive (NTUSER.DAT, \
+                 SOFTWARE, SYSTEM, SECURITY, SAM, USRCLASS.DAT). PRIMARY POOL A persistence \
+                 surface — Run / RunOnce / IFEO / Services / WMI subscription consumers / \
+                 ScheduledTasks all live here. Use AFTER case_open with the hive_path \
+                 pointing at the file inside the mounted image. \
+                 key_path is RELATIVE TO THE HIVE ROOT (e.g. 'Microsoft\\Windows\\\
+                 CurrentVersion\\Run' for a SOFTWARE hive). Optional 'HKLM\\\\' / 'HKCU\\\\' / \
+                 'HKU\\\\' prefixes are stripped. Use either '\\' or '/' as separator. \
+                 recursive=true walks all descendants depth-first (capped at depth 16 + \
+                 limit). Default limit 10000. \
+                 Returns entries[] (key_path, last_write_time_iso, values[], subkeys[]), \
+                 keys_visited, parse_errors. Each value is normalized: REG_SZ/EXPAND_SZ \
+                 → text, REG_MULTI_SZ → '|'-joined, REG_DWORD/QWORD → decimal, REG_BINARY \
+                 → lowercase hex (truncated at 4096 bytes with marker). \
+                 ERRORS: HiveNotFound (verify path), HiveOpen (file is not a valid hive — \
+                 wrong magic / corrupt header; try a fresh copy or a transaction-replayed \
+                 version), KeyNotFound (the requested key path doesn't exist in this hive — \
+                 check the prefix is right for the hive type, e.g. SOFTWARE keys live under \
+                 'Microsoft\\…' not 'HKLM\\SOFTWARE\\Microsoft\\…').",
+            schema: || schema_for::<RegistryInput>(),
+            handler: |args| dispatch_registry_query(args),
         },
     ]
 }
@@ -344,6 +369,20 @@ fn dispatch_mft_timeline(args: Value) -> Result<Value, ToolError> {
     }
 }
 
+fn dispatch_registry_query(args: Value) -> Result<Value, ToolError> {
+    let input: RegistryInput = parse_args(args)?;
+    // KeyNotFound is user-input territory; surface as -32602.
+    match registry_query(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(crate::tools::RegistryError::KeyNotFound(path)) => Err(ToolError::InvalidParams(
+            format!("registry key not found: {path}"),
+        )),
+        Err(e) => Err(ToolError::Internal(format!("registry_query: {e}"))),
+    }
+}
+
 fn parse_args<T: DeserializeOwned>(args: Value) -> Result<T, ToolError> {
     serde_json::from_value(args).map_err(|e| ToolError::InvalidParams(format!("invalid args: {e}")))
 }
@@ -429,7 +468,13 @@ mod tests {
         let resp: Value = serde_json::from_str(out.trim()).unwrap();
         let tools = resp["result"]["tools"].as_array().unwrap();
         let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
-        let expected = ["case_open", "evtx_query", "prefetch_parse", "mft_timeline"];
+        let expected = [
+            "case_open",
+            "evtx_query",
+            "prefetch_parse",
+            "mft_timeline",
+            "registry_query",
+        ];
         assert_eq!(names.len(), expected.len());
         for want in expected {
             assert!(names.contains(&want), "missing {want}: {names:?}");

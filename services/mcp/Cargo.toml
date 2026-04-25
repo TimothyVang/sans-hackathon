@@ -49,6 +49,14 @@ forensic-rs = "=0.13"
 # already forced 1.83 → 1.88; bumping again is a separate decision).
 mft = "=0.6.1"
 
+# frnsc-hive — MIT, ForensicRS Windows Registry hive parser. Same
+# author as frnsc-prefetch (above) and integrates with forensic-rs
+# (also already a dep). Used by `registry_query` for offline parsing
+# of NTUSER.DAT / SYSTEM / SOFTWARE / SECURITY / SAM hives.
+# notatin 1.0.1 was the first choice (Apache-2.0) but its transitive
+# nom parser breaks under rustc 1.88; frnsc-hive compiles cleanly.
+frnsc-hive = "=0.13.4"
+
 # UUID v4 for deterministic case_id generation.
 uuid = { version = "1", features = ["v4", "serde"] }
 
