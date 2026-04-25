@@ -25,7 +25,6 @@ import uuid
 from datetime import date, datetime
 from pathlib import Path
 
-from findevil_swarm.night_report import log_paths_for
 from findevil_swarm.supervisor import (
     DEFAULT_LOGS_DIR,
     DEFAULT_PLANS_DIR,
@@ -184,14 +183,12 @@ def _resolve_week(week_flag: str, week_start_date: str) -> int:
     if week_flag != "auto":
         try:
             n = int(week_flag)
-        except ValueError:
-            raise SystemExit(f"--week expected int or 'auto', got {week_flag!r}")
+        except ValueError as exc:
+            raise SystemExit(f"--week expected int or 'auto', got {week_flag!r}") from exc
         if not 1 <= n <= 8:
             raise SystemExit(f"--week must be 1..8, got {n}")
         return n
-    anchor = (
-        date.fromisoformat(week_start_date) if week_start_date else WEEK_1_START
-    )
+    anchor = date.fromisoformat(week_start_date) if week_start_date else WEEK_1_START
     days_since = (date.today() - anchor).days
     if days_since < 0:
         return 1

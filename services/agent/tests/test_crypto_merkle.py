@@ -45,7 +45,9 @@ class TestTreeBasics:
     def test_three_leaves_duplicates_last(self) -> None:
         t = MerkleTree()
         a, b, c = sha(b"a"), sha(b"b"), sha(b"c")
-        t.append(a); t.append(b); t.append(c)
+        t.append(a)
+        t.append(b)
+        t.append(c)
         # Tier 0: [a, b, c, c]  (duplicate c)
         # Tier 1: [H(a||b), H(c||c)]
         # Root:   H(H(a||b) || H(c||c))
@@ -58,7 +60,8 @@ class TestInclusionProofs:
     def test_two_leaf_proofs_round_trip(self) -> None:
         t = MerkleTree()
         a, b = sha(b"a"), sha(b"b")
-        t.append(a); t.append(b)
+        t.append(a)
+        t.append(b)
         for i in (0, 1):
             proof = t.inclusion_proof(i)
             assert verify_inclusion_proof(proof) is True
@@ -85,6 +88,7 @@ class TestInclusionProofs:
         proof = t.inclusion_proof(2)
         # Swap in a different leaf hash.
         import dataclasses
+
         tampered = dataclasses.replace(proof, leaf_hash=sha(b"impostor"))
         assert verify_inclusion_proof(tampered) is False
 
@@ -94,6 +98,7 @@ class TestInclusionProofs:
             t.append(sha(f"z-{i}".encode()))
         proof = t.inclusion_proof(2)
         import dataclasses
+
         # Flip a bit in the first sibling.
         bad_siblings = list(proof.siblings)
         bad_siblings[0] = bytes([bad_siblings[0][0] ^ 1]) + bad_siblings[0][1:]

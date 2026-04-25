@@ -149,9 +149,7 @@ class StubSigner:
         # Deterministic stub: cert_fingerprint derived from run_id +
         # seq so two stub runs produce distinguishable but
         # reproducible "fingerprints".
-        cert_fp = hashlib.sha256(
-            f"stub:{self._run_id}:{seq}".encode("ascii")
-        ).hexdigest()
+        cert_fp = hashlib.sha256(f"stub:{self._run_id}:{seq}".encode("ascii")).hexdigest()
         bundle_obj: dict[str, Any] = {
             "kind": "stub",
             "run_id": self._run_id,

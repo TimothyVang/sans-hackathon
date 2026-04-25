@@ -39,7 +39,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 from findevil_swarm import worktree as wt
 from findevil_swarm.session_guard import (
@@ -90,7 +90,7 @@ class WorkerResult:
     token_count_output: int = 0
     no_progress_killed: bool = False
     wall_clock_seconds: int = 0
-    jsonl_sidecar_path: Optional[Path] = None
+    jsonl_sidecar_path: Path | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -156,9 +156,7 @@ class BaseWorker:
         """Run the full worker lifecycle. Raises ``SessionLimitError`` on halt signals."""
         started = time.time()
         spec = inp.pr_spec
-        worktree_dir = wt.worktree_path(
-            repo=inp.repo, language=self.language, pr_id=spec.pr_id
-        )
+        worktree_dir = wt.worktree_path(repo=inp.repo, language=self.language, pr_id=spec.pr_id)
         branch = wt.branch_name(week=spec.week, pr_id=spec.pr_id)
 
         # Step 1: create worktree.
@@ -239,9 +237,7 @@ class BaseWorker:
             )
 
             # Step 6: halt signal? raise early before L1 touches disk.
-            halt_reason = detect_halt_reason(
-                exit_code=claude_exit, stderr=claude_stderr
-            )
+            halt_reason = detect_halt_reason(exit_code=claude_exit, stderr=claude_stderr)
             if halt_reason is not None:
                 raise SessionLimitError(halt_reason)
 

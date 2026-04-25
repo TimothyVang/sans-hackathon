@@ -26,8 +26,8 @@ the SSE bus and the audit log.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from findevil_agent.events import ContradictionFound, Finding
 
@@ -49,7 +49,7 @@ def detect_contradictions(
 ) -> list[ContradictionPair]:
     """Pairwise scan of the two pool outputs.
 
-    The cost is O(|A| × |B|); both pools cap at ~50 findings per
+    The cost is O(|A| * |B|); both pools cap at ~50 findings per
     Spec #2 design budget so this stays well under a millisecond
     in practice.
     """
@@ -103,8 +103,7 @@ def _classify_pair(a: Finding, b: Finding) -> str | None:
         and _token_overlap(a.description, b.description) < 0.30
     ):
         return (
-            f"both pools cite artifact {a.artifact_path!r} but "
-            f"description token-overlap < 30%"
+            f"both pools cite artifact {a.artifact_path!r} but " f"description token-overlap < 30%"
         )
 
     return None

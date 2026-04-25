@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import subprocess
 import time
-from typing import Optional
 
 from findevil_swarm.state import SwarmState
 
@@ -39,7 +38,7 @@ def poll_ci_until_result(
     poll_interval: int = _POLL_INTERVAL_SECONDS,
     timeout: int = _POLL_TIMEOUT_SECONDS,
     gh_cmd: str = "gh",
-) -> Optional[str]:
+) -> str | None:
     """Poll ``gh pr checks <N>`` until all checks are success|failure|timeout.
 
     Returns:
@@ -75,7 +74,7 @@ def poll_ci_until_result(
     return "timeout"
 
 
-def _summarize_checks(stdout: str) -> Optional[str]:
+def _summarize_checks(stdout: str) -> str | None:
     """Parse ``gh pr checks --json`` output to a single verdict.
 
     Returns ``"success"`` if every check completed with conclusion

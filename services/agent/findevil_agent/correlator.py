@@ -63,9 +63,7 @@ def correlate(
     one entry per input Finding describing what the correlator did.
     """
     # Index artifact classes the run touched, for cross-checks.
-    classes_in_run: set[str] = {
-        c for f in findings if (c := _classify_artifact(f)) is not None
-    }
+    classes_in_run: set[str] = {c for f in findings if (c := _classify_artifact(f)) is not None}
 
     refined: list[Finding] = []
     outcomes: list[CorrelationOutcome] = []
@@ -89,9 +87,9 @@ def correlate(
         # in this Finding's description.
         own_text = f.description.lower()
         has_strong_corroboration = (
-            (_PREFETCH_RE.search(own_text) and (_AMCACHE_RE.search(own_text) or _SHIMCACHE_RE.search(own_text)))
-            or _EDR_RE.search(own_text) is not None
-        )
+            _PREFETCH_RE.search(own_text)
+            and (_AMCACHE_RE.search(own_text) or _SHIMCACHE_RE.search(own_text))
+        ) or _EDR_RE.search(own_text) is not None
 
         # Weak: only Amcache cited.
         amcache_only = (
@@ -141,11 +139,12 @@ def _is_execution_claim(f: Finding) -> bool:
     if _EXECUTION_RE.search(f.description):
         return True
     # Common MITRE techniques classed as execution evidence.
-    if f.mitre_technique and f.mitre_technique.startswith(
-        ("T1059", "T1106", "T1129", "T1203", "T1543", "T1547", "T1053")
-    ):
-        return True
-    return False
+    return bool(
+        f.mitre_technique
+        and f.mitre_technique.startswith(
+            ("T1059", "T1106", "T1129", "T1203", "T1543", "T1547", "T1053")
+        )
+    )
 
 
 def _downgrade(f: Finding) -> Finding:

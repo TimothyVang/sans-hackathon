@@ -33,6 +33,7 @@ Wire format (per MCP spec):
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import subprocess
@@ -86,9 +87,7 @@ class ToolCallResult:
 class McpClient(Protocol):
     """The face the agent layer depends on."""
 
-    def call_tool(
-        self, tool_name: str, arguments: dict[str, Any]
-    ) -> ToolCallResult: ...
+    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> ToolCallResult: ...
 
     def close(self) -> None: ...
 
@@ -157,9 +156,7 @@ class StdioMcpClient:
                 bufsize=1,  # line-buffered
             )
         except FileNotFoundError as exc:
-            raise McpClientError(
-                f"could not spawn MCP server {self._command!r}: {exc}"
-            ) from exc
+            raise McpClientError(f"could not spawn MCP server {self._command!r}: {exc}") from exc
 
     def close(self) -> None:
         if self._closed:
@@ -177,16 +174,12 @@ class StdioMcpClient:
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
-            try:
+            with contextlib.suppress(subprocess.TimeoutExpired):
                 proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
 
     # --- core call ---
 
-    def call_tool(
-        self, tool_name: str, arguments: dict[str, Any]
-    ) -> ToolCallResult:
+    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> ToolCallResult:
         """Send one ``tools/call`` and parse the response.
 
         Thread-safe. Raises ``McpClientError`` on transport failure,
@@ -251,16 +244,14 @@ class StdioMcpClient:
             try:
                 ln = self._proc.stdout.readline()  # type: ignore[union-attr]
                 result["line"] = ln
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 result["error"] = repr(exc)
 
         thread = threading.Thread(target=reader, daemon=True)
         thread.start()
         thread.join(timeout=self._request_timeout_s)
         if thread.is_alive():
-            raise McpClientError(
-                f"MCP request timed out after {self._request_timeout_s}s"
-            )
+            raise McpClientError(f"MCP request timed out after {self._request_timeout_s}s")
         if "error" in result:
             raise McpClientError(f"MCP read error: {result['error']}")
         line = result.get("line", "")
@@ -330,9 +321,7 @@ class MockMcpClient:
     def register(self, tool_name: str, handler: Any) -> None:
         self._handlers[tool_name] = handler
 
-    def call_tool(
-        self, tool_name: str, arguments: dict[str, Any]
-    ) -> ToolCallResult:
+    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> ToolCallResult:
         if tool_name not in self._handlers:
             raise McpRpcError(
                 code=-32601,  # JSON-RPC method-not-found code
@@ -346,9 +335,7 @@ class MockMcpClient:
         elif isinstance(produced, str):
             text = produced
         else:
-            text = json.dumps(
-                {"value": produced}, sort_keys=True, separators=(",", ":")
-            )
+            text = json.dumps({"value": produced}, sort_keys=True, separators=(",", ":"))
 
         sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
         parsed: dict[str, Any] | None

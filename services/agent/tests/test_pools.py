@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from findevil_agent.pools import (
     EXFIL_SYSTEM_PROMPT,
-    ExfilPool,
     PERSISTENCE_SYSTEM_PROMPT,
+    ExfilPool,
     PersistencePool,
 )
 

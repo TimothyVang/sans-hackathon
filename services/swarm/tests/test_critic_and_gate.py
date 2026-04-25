@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import sys
 import time
 from pathlib import Path
 
 import pytest
 
-from findevil_swarm.critic import pre_check, _parse_critic_json, review
+from findevil_swarm.critic import _parse_critic_json, pre_check, review
 from findevil_swarm.pr_gate import (
     _summarize_checks,
     has_run,
@@ -147,8 +148,6 @@ class TestGateHelpers:
         assert has_run(state) is True
 
     def test_should_release_requires_explicit_true(self) -> None:
-        from findevil_swarm.state import SwarmState
-
         assert should_release_rest({}) is False
         assert should_release_rest({"dry_run_gate_passed": False}) is False
         assert should_release_rest({"dry_run_gate_passed": True}) is True
@@ -205,17 +204,19 @@ class TestWatchdog:
         assert w.fired is False
         assert fired == []
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason=(
+            "On Windows the watchdog falls through to os._exit(137) "
+            "(no process groups) which would terminate pytest itself. "
+            "CI runs on Linux."
+        ),
+    )
     def test_fires_callback_on_deadline(self) -> None:
-        # Small deadline; no process kill attempted because the callback
-        # is the extension point we test, and _signal_process_group is
-        # resilient to being invoked with nothing to kill.
         fired = []
         w = Watchdog(deadline_seconds=1, on_fire=lambda: fired.append(True))
         w.arm()
         time.sleep(1.5)
-        # If this test runs on Windows, os._exit would kill the test
-        # process. The check here is best-effort; CI runs on Linux.
-        # If we're still here, the fired event + callback must have run.
         if w.fired:
             assert fired == [True]
 

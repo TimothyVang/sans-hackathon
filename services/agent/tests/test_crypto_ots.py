@@ -81,9 +81,7 @@ class TestStampSubprocessMocked:
         # Pretend the subprocess wrote the receipt + returned 0.
         receipt_path = target.with_suffix(target.suffix + ".ots")
         receipt_path.write_bytes(b"fake-receipt")
-        with patch(
-            "findevil_agent.crypto.ots.subprocess.run"
-        ) as mock_run:
+        with patch("findevil_agent.crypto.ots.subprocess.run") as mock_run:
             mock_run.return_value.returncode = 0
             mock_run.return_value.stdout = ""
             mock_run.return_value.stderr = ""
@@ -94,9 +92,7 @@ class TestStampSubprocessMocked:
     def test_stamp_failure_returns_no_receipt(self, tmp_path: Path) -> None:
         target = tmp_path / "manifest.json"
         target.write_text('{"x":1}', encoding="utf-8")
-        with patch(
-            "findevil_agent.crypto.ots.subprocess.run"
-        ) as mock_run:
+        with patch("findevil_agent.crypto.ots.subprocess.run") as mock_run:
             mock_run.return_value.returncode = 1
             mock_run.return_value.stdout = ""
             mock_run.return_value.stderr = "calendar unreachable"
@@ -110,9 +106,7 @@ class TestUpgradeSubprocessMocked:
     def test_upgrade_calls_ots_upgrade(self, tmp_path: Path) -> None:
         receipt = tmp_path / "manifest.json.ots"
         receipt.write_bytes(b"fake")
-        with patch(
-            "findevil_agent.crypto.ots.subprocess.run"
-        ) as mock_run:
+        with patch("findevil_agent.crypto.ots.subprocess.run") as mock_run:
             mock_run.return_value.returncode = 0
             mock_run.return_value.stdout = "Got 1 attestation"
             mock_run.return_value.stderr = ""

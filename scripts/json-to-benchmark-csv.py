@@ -72,7 +72,10 @@ def _record_from_file(p: Path) -> dict:
 
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
-        print("usage: json-to-benchmark-csv.py <logs/l3 | foo-verdict.json>", file=sys.stderr)
+        print(
+            "usage: json-to-benchmark-csv.py <logs/l3 | foo-verdict.json>",
+            file=sys.stderr,
+        )
         return 2
     records = load_records(Path(argv[1]))
     writer = csv.DictWriter(sys.stdout, fieldnames=CSV_COLUMNS)

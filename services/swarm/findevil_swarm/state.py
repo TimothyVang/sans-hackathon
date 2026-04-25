@@ -11,7 +11,7 @@ budget fields; rate-limit handling is session-based).
 from __future__ import annotations
 
 import operator
-from typing import Annotated, Optional
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 from typing_extensions import TypedDict
@@ -93,7 +93,7 @@ class NightlyReport(BaseModel):
     prs_opened: list[str] = Field(default_factory=list)
     prs_rejected: list[str] = Field(default_factory=list)
     wall_clock_seconds: int = Field(..., ge=0)
-    session_halt_reason: Optional[str] = None  # set when session_guard halted us
+    session_halt_reason: str | None = None  # set when session_guard halted us
     workers_dispatched: int = Field(..., ge=0)
     critic_verdicts: int = Field(..., ge=0)
 
@@ -124,14 +124,14 @@ class SwarmState(TypedDict, total=False):
     # Session-based halt signal (Amendment A1; replaces USD budget_exhausted).
     # Supervisor-only write.
     session_halted: bool
-    session_halt_reason: Optional[str]
+    session_halt_reason: str | None
 
     # Dry-run gate outcome — supervisor-only write.
     dry_run_gate_passed: bool
-    dry_run_gate_pr_id: Optional[str]
+    dry_run_gate_pr_id: str | None
 
     # Watchdog anchor.
     wall_clock_start_ts: int  # Unix epoch seconds, UTC
 
     # Final night report (collect_node-only write).
-    nightly_report: Optional[NightlyReport]
+    nightly_report: NightlyReport | None

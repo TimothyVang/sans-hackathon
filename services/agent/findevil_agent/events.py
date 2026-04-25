@@ -70,9 +70,7 @@ class ToolCallOutput(_BaseEvent):
 
 class AgentMessage(_BaseEvent):
     event_type: Literal["AgentMessage"] = "AgentMessage"
-    role: Literal[
-        "supervisor", "pool_a", "pool_b", "judge", "verifier", "correlator"
-    ]
+    role: Literal["supervisor", "pool_a", "pool_b", "judge", "verifier", "correlator"]
     content: str
 
 
@@ -120,7 +118,7 @@ class ChainUpdate(_BaseEvent):
 class RunVerdict(_BaseEvent):
     event_type: Literal["RunVerdict"] = "RunVerdict"
     verdict: Literal["CONFIRMED_EVIL", "SUSPICIOUS", "BENIGN", "INCONCLUSIVE"]
-    confidence_score: float  # 0.0 – 1.0
+    confidence_score: float  # 0.0 to 1.0
     finding_count: int
     manifest_path: str
     ots_receipt_path: str

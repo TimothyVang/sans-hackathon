@@ -4,12 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 from findevil_agent.events import Finding
-from findevil_agent.mcp_client import McpRpcError, MockMcpClient
+from findevil_agent.mcp_client import MockMcpClient
 from findevil_agent.verifier import (
-    CallReplay,
     downgrade_confidence,
     reverify_finding,
     verify_findings,
@@ -52,18 +49,14 @@ class TestRequiredCitation:
         # one (bypassing Pydantic's "required" since the runtime path
         # has agents that may emit empty strings).
         f = _make_finding(tool_call_id="")
-        action, replay = reverify_finding(
-            f, mcp=MockMcpClient(), tool_call_index={}
-        )
+        action, replay = reverify_finding(f, mcp=MockMcpClient(), tool_call_index={})
         assert action.action == "rejected"
         assert "tool_call_id" in action.reason
         assert replay is None
 
     def test_missing_audit_record_rejects(self) -> None:
         f = _make_finding(tool_call_id="tc-not-in-index")
-        action, replay = reverify_finding(
-            f, mcp=MockMcpClient(), tool_call_index={}
-        )
+        action, replay = reverify_finding(f, mcp=MockMcpClient(), tool_call_index={})
         assert action.action == "rejected"
         assert "not found" in action.reason
         assert replay is None
@@ -77,6 +70,7 @@ class TestSuccessPath:
         # we precompute the same SHA into the index.
         import hashlib
         import json
+
         canonical = json.dumps(same_payload, sort_keys=True, separators=(",", ":"))
         expected_sha = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -126,6 +120,7 @@ class TestBatchVerify:
         # Build expected SHA matching what the mock will produce.
         import hashlib
         import json
+
         canonical = json.dumps({"x": 1}, sort_keys=True, separators=(",", ":"))
         expected_sha = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         index = {
@@ -134,17 +129,25 @@ class TestBatchVerify:
         }
         findings = [
             Finding(
-                case_id="c", finding_id="f-1", tool_call_id="tc-1",
-                artifact_path="x", confidence="CONFIRMED", description="a",
+                case_id="c",
+                finding_id="f-1",
+                tool_call_id="tc-1",
+                artifact_path="x",
+                confidence="CONFIRMED",
+                description="a",
             ),
             Finding(
-                case_id="c", finding_id="f-2", tool_call_id="tc-2",
-                artifact_path="y", confidence="INFERRED", description="b",
+                case_id="c",
+                finding_id="f-2",
+                tool_call_id="tc-2",
+                artifact_path="y",
+                confidence="INFERRED",
+                description="b",
             ),
         ]
         results = verify_findings(findings, mcp=mcp, tool_call_index=index)
         assert len(results) == 2
-        for original, action, replay in results:
+        for _original, action, replay in results:
             assert action.action == "approved"
             assert replay is not None and replay.matched
 
