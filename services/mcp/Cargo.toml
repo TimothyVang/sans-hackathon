@@ -67,6 +67,11 @@ yara-x-macros = "=1.12.0"
 yara-x-parser = "=1.12.0"
 yara-x-proto = "=1.12.0"
 
+# usnjrnl-forensic — MIT, NTFS USN Journal parser with full-path
+# reconstruction via journal rewind. Used by `usnjrnl_query` to
+# detect file create/delete/rename activity over an incident window.
+usnjrnl-forensic = "=0.6.0"
+
 # UUID v4 for deterministic case_id generation.
 uuid = { version = "1", features = ["v4", "serde"] }
 

@@ -20,6 +20,7 @@ pub mod evtx_query;
 pub mod mft_timeline;
 pub mod prefetch_parse;
 pub mod registry_query;
+pub mod usnjrnl_query;
 pub mod yara_scan;
 
 /// Convenience re-exports.
@@ -36,6 +37,9 @@ pub use prefetch_parse::{
 pub use registry_query::{
     path_looks_like_hive, registry_query, RegistryEntry, RegistryError, RegistryInput,
     RegistryOutput, RegistryValue,
+};
+pub use usnjrnl_query::{
+    path_looks_like_usnjrnl, usnjrnl_query, UsnJrnlEntry, UsnJrnlError, UsnJrnlInput, UsnJrnlOutput,
 };
 pub use yara_scan::{
     path_looks_like_yara_rules, yara_scan, YaraError, YaraInput, YaraMatch, YaraOutput,
