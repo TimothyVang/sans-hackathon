@@ -183,7 +183,9 @@ def main() -> int:
         log("tools/list...")
         tools_resp = client.call("tools/list")
         names = sorted(t["name"] for t in tools_resp["tools"])
-        expected = sorted(["case_open", "evtx_query", "prefetch_parse", "mft_timeline"])
+        expected = sorted(
+            ["case_open", "evtx_query", "prefetch_parse", "mft_timeline", "registry_query"]
+        )
         if names != expected:
             fatal(f"tool mismatch: {names} != {expected}")
         # Each tool must advertise an inputSchema dict.
@@ -302,7 +304,23 @@ def main() -> int:
         )
         log("  -> -32602 invalid_params with 'invalid time filter' as expected")
 
-        # ---- 8. unknown tool dispatch is rejected -----------------------
+        # ---- 8. registry_query (error path) -----------------------------
+        log("registry_query: missing-file error path...")
+        expect_error_response(
+            "tools/call",
+            {
+                "name": "registry_query",
+                "arguments": {
+                    "case_id": handle["id"],
+                    "hive_path": str(workdir / "nope.dat"),
+                    "key_path": "",
+                },
+            },
+            "registry hive not found",
+        )
+        log("  -> -32603 with 'registry hive not found' as expected")
+
+        # ---- 9. unknown tool dispatch is rejected -----------------------
         log("unknown tool: expect JSON-RPC error...")
         client.send(
             {
@@ -320,7 +338,7 @@ def main() -> int:
         print()
         print("=" * 60)
         print("OK — Rust MCP server speaks 2024-11-05 over stdio.")
-        print("  All 4 tools dispatchable, error paths well-formed.")
+        print("  All 5 tools dispatchable, error paths well-formed.")
         print("=" * 60)
         return 0
     finally:

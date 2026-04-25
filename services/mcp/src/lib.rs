@@ -36,3 +36,7 @@ pub use crate::tools::mft_timeline::{
 pub use crate::tools::prefetch_parse::{
     path_looks_like_prefetch, prefetch_parse, PrefetchError, PrefetchInput, PrefetchOutput,
 };
+pub use crate::tools::registry_query::{
+    path_looks_like_hive, registry_query, RegistryEntry, RegistryError, RegistryInput,
+    RegistryOutput, RegistryValue,
+};
