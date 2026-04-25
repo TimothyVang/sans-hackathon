@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from findevil_agent.crypto.audit_log import AuditLog
 from findevil_agent.crypto.manifest import (
     MANIFEST_VERSION,
@@ -204,9 +202,7 @@ class TestVerifyManifest:
         path = write_manifest(manifest, tmp_path / "run.manifest.json")
         loaded = json.loads(path.read_text(encoding="utf-8"))
         # Flip a bit in a leaf digest.
-        loaded["leaves"][0]["digest_hex"] = (
-            "f" + loaded["leaves"][0]["digest_hex"][1:]
-        )
+        loaded["leaves"][0]["digest_hex"] = "f" + loaded["leaves"][0]["digest_hex"][1:]
         path.write_text(json.dumps(loaded, indent=2), encoding="utf-8")
 
         result = verify_manifest(path)

@@ -16,18 +16,12 @@ from pydantic import TypeAdapter, ValidationError
 from findevil_agent.events import (
     AgentEvent,
     AgentMessage,
-    ChainUpdate,
     ContradictionFound,
     Finding,
     HypothesisUpdate,
     PlanApproved,
-    PlanProposed,
-    RunVerdict,
-    ToolCallOutput,
     ToolCallStart,
-    VerifierAction,
 )
-
 
 AE = TypeAdapter(AgentEvent)
 
@@ -126,9 +120,7 @@ class TestDiscriminator:
 
     def test_unknown_event_type_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            AE.validate_python(
-                {"event_type": "Bogus", "case_id": "c-1"}
-            )
+            AE.validate_python({"event_type": "Bogus", "case_id": "c-1"})
 
     def test_forbid_extras(self) -> None:
         with pytest.raises(ValidationError):

@@ -33,7 +33,6 @@ Public surface:
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Patterns.
@@ -49,6 +48,8 @@ _RATE_LIMIT_PATTERNS: tuple[re.Pattern[str], ...] = (
     # Exact strings from real incidents we have evidence of.
     re.compile(r"you're\s+out\s+of\s+extra\s+usage", re.IGNORECASE),
     re.compile(r"usage\s+limit\s+reached", re.IGNORECASE),
+    # Variant phrasing — Anthropic's "You have reached your usage limit".
+    re.compile(r"reached\s+(?:your\s+)?usage\s+limit", re.IGNORECASE),
     re.compile(r"quota\s+exceeded", re.IGNORECASE),
     # HTTP 429 in common surface forms.
     re.compile(r"\bhttp\s*429\b", re.IGNORECASE),
@@ -138,7 +139,7 @@ def is_session_expired(stderr: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def check_stderr(stderr: str) -> Optional[str]:
+def check_stderr(stderr: str) -> str | None:
     """Return a halt reason for ``stderr``, or None.
 
     Rate-limit signals take priority over session-expiry because they
@@ -151,7 +152,7 @@ def check_stderr(stderr: str) -> Optional[str]:
     return None
 
 
-def check_exit_code(exit_code: int, stderr: str) -> Optional[str]:
+def check_exit_code(exit_code: int, stderr: str) -> str | None:
     """Return a halt reason combining exit code + stderr, or None.
 
     Rules:
@@ -167,7 +168,7 @@ def check_exit_code(exit_code: int, stderr: str) -> Optional[str]:
     return check_stderr(stderr)
 
 
-def detect_halt_reason(exit_code: int, stderr: str) -> Optional[str]:
+def detect_halt_reason(exit_code: int, stderr: str) -> str | None:
     """Top-level detector used by ``base_worker.py``.
 
     Equivalent to ``check_exit_code`` today but kept as a distinct
@@ -178,9 +179,7 @@ def detect_halt_reason(exit_code: int, stderr: str) -> Optional[str]:
     return check_exit_code(exit_code=exit_code, stderr=stderr)
 
 
-def _extract_reason(
-    stderr: str, patterns: tuple[re.Pattern[str], ...], prefix: str
-) -> str:
+def _extract_reason(stderr: str, patterns: tuple[re.Pattern[str], ...], prefix: str) -> str:
     """Extract a short, useful halt-reason string from ``stderr``.
 
     Finds the first pattern hit and returns a ~120-char slice around

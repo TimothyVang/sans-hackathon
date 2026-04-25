@@ -162,9 +162,7 @@ def verify_findings(
     """
     out: list[tuple[Finding, VerifierAction, CallReplay | None]] = []
     for finding in findings:
-        action, replay = reverify_finding(
-            finding, mcp=mcp, tool_call_index=tool_call_index
-        )
+        action, replay = reverify_finding(finding, mcp=mcp, tool_call_index=tool_call_index)
         out.append((finding, action, replay))
     return out
 

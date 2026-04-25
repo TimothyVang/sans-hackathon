@@ -27,7 +27,6 @@ from findevil_swarm.plan_parser import (
 )
 from findevil_swarm.state import PRSpec
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SANDBOX_PLAN = REPO_ROOT / "docs/superpowers/plans/2026-04-23-sandbox-plan.md"
 SWARM_PLAN = REPO_ROOT / "docs/superpowers/plans/2026-04-23-build-swarm-plan.md"
@@ -61,9 +60,7 @@ class TestDetectLanguage:
 
     def test_mixed_extensions_picks_most_common(self) -> None:
         assert (
-            detect_language(
-                ["src/a.rs", "src/b.rs", "src/c.rs", "README.md", "tests/t.py"]
-            )
+            detect_language(["src/a.rs", "src/b.rs", "src/c.rs", "README.md", "tests/t.py"])
             == "rust"
         )
 
@@ -102,9 +99,7 @@ class TestExtractL1Command:
 
     def test_cargo_command(self) -> None:
         body = "Run: `cargo test -p findevil-mcp --test tool_smoke`"
-        assert (
-            extract_l1_command(body) == "cargo test -p findevil-mcp --test tool_smoke"
-        )
+        assert extract_l1_command(body) == "cargo test -p findevil-mcp --test tool_smoke"
 
     def test_default_to_pytest_when_no_run_line(self) -> None:
         body = "Some task with no Run: line."

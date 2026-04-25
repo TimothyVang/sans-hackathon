@@ -23,15 +23,15 @@ from __future__ import annotations
 import os
 import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date as date_cls
 from pathlib import Path
-from typing import Callable, Optional
 
 from findevil_swarm import critic as critic_mod
 from findevil_swarm import plan_parser, worktree
 from findevil_swarm.night_report import emit_event, log_paths_for, write_summary
-from findevil_swarm.pr_gate import has_run, should_release_rest
+from findevil_swarm.pr_gate import should_release_rest
 from findevil_swarm.session_guard import SessionLimitError
 from findevil_swarm.state import NightlyReport, PRSpec, SwarmState
 from findevil_swarm.watchdog import Watchdog
@@ -74,7 +74,7 @@ class SupervisorConfig:
     mock_workers: bool = False  # pass through to WorkerInput.dry_run
     wall_clock_deadline_s: int = 8 * 60 * 60
     # Injected for tests — production uses the default ``gh pr create`` call.
-    gh_pr_create: Optional[Callable[[PRSpec, WorkerResult], Optional[int]]] = None
+    gh_pr_create: Callable[[PRSpec, WorkerResult], int | None] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -90,9 +90,7 @@ class SupervisorConfig:
 
 def plan_node(state: SwarmState, config: SupervisorConfig) -> SwarmState:
     """Parse this week's plans into PRSpecs and stamp the run ID."""
-    event_log, _ = log_paths_for(
-        config.logs_dir, date=_today_utc(), run_id=config.run_id
-    )
+    event_log, _ = log_paths_for(config.logs_dir, date=_today_utc(), run_id=config.run_id)
     emit_event(
         event_log,
         run_id=config.run_id,
@@ -100,9 +98,7 @@ def plan_node(state: SwarmState, config: SupervisorConfig) -> SwarmState:
         event="plan_start",
         week=config.week,
     )
-    specs = plan_parser.parse_week(
-        week=config.week, plans_dir=config.plans_dir
-    )
+    specs = plan_parser.parse_week(week=config.week, plans_dir=config.plans_dir)
     emit_event(
         event_log,
         run_id=config.run_id,
@@ -129,16 +125,14 @@ def plan_node(state: SwarmState, config: SupervisorConfig) -> SwarmState:
 
 def dispatch_node(state: SwarmState, config: SupervisorConfig) -> SwarmState:
     """Dispatch PRs — respecting the dry-run gate — and call critic on each."""
-    event_log, _ = log_paths_for(
-        config.logs_dir, date=_today_utc(), run_id=config.run_id
-    )
+    event_log, _ = log_paths_for(config.logs_dir, date=_today_utc(), run_id=config.run_id)
     specs = state["pr_specs"]
     completed: list[str] = []
     rejected: list[str] = []
     verdicts: list = []
     dispatched: list[str] = []
     session_halted = False
-    halt_reason: Optional[str] = None
+    halt_reason: str | None = None
 
     gate_first_only = config.dry_run_gate and not should_release_rest(state)
     for i, spec in enumerate(specs):
@@ -216,7 +210,7 @@ def dispatch_node(state: SwarmState, config: SupervisorConfig) -> SwarmState:
 
         if verdict.decision == "APPROVE":
             # ``gh pr create --draft`` is injectable so tests can stub it.
-            pr_number: Optional[int] = None
+            pr_number: int | None = None
             if config.gh_pr_create is not None:
                 pr_number = config.gh_pr_create(spec, result)
             else:
@@ -266,9 +260,7 @@ def dispatch_node(state: SwarmState, config: SupervisorConfig) -> SwarmState:
 
 def collect_node(state: SwarmState, config: SupervisorConfig) -> SwarmState:
     """Write NightlyReport + final JSONL event."""
-    event_log, summary_log = log_paths_for(
-        config.logs_dir, date=_today_utc(), run_id=config.run_id
-    )
+    event_log, summary_log = log_paths_for(config.logs_dir, date=_today_utc(), run_id=config.run_id)
 
     start_ts = state.get("wall_clock_start_ts", int(time.time()))
     wall_clock_s = max(0, int(time.time()) - start_ts)
@@ -305,7 +297,7 @@ def collect_node(state: SwarmState, config: SupervisorConfig) -> SwarmState:
 
 def _default_gh_pr_create(
     spec: PRSpec, result: WorkerResult, config: SupervisorConfig
-) -> Optional[int]:
+) -> int | None:
     """Open a draft PR via ``gh``. Returns the PR number or None on failure."""
     if config.mock_workers:
         return None  # mock dispatch doesn't touch GitHub
@@ -379,10 +371,7 @@ def run_supervisor(
     )
     watchdog.arm()
     try:
-        if use_langgraph:
-            state = _run_via_langgraph(config)
-        else:
-            state = _run_in_process(config)
+        state = _run_via_langgraph(config) if use_langgraph else _run_in_process(config)
         report = state.get("nightly_report")
         if report is None:
             # Defensive — collect_node always sets it.

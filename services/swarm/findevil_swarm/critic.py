@@ -22,7 +22,6 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 from findevil_swarm.session_guard import (
     SessionLimitError,
@@ -31,13 +30,12 @@ from findevil_swarm.session_guard import (
 from findevil_swarm.state import CriticVerdict, PRSpec
 from findevil_swarm.workers.base_worker import WorkerResult
 
-
 # ---------------------------------------------------------------------------
 # Deterministic pre-checks.
 # ---------------------------------------------------------------------------
 
 
-def pre_check(spec: PRSpec, result: WorkerResult) -> Optional[CriticVerdict]:
+def pre_check(spec: PRSpec, result: WorkerResult) -> CriticVerdict | None:
     """Return a REJECT ``CriticVerdict`` for obvious failures, else None.
 
     These are cheap bail-outs that don't need Claude at all:
@@ -145,8 +143,7 @@ def review(
         l1_exit_code=result.l1_exit_code,
         l1_stdout_tail=result.l1_stdout[-500:] or "(empty)",
         l1_stderr_tail=result.l1_stderr[-500:] or "(empty)",
-        files_expected="\n".join(f"  - {p}" for p in spec.files_expected)
-        or "  (none declared)",
+        files_expected="\n".join(f"  - {p}" for p in spec.files_expected) or "  (none declared)",
     )
 
     if dry_run:
@@ -179,9 +176,7 @@ def review(
     verdict = _parse_critic_json(proc.stdout)
     if verdict is None:
         # Unparseable critic output ≡ REJECT per Spec #1 §6.4.
-        return _reject(
-            spec, result, f"critic output was not valid JSON: {proc.stdout[:200]}"
-        )
+        return _reject(spec, result, f"critic output was not valid JSON: {proc.stdout[:200]}")
     return CriticVerdict(
         pr_id=spec.pr_id,
         decision=verdict["decision"],
@@ -206,7 +201,7 @@ def _git_diff(repo: Path, worktree: Path) -> str:
     return result.stdout[:20_000]
 
 
-def _parse_critic_json(stdout: str) -> Optional[dict[str, str]]:
+def _parse_critic_json(stdout: str) -> dict[str, str] | None:
     """Parse the critic's one-line JSON output. Tolerates surrounding text."""
     import json
     import re

@@ -84,7 +84,9 @@ ACH_MAX_ROUNDS: Final[int] = 1
 # ---------------------------------------------------------------------------
 
 
-def resolve_credentials(*, env: os._Environ[str] | dict[str, str] | None = None) -> CredentialResolution:
+def resolve_credentials(
+    *, env: os._Environ[str] | dict[str, str] | None = None
+) -> CredentialResolution:
     """Detect which credential mode is active.
 
     Priority (matches Amendment A1 §3.1):
@@ -105,13 +107,12 @@ def resolve_credentials(*, env: os._Environ[str] | dict[str, str] | None = None)
         return CredentialResolution(mode=CredentialMode.OAUTH_TOKEN, api_key=None)
 
     claude_home = _claude_home_from_env(env_src)
-    if claude_home is not None and claude_home.is_dir():
-        # Valid session requires at least one credential file inside.
-        if any(claude_home.iterdir()):
-            return CredentialResolution(
-                mode=CredentialMode.CLAUDE_CODE_SESSION,
-                claude_home=claude_home,
-            )
+    # Valid session requires the dir to exist AND have at least one credential file.
+    if claude_home is not None and claude_home.is_dir() and any(claude_home.iterdir()):
+        return CredentialResolution(
+            mode=CredentialMode.CLAUDE_CODE_SESSION,
+            claude_home=claude_home,
+        )
 
     api_key = env_src.get("ANTHROPIC_API_KEY", "").strip()
     if api_key:

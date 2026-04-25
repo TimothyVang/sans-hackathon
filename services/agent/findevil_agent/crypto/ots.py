@@ -188,18 +188,16 @@ def _parse_verify(returncode: int, stdout: str, stderr: str) -> OtsVerification:
         if "bitcoin block" in line_l:
             # Common shapes: "Bitcoin block N", "Bitcoin block N (hash)"
             tokens = line.split()
+            import contextlib
+
             for i, tok in enumerate(tokens):
                 if tok.lower() == "block" and i + 1 < len(tokens):
-                    try:
+                    with contextlib.suppress(ValueError):
                         block_height = int(tokens[i + 1].rstrip("(").rstrip(":"))
-                    except ValueError:
-                        pass
                     break
         if "block hash" in line_l:
             for tok in line.split():
-                if len(tok) >= 16 and all(
-                    c in "0123456789abcdefABCDEF" for c in tok
-                ):
+                if len(tok) >= 16 and all(c in "0123456789abcdefABCDEF" for c in tok):
                     block_hash = tok.lower()
                     break
 

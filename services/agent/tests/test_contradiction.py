@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
 from findevil_agent.contradiction import (
-    ContradictionPair,
     _is_confidence_extreme,
     _token_overlap,
     detect_contradictions,
@@ -97,11 +94,15 @@ class TestDetectContradictions:
         # Same artifact_path, same tool_call_id, similar confidence,
         # but very different descriptions.
         a = _f(
-            "f-1", description="alpha bravo charlie delta", pool="A",
+            "f-1",
+            description="alpha bravo charlie delta",
+            pool="A",
             mitre=None,
         )
         b = _f(
-            "f-2", description="echo foxtrot golf hotel", pool="B",
+            "f-2",
+            description="echo foxtrot golf hotel",
+            pool="B",
             mitre=None,
         )
         contradictions = detect_contradictions([a], [b])

@@ -47,14 +47,10 @@ def emit_event(
 def write_summary(summary_path: Path, report: NightlyReport) -> None:
     """Write the final NightlyReport to a single-line JSON file."""
     summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(
-        report.model_dump_json(indent=2) + "\n", encoding="utf-8"
-    )
+    summary_path.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
 
 
-def log_paths_for(
-    logs_dir: Path, *, date: str, run_id: str
-) -> tuple[Path, Path]:
+def log_paths_for(logs_dir: Path, *, date: str, run_id: str) -> tuple[Path, Path]:
     """Return ``(event_log, summary_log)`` paths for a given run."""
     event_log = logs_dir / f"{date}-{run_id}.jsonl"
     summary_log = logs_dir / f"{date}-{run_id}-summary.json"

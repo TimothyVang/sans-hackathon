@@ -18,9 +18,9 @@ class RustWorker(BaseWorker):
     system_prompt_fragment: ClassVar[str] = (
         "Rust-specific guidance:\n"
         "- Target crate is rmcp 0.16.x; pin with = in Cargo.toml.\n"
-        "- Use ``evtx = \"=0.11.2\"`` for in-process EVTX parsing.\n"
-        "- Use ``rs_merkle = \"=1.4.0\"`` for the M2 append-only tree.\n"
-        "- Use ``duckdb = \"=0.10\"`` for the L1 case DB.\n"
+        '- Use ``evtx = "=0.11.2"`` for in-process EVTX parsing.\n'
+        '- Use ``rs_merkle = "=1.4.0"`` for the M2 append-only tree.\n'
+        '- Use ``duckdb = "=0.10"`` for the L1 case DB.\n'
         "- AGPL/GPL tools (Hayabusa, Chainsaw, Volatility3, Velociraptor, YARA) "
         "must only be invoked as subprocesses — never linked. Calling them via "
         "``std::process::Command`` is the contract.\n"

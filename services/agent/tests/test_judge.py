@@ -12,7 +12,6 @@ from findevil_agent.judge import (
     THRESHOLD_CONFIRMED,
     THRESHOLD_INFERRED,
     JudgeBudgetExceeded,
-    MergedFinding,
     PoolStats,
     judge_findings,
 )
@@ -87,16 +86,36 @@ class TestBothPoolsFindings:
         # Pool A has a disk finding; Pool B has a log finding on
         # the same artifact (both pools touch other artifact classes).
         a_findings = [
-            _f("f-1", pool="A", confidence="CONFIRMED",
-               artifact_path="C:\\$MFT", description="mft entry"),
-            _f("f-2", pool="A", confidence="INFERRED",
-               artifact_path="Security.evtx", description="evtx logon"),
+            _f(
+                "f-1",
+                pool="A",
+                confidence="CONFIRMED",
+                artifact_path="C:\\$MFT",
+                description="mft entry",
+            ),
+            _f(
+                "f-2",
+                pool="A",
+                confidence="INFERRED",
+                artifact_path="Security.evtx",
+                description="evtx logon",
+            ),
         ]
         b_findings = [
-            _f("f-3", pool="B", confidence="CONFIRMED",
-               artifact_path="Security.evtx", description="evtx logon"),
-            _f("f-4", pool="B", confidence="INFERRED",
-               artifact_path="memory.mem", description="malfind hit"),
+            _f(
+                "f-3",
+                pool="B",
+                confidence="CONFIRMED",
+                artifact_path="Security.evtx",
+                description="evtx logon",
+            ),
+            _f(
+                "f-4",
+                pool="B",
+                confidence="INFERRED",
+                artifact_path="memory.mem",
+                description="malfind hit",
+            ),
         ]
         merged = judge_findings(
             PoolStats(pool="A", findings=a_findings),
@@ -105,16 +124,22 @@ class TestBothPoolsFindings:
         # Three groups: $MFT (A only), Security.evtx (both), memory.mem (B only).
         assert len(merged) == 3
         # The Security.evtx group is the corroborated one.
-        evtx_merged = [m for m in merged if m.finding.artifact_path == "Security.evtx"][0]
+        evtx_merged = next(m for m in merged if m.finding.artifact_path == "Security.evtx")
         assert evtx_merged.corroborated is True
 
     def test_disagreeing_pools_drop_to_hypothesis(self) -> None:
-        a = PoolStats(pool="A", findings=[
-            _f("f-1", pool="A", confidence="HYPOTHESIS"),
-        ])
-        b = PoolStats(pool="B", findings=[
-            _f("f-2", pool="B", confidence="HYPOTHESIS"),
-        ])
+        a = PoolStats(
+            pool="A",
+            findings=[
+                _f("f-1", pool="A", confidence="HYPOTHESIS"),
+            ],
+        )
+        b = PoolStats(
+            pool="B",
+            findings=[
+                _f("f-2", pool="B", confidence="HYPOTHESIS"),
+            ],
+        )
         merged = judge_findings(a, b)
         # Both HYPOTHESIS (0.3) * cred (0.6) = 0.18 each.
         # merged = 0.36 / 1.2 = 0.30 → < 0.50 → HYPOTHESIS.
@@ -125,22 +150,39 @@ class TestPriorAccuracyEffect:
     def test_higher_pool_accuracy_dominates(self) -> None:
         # Pool A nailed everything (3/3 approved); Pool B is sloppy (0/3 approved).
         # Pool A's credibility ≈ 1.0 * 1.2 = 1.2; Pool B's ≈ 0.0 * 1.2 = 0.0.
+        # Distinct artifacts so the findings land in separate groups; otherwise
+        # they'd merge into one group with chosen_pool="merged".
         a = PoolStats(
             pool="A",
-            findings=[_f("f-a", pool="A", confidence="CONFIRMED")],
+            findings=[
+                _f(
+                    "f-a",
+                    pool="A",
+                    confidence="CONFIRMED",
+                    artifact_path="C:\\$MFT",
+                    tool_call_id="tc-a",
+                )
+            ],
             verified_actions=[_va("approved"), _va("approved"), _va("approved")],
         )
         b = PoolStats(
             pool="B",
-            findings=[_f("f-b", pool="B", confidence="HYPOTHESIS")],
+            findings=[
+                _f(
+                    "f-b",
+                    pool="B",
+                    confidence="HYPOTHESIS",
+                    artifact_path="memory.mem",
+                    tool_call_id="tc-b",
+                )
+            ],
             verified_actions=[_va("rejected"), _va("rejected"), _va("rejected")],
         )
         merged = judge_findings(a, b)
-        # Pool A & B touch different artifacts, so two groups output.
-        # Each group has Pool X only. Pool A's score = 1.0 * 1.2 = 1.2,
+        # Two groups output. Pool A's score = 1.0 * 1.2 = 1.2,
         # divided by cred_a + cred_b = 1.2 + 0.0 = 1.2 → merged = 1.0
         # → CONFIRMED.
-        a_only = [m for m in merged if m.chosen_pool == "A"][0]
+        a_only = next(m for m in merged if m.chosen_pool == "A")
         assert a_only.finding.confidence == "CONFIRMED"
 
 
@@ -161,13 +203,29 @@ class TestPoolOriginPreservation:
         assert merged[0].finding.pool_origin == "A"
 
     def test_dual_pool_findings_get_merged_origin(self) -> None:
-        a = PoolStats(pool="A", findings=[
-            _f("f-a", pool="A", confidence="CONFIRMED",
-               artifact_path="x", description="same evidence"),
-        ])
-        b = PoolStats(pool="B", findings=[
-            _f("f-b", pool="B", confidence="INFERRED",
-               artifact_path="x", description="same evidence"),
-        ])
+        a = PoolStats(
+            pool="A",
+            findings=[
+                _f(
+                    "f-a",
+                    pool="A",
+                    confidence="CONFIRMED",
+                    artifact_path="x",
+                    description="same evidence",
+                ),
+            ],
+        )
+        b = PoolStats(
+            pool="B",
+            findings=[
+                _f(
+                    "f-b",
+                    pool="B",
+                    confidence="INFERRED",
+                    artifact_path="x",
+                    description="same evidence",
+                ),
+            ],
+        )
         merged = judge_findings(a, b)
         assert merged[0].finding.pool_origin == "merged"

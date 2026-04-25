@@ -20,9 +20,9 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
 _ALLOWED_LANGS = frozenset({"rust", "python", "typescript"})
 _SLUG_MAX = 60
@@ -53,9 +53,7 @@ def worktree_path(repo: Path, language: str, pr_id: str) -> Path:
     ``/.wt/`` (added in L0 Task 1) keeps them off the tree.
     """
     if language not in _ALLOWED_LANGS:
-        raise ValueError(
-            f"language {language!r} not in {sorted(_ALLOWED_LANGS)}"
-        )
+        raise ValueError(f"language {language!r} not in {sorted(_ALLOWED_LANGS)}")
     return repo / ".wt" / f"wt-{language}-{slug_pr_id(pr_id)}"
 
 
@@ -163,9 +161,7 @@ def _git_worktrees(repo: Path) -> list[_GitWorktreeEntry]:
 # ---------------------------------------------------------------------------
 
 
-def create(
-    repo: Path, language: str, pr_id: str, week: int, base: str = "HEAD"
-) -> Path:
+def create(repo: Path, language: str, pr_id: str, week: int, base: str = "HEAD") -> Path:
     """Create a fresh worktree for (language, pr_id) on a new branch.
 
     Raises ``RuntimeError`` if the target path already exists — callers
@@ -195,15 +191,11 @@ def create(
         text=True,
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"git worktree add failed for {wt}: {result.stderr.strip()}"
-        )
+        raise RuntimeError(f"git worktree add failed for {wt}: {result.stderr.strip()}")
     return wt
 
 
-def remove(
-    repo: Path, language: str, pr_id: str, delete_branch: bool = True
-) -> None:
+def remove(repo: Path, language: str, pr_id: str, delete_branch: bool = True) -> None:
     """Remove a worktree. Idempotent — missing worktree is a silent success.
 
     If ``delete_branch`` is True, the associated branch is deleted too

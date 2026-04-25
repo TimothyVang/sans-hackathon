@@ -72,7 +72,7 @@ class MerkleTree:
 
     def append(self, leaf_hash: bytes) -> int:
         """Append one leaf. Returns its index."""
-        if not isinstance(leaf_hash, (bytes, bytearray)) or len(leaf_hash) != 32:
+        if not isinstance(leaf_hash, bytes | bytearray) or len(leaf_hash) != 32:
             raise MerkleError("leaf_hash must be 32-byte SHA-256 digest")
         self._leaves.append(bytes(leaf_hash))
         return len(self._leaves) - 1
@@ -108,9 +108,7 @@ class MerkleTree:
 
     def inclusion_proof(self, index: int) -> InclusionProof:
         if index < 0 or index >= len(self._leaves):
-            raise MerkleError(
-                f"leaf index {index} out of range (0..{len(self._leaves) - 1})"
-            )
+            raise MerkleError(f"leaf index {index} out of range (0..{len(self._leaves) - 1})")
         tier = list(self._leaves)
         siblings: list[bytes] = []
         directions: list[bool] = []

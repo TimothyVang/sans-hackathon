@@ -127,7 +127,9 @@ def build_manifest(
 
         # Identify Merkle-eligible records.
         if record.kind == "tool_call_output":
-            digest = _payload_digest(record.payload, "output_hash") or _record_digest(canonical_line)
+            digest = _payload_digest(record.payload, "output_hash") or _record_digest(
+                canonical_line
+            )
             leaves.append(
                 ManifestLeaf(
                     seq=record.seq,
@@ -286,10 +288,7 @@ def verify_manifest(
     sig_present = bool(sig.get("bundle_b64") and sig.get("payload_sha256"))
 
     overall = (
-        audit_status is True
-        and rebuild_status is True
-        and count_status is True
-        and sig_present
+        audit_status is True and rebuild_status is True and count_status is True and sig_present
     )
     return ManifestVerification(
         audit_chain_ok=audit_status,

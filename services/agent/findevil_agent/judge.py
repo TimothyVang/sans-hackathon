@@ -40,8 +40,8 @@ guards against pathological inputs.
 from __future__ import annotations
 
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
 
 from findevil_agent.events import Finding, VerifierAction
 
@@ -51,7 +51,16 @@ THRESHOLD_INFERRED = 0.50
 INITIAL_PRIOR_ACCURACY = 0.5
 CORROBORATION_BONUS = 0.2
 
-ARTIFACT_CLASS_DISK = {"disk", "filesystem", "registry", "mft", "prefetch", "amcache", "shimcache", "usnjrnl"}
+ARTIFACT_CLASS_DISK = {
+    "disk",
+    "filesystem",
+    "registry",
+    "mft",
+    "prefetch",
+    "amcache",
+    "shimcache",
+    "usnjrnl",
+}
 ARTIFACT_CLASS_LOG = {"log", "evtx", "sysmon", "iis", "powershell"}
 ARTIFACT_CLASS_MEMORY = {"memory", "volatility", "vad"}
 
@@ -139,10 +148,11 @@ def judge_findings(
 
     out: list[MergedFinding] = []
     for items in grouped.values():
-        if time.monotonic() - started > budget_seconds:
+        # ``>=`` so a budget of 0.0 always raises on the first iteration,
+        # even on fast systems where time.monotonic() drift is sub-microsecond.
+        if time.monotonic() - started >= budget_seconds:
             raise JudgeBudgetExceeded(
-                f"judge exceeded {budget_seconds}s budget after "
-                f"{len(out)} merged findings"
+                f"judge exceeded {budget_seconds}s budget after " f"{len(out)} merged findings"
             )
 
         a_items = [(f, p) for (f, p) in items if p == "A"]
@@ -151,16 +161,8 @@ def judge_findings(
         a_finding = a_items[0][0] if a_items else None
         b_finding = b_items[0][0] if b_items else None
 
-        score_a = (
-            CONFIDENCE_VALUE.get(a_finding.confidence, 0.0) * cred_a
-            if a_finding
-            else 0.0
-        )
-        score_b = (
-            CONFIDENCE_VALUE.get(b_finding.confidence, 0.0) * cred_b
-            if b_finding
-            else 0.0
-        )
+        score_a = CONFIDENCE_VALUE.get(a_finding.confidence, 0.0) * cred_a if a_finding else 0.0
+        score_b = CONFIDENCE_VALUE.get(b_finding.confidence, 0.0) * cred_b if b_finding else 0.0
 
         # Corroboration bonus: this group has findings from BOTH pools
         # AND the artifact classes overlap with at least one different
@@ -258,9 +260,7 @@ def _confidence_for_score(score: float) -> str:
     return "HYPOTHESIS"
 
 
-def _pick_chosen(
-    a: Finding | None, b: Finding | None
-) -> tuple[Finding | None, str]:
+def _pick_chosen(a: Finding | None, b: Finding | None) -> tuple[Finding | None, str]:
     if a and b:
         # Prefer the longer description (richer evidence).
         if len(a.description) >= len(b.description):

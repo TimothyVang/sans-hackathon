@@ -82,8 +82,16 @@ class ParsedTask:
 # Regexes — tight enough to not bleed across tasks.
 # ---------------------------------------------------------------------------
 
+# Accept "## Task N: title", "## Task N (em-dash) title", or
+# "## Task N - title". The em-dash form is what writing-plans-skill
+# plans use; the colon form is the spec template. Both must match.
+# We spell em-dash and en-dash as Unicode escapes so they appear in
+# the compiled pattern but no source-code character can be confused
+# for an ASCII hyphen by a future reader (ruff RUF001).
 _TASK_HEADER_RE = re.compile(
-    r"^## Task (?P<num>\d+)(?:\.\d+)?:\s*(?P<title>.+?)\s*$",
+    "^## Task (?P<num>\\d+)(?:\\.\\d+)?\\s*"
+    "(?::|—|–|-)"  # noqa: RUF001 - regex must match U+2014/U+2013 dashes literally
+    "\\s*(?P<title>.+?)\\s*$",
     re.MULTILINE,
 )
 _FILE_LINE_RE = re.compile(
@@ -96,9 +104,12 @@ _RUN_LINE_RE = re.compile(
 
 # Dominant-extension classifier. Extensions not listed → python bucket,
 # which is where Dockerfiles, YAML, and generic shell scripts land.
+#
+# .toml is intentionally NOT mapped — Cargo.toml is special-cased in
+# detect_language() (it's the only TOML that signals Rust); pyproject.toml,
+# uv.lock, etc. shouldn't accidentally route to the Rust worker.
 _EXT_TO_LANG: dict[str, str] = {
     ".rs": "rust",
-    ".toml": "rust",  # Cargo.toml wins Rust if that's the bulk
     ".py": "python",
     ".pyi": "python",
     ".ts": "typescript",

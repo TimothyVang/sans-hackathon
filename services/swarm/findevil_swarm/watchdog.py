@@ -12,11 +12,11 @@ budget enforcement — a complementary belt-and-suspenders.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import signal
 import threading
 import time
-from typing import Optional
 
 DEFAULT_DEADLINE_SECONDS = 8 * 60 * 60  # 8 hours per Spec #1 §10.4
 
@@ -28,15 +28,15 @@ class Watchdog:
         self,
         deadline_seconds: int = DEFAULT_DEADLINE_SECONDS,
         *,
-        on_fire: Optional[callable] = None,  # type: ignore[type-arg]
+        on_fire: callable | None = None,  # type: ignore[type-arg]
     ) -> None:
         if deadline_seconds <= 0:
             raise ValueError("deadline_seconds must be positive")
         self.deadline_seconds = deadline_seconds
         self.on_fire = on_fire
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._cancel = threading.Event()
-        self._started_at: Optional[float] = None
+        self._started_at: float | None = None
         self._fired = threading.Event()
 
     def arm(self) -> None:
@@ -44,9 +44,7 @@ class Watchdog:
         if self._thread is not None:
             return
         self._started_at = time.time()
-        self._thread = threading.Thread(
-            target=self._run, name="swarm-watchdog", daemon=True
-        )
+        self._thread = threading.Thread(target=self._run, name="swarm-watchdog", daemon=True)
         self._thread.start()
 
     def cancel(self) -> None:
@@ -70,10 +68,8 @@ class Watchdog:
             return  # cancelled before firing
         self._fired.set()
         if self.on_fire is not None:
-            try:
+            with contextlib.suppress(Exception):  # nosec - callback must not crash the watchdog
                 self.on_fire()
-            except Exception:  # nosec - callback must not crash the watchdog
-                pass
         _signal_process_group()
 
 
@@ -97,10 +93,8 @@ def _signal_process_group() -> None:
     # Give subprocesses 5s to shut down cleanly.
     time.sleep(5)
 
-    try:
+    with contextlib.suppress(ProcessLookupError):
         os.killpg(pgid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
 
 
 __all__ = ["Watchdog", "DEFAULT_DEADLINE_SECONDS"]

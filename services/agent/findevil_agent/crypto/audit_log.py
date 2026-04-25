@@ -26,9 +26,10 @@ import hashlib
 import json
 import os
 import threading
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Canonicalization — RFC 8785 JCS, approximated.
@@ -152,9 +153,7 @@ class AuditLog:
                 f"audit log {self.path}: last line is not valid JSON: {exc}"
             ) from exc
         if not isinstance(obj, dict) or "seq" not in obj:
-            raise AuditLogError(
-                f"audit log {self.path}: last line is not an audit record"
-            )
+            raise AuditLogError(f"audit log {self.path}: last line is not an audit record")
         self._next_seq = int(obj["seq"]) + 1
         self._last_hash = hash_line(last_line)
         if count != self._next_seq:
@@ -232,9 +231,7 @@ class AuditLog:
                     raise AuditLogError(f"seq {count}: not a JSON object")
                 seq = obj.get("seq")
                 if seq != count:
-                    raise AuditLogError(
-                        f"seq {count}: expected seq={count}, got seq={seq}"
-                    )
+                    raise AuditLogError(f"seq {count}: expected seq={count}, got seq={seq}")
                 declared = obj.get("prev_hash")
                 if declared != prev_hash:
                     raise AuditLogError(
@@ -245,9 +242,7 @@ class AuditLog:
                 # links up.
                 canonical = canonicalize_json(obj)
                 if canonical != raw:
-                    raise AuditLogError(
-                        f"seq {count}: line is not in canonical form"
-                    )
+                    raise AuditLogError(f"seq {count}: line is not in canonical form")
                 prev_hash = hash_line(raw)
                 count += 1
         return count

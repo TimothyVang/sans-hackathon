@@ -22,9 +22,9 @@ rationale.
 """
 
 from findevil_agent.crypto.audit_log import (
+    AuditLog,
     AuditLogError,
     AuditRecord,
-    AuditLog,
     canonicalize_json,
     hash_line,
 )

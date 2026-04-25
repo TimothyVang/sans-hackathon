@@ -109,7 +109,4 @@ class TestSigstoreSignerLazyImport:
         with pytest.raises(RuntimeError) as exc:
             s.sign(b"x")
         msg = str(exc.value)
-        assert (
-            "sigstore-python is not installed" in msg
-            or "identity_token" in msg
-        )
+        assert "sigstore-python is not installed" in msg or "identity_token" in msg
