@@ -190,6 +190,7 @@ def main() -> int:
                 "prefetch_parse",
                 "mft_timeline",
                 "registry_query",
+                "yara_scan",
             ]
         )
         if names != expected:
@@ -326,7 +327,23 @@ def main() -> int:
         )
         log("  -> -32603 with 'registry hive not found' as expected")
 
-        # ---- 9. unknown tool dispatch is rejected -----------------------
+        # ---- 9. yara_scan (error path) ----------------------------------
+        log("yara_scan: missing-target error path...")
+        expect_error_response(
+            "tools/call",
+            {
+                "name": "yara_scan",
+                "arguments": {
+                    "case_id": handle["id"],
+                    "target_path": str(workdir / "nope.bin"),
+                    "rules_path": str(workdir / "nope.yar"),
+                },
+            },
+            "YARA target not found",
+        )
+        log("  -> -32603 with 'YARA target not found' as expected")
+
+        # ---- 10. unknown tool dispatch is rejected ----------------------
         log("unknown tool: expect JSON-RPC error...")
         client.send(
             {
@@ -344,7 +361,7 @@ def main() -> int:
         print()
         print("=" * 60)
         print("OK — Rust MCP server speaks 2024-11-05 over stdio.")
-        print("  All 5 tools dispatchable, error paths well-formed.")
+        print("  All 6 tools dispatchable, error paths well-formed.")
         print("=" * 60)
         return 0
     finally:

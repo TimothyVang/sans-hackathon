@@ -20,6 +20,7 @@ pub mod evtx_query;
 pub mod mft_timeline;
 pub mod prefetch_parse;
 pub mod registry_query;
+pub mod yara_scan;
 
 /// Convenience re-exports.
 pub use case_open::{case_open, CaseHandle, CaseOpenError, CaseOpenInput};
@@ -35,4 +36,8 @@ pub use prefetch_parse::{
 pub use registry_query::{
     path_looks_like_hive, registry_query, RegistryEntry, RegistryError, RegistryInput,
     RegistryOutput, RegistryValue,
+};
+pub use yara_scan::{
+    path_looks_like_yara_rules, yara_scan, YaraError, YaraInput, YaraMatch, YaraOutput,
+    YaraPatternMatch,
 };

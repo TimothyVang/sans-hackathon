@@ -41,8 +41,8 @@ use sha2::{Digest, Sha256};
 
 use crate::tools::{
     case_open, evtx_query::evtx_query, mft_timeline::mft_timeline, prefetch_parse::prefetch_parse,
-    registry_query::registry_query, CaseOpenInput, EvtxQueryInput, MftInput, PrefetchInput,
-    RegistryInput,
+    registry_query::registry_query, yara_scan::yara_scan, CaseOpenInput, EvtxQueryInput, MftInput,
+    PrefetchInput, RegistryInput, YaraInput,
 };
 use crate::CRATE_VERSION;
 
@@ -121,6 +121,7 @@ where
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)] // grows linearly as we add tools; splitting hurts clarity
 fn build_registry() -> Vec<ToolEntry> {
     vec![
         ToolEntry {
@@ -213,6 +214,30 @@ fn build_registry() -> Vec<ToolEntry> {
                  'Microsoft\\…' not 'HKLM\\SOFTWARE\\Microsoft\\…').",
             schema: || schema_for::<RegistryInput>(),
             handler: |args| dispatch_registry_query(args),
+        },
+        ToolEntry {
+            name: "yara_scan",
+            description: "Scan files against YARA rules in-process (yara-x, BSD-3, pure Rust). \
+                 PRIMARY POOL B exfil + general malware-family hunting surface — works against \
+                 YARA-Forge, Florian Roth's signature-base, internal IOC packs, anything in \
+                 .yar/.yara format. Use AFTER case_open. \
+                 target_path is a single file OR a directory; recursive=true walks all \
+                 descendants (default false: top-level only). rules_path is a single rules \
+                 file OR a directory of rules — directory mode walks recursively for \
+                 .yar/.yara/.yarx and merges everything into one Rules instance with the \
+                 file's basename as the namespace (so matches are attributable). Default \
+                 limit 1000 matches across all files. \
+                 Returns matches[] (file_path, rule_name, namespace, tags, pattern_matches[]) \
+                 + files_scanned + rules_compiled + scan_errors. Each pattern match shows \
+                 offset, length, and a 64-byte hex preview (full bytes are not returned to \
+                 keep responses bounded). \
+                 ERRORS: TargetNotFound / RulesNotFound (verify paths), NoRulesFiles (the \
+                 rules directory contains no .yar/.yara/.yarx files), RulesCompileFailed \
+                 (YARA syntax error or unsupported feature — yara-x is 99% libyara-compatible \
+                 but the 1% that diverges shows up here; the error message names the file \
+                 and line).",
+            schema: || schema_for::<YaraInput>(),
+            handler: |args| dispatch_yara_scan(args),
         },
     ]
 }
@@ -383,6 +408,21 @@ fn dispatch_registry_query(args: Value) -> Result<Value, ToolError> {
     }
 }
 
+fn dispatch_yara_scan(args: Value) -> Result<Value, ToolError> {
+    let input: YaraInput = parse_args(args)?;
+    // RulesCompileFailed and NoRulesFiles are user-input issues; surface as -32602.
+    match yara_scan(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(
+            e @ (crate::tools::YaraError::RulesCompileFailed { .. }
+            | crate::tools::YaraError::NoRulesFiles(_)),
+        ) => Err(ToolError::InvalidParams(format!("{e}"))),
+        Err(e) => Err(ToolError::Internal(format!("yara_scan: {e}"))),
+    }
+}
+
 fn parse_args<T: DeserializeOwned>(args: Value) -> Result<T, ToolError> {
     serde_json::from_value(args).map_err(|e| ToolError::InvalidParams(format!("invalid args: {e}")))
 }
@@ -474,6 +514,7 @@ mod tests {
             "prefetch_parse",
             "mft_timeline",
             "registry_query",
+            "yara_scan",
         ];
         assert_eq!(names.len(), expected.len());
         for want in expected {

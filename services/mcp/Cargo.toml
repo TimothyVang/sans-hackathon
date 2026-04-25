@@ -57,6 +57,16 @@ mft = "=0.6.1"
 # nom parser breaks under rustc 1.88; frnsc-hive compiles cleanly.
 frnsc-hive = "=0.13.4"
 
+# yara-x — BSD-3-Clause, pure-Rust YARA implementation (VirusTotal).
+# Used by `yara_scan` for malware/IOC scanning. Pinned to 1.12.0 +
+# its sub-crates because the top-level pin alone doesn't constrain
+# yara-x-{macros,parser,proto}; they get pulled at latest which now
+# requires rustc 1.89 (we're at 1.88).
+yara-x = "=1.12.0"
+yara-x-macros = "=1.12.0"
+yara-x-parser = "=1.12.0"
+yara-x-proto = "=1.12.0"
+
 # UUID v4 for deterministic case_id generation.
 uuid = { version = "1", features = ["v4", "serde"] }
 
