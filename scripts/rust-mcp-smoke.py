@@ -191,6 +191,7 @@ def main() -> int:
                 "mft_timeline",
                 "registry_query",
                 "yara_scan",
+                "usnjrnl_query",
             ]
         )
         if names != expected:
@@ -343,7 +344,22 @@ def main() -> int:
         )
         log("  -> -32603 with 'YARA target not found' as expected")
 
-        # ---- 10. unknown tool dispatch is rejected ----------------------
+        # ---- 10. usnjrnl_query (error path) -----------------------------
+        log("usnjrnl_query: missing-file error path...")
+        expect_error_response(
+            "tools/call",
+            {
+                "name": "usnjrnl_query",
+                "arguments": {
+                    "case_id": handle["id"],
+                    "usnjrnl_path": str(workdir / "nope.j"),
+                },
+            },
+            "UsnJrnl file not found",
+        )
+        log("  -> -32603 with 'UsnJrnl file not found' as expected")
+
+        # ---- 11. unknown tool dispatch is rejected ----------------------
         log("unknown tool: expect JSON-RPC error...")
         client.send(
             {
@@ -361,7 +377,7 @@ def main() -> int:
         print()
         print("=" * 60)
         print("OK — Rust MCP server speaks 2024-11-05 over stdio.")
-        print("  All 6 tools dispatchable, error paths well-formed.")
+        print("  All 7 tools dispatchable, error paths well-formed.")
         print("=" * 60)
         return 0
     finally:

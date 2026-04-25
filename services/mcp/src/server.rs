@@ -41,8 +41,8 @@ use sha2::{Digest, Sha256};
 
 use crate::tools::{
     case_open, evtx_query::evtx_query, mft_timeline::mft_timeline, prefetch_parse::prefetch_parse,
-    registry_query::registry_query, yara_scan::yara_scan, CaseOpenInput, EvtxQueryInput, MftInput,
-    PrefetchInput, RegistryInput, YaraInput,
+    registry_query::registry_query, usnjrnl_query::usnjrnl_query, yara_scan::yara_scan,
+    CaseOpenInput, EvtxQueryInput, MftInput, PrefetchInput, RegistryInput, UsnJrnlInput, YaraInput,
 };
 use crate::CRATE_VERSION;
 
@@ -239,6 +239,33 @@ fn build_registry() -> Vec<ToolEntry> {
             schema: || schema_for::<YaraInput>(),
             handler: |args| dispatch_yara_scan(args),
         },
+        ToolEntry {
+            name: "usnjrnl_query",
+            description: "Stream change records from an NTFS USN Journal ($UsnJrnl:$J). Use \
+                 AFTER case_open. The USN journal records EVERY file-system mutation \
+                 (create, delete, rename, write, EA change, ACL change) in a circular \
+                 buffer — far more complete than the MFT alone, which only shows current \
+                 state. Pair with mft_timeline to corroborate 'this file existed and was \
+                 modified at time T'. \
+                 Filters: since_iso/until_iso (UTC ISO-8601Z) bracket an incident window; \
+                 reasons[] takes named flags (FILE_CREATE, FILE_DELETE, RENAME_OLD_NAME, \
+                 RENAME_NEW_NAME, DATA_EXTEND, etc. — see schema for full set, \
+                 case-insensitive). Default limit 10000. \
+                 Returns entries[] (usn, timestamp_iso, mft_entry, parent_mft_entry, \
+                 filename, reason_flags[], file_attributes, major_version) + parse_errors \
+                 + records_seen + row_count. \
+                 CAVEAT (per agent-config/MEMORY.md): UsnJrnl is CIRCULAR — older records \
+                 get overwritten as the buffer wraps. Gaps in the USN sequence or \
+                 timestamps are normal, not suspicious by themselves. Always pair USN \
+                 absence with MFT corroboration before claiming 'no activity at time T'. \
+                 ERRORS: UsnJrnlNotFound (verify the path), UsnJrnlOpen (file is not a \
+                 valid $J — check it's the carved data stream, not the metadata file or \
+                 a copy of the $UsnJrnl directory), InvalidTimeFilter (since_iso/until_iso \
+                 must be RFC 3339), InvalidReason (an entry in reasons[] isn't a known \
+                 flag name).",
+            schema: || schema_for::<UsnJrnlInput>(),
+            handler: |args| dispatch_usnjrnl_query(args),
+        },
     ]
 }
 
@@ -423,6 +450,21 @@ fn dispatch_yara_scan(args: Value) -> Result<Value, ToolError> {
     }
 }
 
+fn dispatch_usnjrnl_query(args: Value) -> Result<Value, ToolError> {
+    let input: UsnJrnlInput = parse_args(args)?;
+    // InvalidTimeFilter / InvalidReason are user-input issues; surface as -32602.
+    match usnjrnl_query(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(
+            e @ (crate::tools::UsnJrnlError::InvalidTimeFilter { .. }
+            | crate::tools::UsnJrnlError::InvalidReason(_)),
+        ) => Err(ToolError::InvalidParams(format!("{e}"))),
+        Err(e) => Err(ToolError::Internal(format!("usnjrnl_query: {e}"))),
+    }
+}
+
 fn parse_args<T: DeserializeOwned>(args: Value) -> Result<T, ToolError> {
     serde_json::from_value(args).map_err(|e| ToolError::InvalidParams(format!("invalid args: {e}")))
 }
@@ -515,6 +557,7 @@ mod tests {
             "mft_timeline",
             "registry_query",
             "yara_scan",
+            "usnjrnl_query",
         ];
         assert_eq!(names.len(), expected.len());
         for want in expected {
