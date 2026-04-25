@@ -184,7 +184,13 @@ def main() -> int:
         tools_resp = client.call("tools/list")
         names = sorted(t["name"] for t in tools_resp["tools"])
         expected = sorted(
-            ["case_open", "evtx_query", "prefetch_parse", "mft_timeline", "registry_query"]
+            [
+                "case_open",
+                "evtx_query",
+                "prefetch_parse",
+                "mft_timeline",
+                "registry_query",
+            ]
         )
         if names != expected:
             fatal(f"tool mismatch: {names} != {expected}")
