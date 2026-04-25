@@ -21,7 +21,6 @@ from findevil_swarm.worktree import (
     worktree_path,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures.
 # ---------------------------------------------------------------------------
@@ -35,9 +34,7 @@ def tmp_repo(tmp_path: Path) -> Path:
         ["git", "-C", str(tmp_path), "config", "user.email", "test@example.invalid"],
         check=True,
     )
-    subprocess.run(
-        ["git", "-C", str(tmp_path), "config", "user.name", "test"], check=True
-    )
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "test"], check=True)
     (tmp_path / "README.md").write_text("seed\n", encoding="utf-8")
     subprocess.run(
         ["git", "-C", str(tmp_path), "add", "README.md"], check=True, capture_output=True
@@ -80,15 +77,11 @@ class TestWorktreePath:
         assert p == Path("/r/.wt/wt-rust-week2-case-open")
 
     def test_python_slug_lowercased(self) -> None:
-        p = worktree_path(
-            repo=Path("/r"), language="python", pr_id="Week2-PLAN-PARSER"
-        )
+        p = worktree_path(repo=Path("/r"), language="python", pr_id="Week2-PLAN-PARSER")
         assert p == Path("/r/.wt/wt-python-week2-plan-parser")
 
     def test_typescript(self) -> None:
-        p = worktree_path(
-            repo=Path("/r"), language="typescript", pr_id="week7-widget-timeline"
-        )
+        p = worktree_path(repo=Path("/r"), language="typescript", pr_id="week7-widget-timeline")
         assert p == Path("/r/.wt/wt-typescript-week7-widget-timeline")
 
     def test_rejects_unknown_language(self) -> None:
@@ -101,10 +94,7 @@ class TestBranchName:
         assert branch_name(week=2, pr_id="case-open") == "swarm/week-2-case-open"
 
     def test_slugs_the_pr_id(self) -> None:
-        assert (
-            branch_name(week=4, pr_id="Task 14: supervisor")
-            == "swarm/week-4-task-14-supervisor"
-        )
+        assert branch_name(week=4, pr_id="Task 14: supervisor") == "swarm/week-4-task-14-supervisor"
 
     def test_rejects_bad_week(self) -> None:
         for bad in (0, 9, -1):
