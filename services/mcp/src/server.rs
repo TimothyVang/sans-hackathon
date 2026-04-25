@@ -42,8 +42,8 @@ use sha2::{Digest, Sha256};
 use crate::tools::{
     case_open, evtx_query::evtx_query, hayabusa_scan::hayabusa_scan, mft_timeline::mft_timeline,
     prefetch_parse::prefetch_parse, registry_query::registry_query, usnjrnl_query::usnjrnl_query,
-    yara_scan::yara_scan, CaseOpenInput, EvtxQueryInput, HayabusaInput, MftInput, PrefetchInput,
-    RegistryInput, UsnJrnlInput, YaraInput,
+    vol_pslist::vol_pslist, yara_scan::yara_scan, CaseOpenInput, EvtxQueryInput, HayabusaInput,
+    MftInput, PrefetchInput, RegistryInput, UsnJrnlInput, VolPslistInput, YaraInput,
 };
 use crate::CRATE_VERSION;
 
@@ -295,6 +295,31 @@ fn build_registry() -> Vec<ToolEntry> {
             schema: || schema_for::<HayabusaInput>(),
             handler: |args| dispatch_hayabusa_scan(args),
         },
+        ToolEntry {
+            name: "vol_pslist",
+            description: "Run Volatility 3's `windows.pslist` plugin against a memory image \
+                 and return the live process list. THIS IS THE FIRST MEMORY-FORENSICS \
+                 TOOL the agent should call on a `.mem` / `.raw` / `.dmp` / `.vmem` image \
+                 — it walks the kernel's PsActiveProcessHead and surfaces what's running. \
+                 Pair with vol_malfind for code-injection detection (different artifact \
+                 class on the same image satisfies SOUL.md cross-artifact rule). \
+                 Use AFTER case_open. memory_path is the image file. pid_filter narrows \
+                 to specific PIDs after a coarse first sweep. Default limit 10000 \
+                 (typical Windows host has 100-500 live processes). \
+                 Returns processes[] (pid, ppid, image_name, create_time_iso, \
+                 exit_time_iso?, threads, handles, session_id, wow64) + processes_seen \
+                 + stderr_tail. \
+                 Volatility binary discovery: $VOLATILITY_BIN env var first, then PATH \
+                 lookup for vol/vol.py/volatility3/volatility (in that order — SIFT VM \
+                 ships vol.py; pip installs put vol/volatility3 on PATH). \
+                 ERRORS: MemoryNotFound / MemoryNotRegular (verify path), BinaryNotFound \
+                 (install via `pip install volatility3` or use the SIFT VM), \
+                 SubprocessFailed (Volatility returned non-zero — check stderr_tail; \
+                 common causes: corrupt image, unsupported OS profile), OutputParse \
+                 (JSON malformed; rare, indicates a Vol3 version mismatch).",
+            schema: || schema_for::<VolPslistInput>(),
+            handler: |args| dispatch_vol_pslist(args),
+        },
     ]
 }
 
@@ -508,6 +533,12 @@ fn dispatch_hayabusa_scan(args: Value) -> Result<Value, ToolError> {
     }
 }
 
+fn dispatch_vol_pslist(args: Value) -> Result<Value, ToolError> {
+    let input: VolPslistInput = parse_args(args)?;
+    let output = vol_pslist(&input).map_err(|e| ToolError::Internal(format!("vol_pslist: {e}")))?;
+    serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+}
+
 fn parse_args<T: DeserializeOwned>(args: Value) -> Result<T, ToolError> {
     serde_json::from_value(args).map_err(|e| ToolError::InvalidParams(format!("invalid args: {e}")))
 }
@@ -602,6 +633,7 @@ mod tests {
             "yara_scan",
             "usnjrnl_query",
             "hayabusa_scan",
+            "vol_pslist",
         ];
         assert_eq!(names.len(), expected.len());
         for want in expected {
