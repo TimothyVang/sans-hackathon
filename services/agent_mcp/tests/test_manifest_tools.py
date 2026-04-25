@@ -1,0 +1,111 @@
+"""Tests for manifest_finalize + manifest_verify wrappers."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from findevil_agent_mcp.tools.manifest_finalize import (
+    SPEC as FINALIZE_SPEC,
+)
+from findevil_agent_mcp.tools.manifest_finalize import (
+    ManifestFinalizeInput,
+    ManifestFinalizeOutput,
+)
+from findevil_agent_mcp.tools.manifest_verify import (
+    SPEC as VERIFY_SPEC,
+)
+from findevil_agent_mcp.tools.manifest_verify import (
+    ManifestVerifyInput,
+    ManifestVerifyOutput,
+)
+
+
+class TestManifestFinalize:
+    async def test_clean_finalize_returns_signed_manifest(
+        self, seeded_audit_log: Path, tmp_path: Path
+    ) -> None:
+        out_path = tmp_path / "run.manifest.json"
+        result = await FINALIZE_SPEC.handler(
+            ManifestFinalizeInput(
+                case_id="case-001",
+                run_id="run-1",
+                started_at="2026-04-25T00:00:00Z",
+                audit_log_path=str(seeded_audit_log),
+                output_path=str(out_path),
+                signer="stub",
+                extra={"image_path": "/tmp/x.e01"},
+            )
+        )
+        assert isinstance(result, ManifestFinalizeOutput)
+        assert Path(result.manifest_path).is_file()
+        assert len(result.merkle_root_hex) == 64
+        assert result.leaf_count == 4  # 2 tool_outputs + 2 findings
+        assert result.audit_log_record_count == 7
+        assert len(result.signature_payload_sha256) == 64
+        # Stub signer produces a deterministic cert fingerprint.
+        assert result.signature_cert_fingerprint is not None
+        assert len(result.signature_cert_fingerprint) == 64
+
+    async def test_extra_metadata_round_trips(self, seeded_audit_log: Path, tmp_path: Path) -> None:
+        out_path = tmp_path / "run.manifest.json"
+        await FINALIZE_SPEC.handler(
+            ManifestFinalizeInput(
+                case_id="case-002",
+                run_id="run-2",
+                started_at="2026-04-25T00:00:00Z",
+                audit_log_path=str(seeded_audit_log),
+                output_path=str(out_path),
+                signer="stub",
+                extra={"model": "claude-opus", "image_hash": "deadbeef" * 8},
+            )
+        )
+        loaded = json.loads(out_path.read_text(encoding="utf-8"))
+        assert loaded["extra"]["model"] == "claude-opus"
+        assert loaded["extra"]["image_hash"] == "deadbeef" * 8
+
+
+class TestManifestVerify:
+    async def test_clean_manifest_verifies(self, seeded_audit_log: Path, tmp_path: Path) -> None:
+        out_path = tmp_path / "run.manifest.json"
+        await FINALIZE_SPEC.handler(
+            ManifestFinalizeInput(
+                case_id="case-100",
+                run_id="run-100",
+                started_at="2026-04-25T00:00:00Z",
+                audit_log_path=str(seeded_audit_log),
+                output_path=str(out_path),
+                signer="stub",
+            )
+        )
+        result = await VERIFY_SPEC.handler(ManifestVerifyInput(manifest_path=str(out_path)))
+        assert isinstance(result, ManifestVerifyOutput)
+        assert result.overall is True
+        assert result.audit_chain_ok is True
+        assert result.merkle_root_ok is True
+        assert result.leaf_count_ok is True
+        assert result.signature_present is True
+
+    async def test_tampered_merkle_root_caught(
+        self, seeded_audit_log: Path, tmp_path: Path
+    ) -> None:
+        out_path = tmp_path / "run.manifest.json"
+        await FINALIZE_SPEC.handler(
+            ManifestFinalizeInput(
+                case_id="case-101",
+                run_id="run-101",
+                started_at="2026-04-25T00:00:00Z",
+                audit_log_path=str(seeded_audit_log),
+                output_path=str(out_path),
+                signer="stub",
+            )
+        )
+        loaded = json.loads(out_path.read_text(encoding="utf-8"))
+        loaded["merkle_root_hex"] = "ff" * 32
+        out_path.write_text(json.dumps(loaded, indent=2), encoding="utf-8")
+
+        result = await VERIFY_SPEC.handler(ManifestVerifyInput(manifest_path=str(out_path)))
+        assert result.overall is False
+        assert result.merkle_root_ok is False
+        assert result.merkle_root_detail is not None
+        assert "ff" in result.merkle_root_detail
