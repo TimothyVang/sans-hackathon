@@ -22,7 +22,6 @@ from findevil_swarm.workers import (
     WorkerInput,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures.
 # ---------------------------------------------------------------------------
@@ -35,9 +34,7 @@ def tmp_repo(tmp_path: Path) -> Path:
         ["git", "-C", str(tmp_path), "config", "user.email", "test@example.invalid"],
         check=True,
     )
-    subprocess.run(
-        ["git", "-C", str(tmp_path), "config", "user.name", "test"], check=True
-    )
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "test"], check=True)
     (tmp_path / "README.md").write_text("seed\n", encoding="utf-8")
     subprocess.run(
         ["git", "-C", str(tmp_path), "add", "README.md"], check=True, capture_output=True

@@ -21,7 +21,6 @@ from findevil_swarm.session_guard import (
     is_session_expired,
 )
 
-
 # ---------------------------------------------------------------------------
 # Pattern detectors — exhaustive because false negatives here leak
 # stuck workers through the night and real dollars/tokens with them.
