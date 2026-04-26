@@ -10,10 +10,10 @@ Typed Rust MCP server for Find Evil! per Spec #2 §3 and §6.
 | Component | Status |
 |---|---|
 | Workspace + crate scaffold | ✅ |
-| `case_open` tool | ✅ first implementation (Week 2 Task A3) |
-| `mft_timeline`, `evtx_query`, other 9 tools | ⏳ swarm builds in Weeks 2-3 |
-| rmcp 0.16 `ServerHandler` wire-up | ⏳ Week 2 Task A2 completion |
-| M2 sigstore + rs_merkle integration | ⏳ Week 3 Task A11/A12 |
+| All 11 typed DFIR tools | ✅ shipped |
+| Hand-rolled JSON-RPC 2.0 stdio server (MCP 2024-11-05) | ✅ in `src/server.rs` |
+| End-to-end stdio smoke (`scripts/rust-mcp-smoke.py`) | ✅ all 11 tools dispatch over the wire |
+| M2 sigstore + rs_merkle integration | partial (rs_merkle live; sigstore lives in `services/agent_mcp/`) |
 
 ## Quick start
 
@@ -24,23 +24,25 @@ cargo test --workspace --locked
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-## Tool surface (eventually 11 tools; currently 1)
+## Tool surface (11/11 shipped)
 
-Per Spec #2 §6:
+Per Spec #2 §6. All tools are registered in `src/tools/mod.rs`, advertised in `tools/list`, and dispatchable via `tools/call`. Each successful response carries `_meta.output_sha256`.
 
-| Tool | Module | Status |
-|---|---|---|
-| `case_open` | `tools/case_open.rs` | ✅ |
-| `mft_timeline` | `tools/mft_timeline.rs` | ⏳ |
-| `evtx_query` | `tools/evtx_query.rs` | ✅ (in-process via `evtx = 0.11.2`) |
-| `hayabusa_scan` | `tools/hayabusa_scan.rs` | ⏳ |
-| `vol_pslist` | `tools/vol_pslist.rs` | ⏳ |
-| `vol_malfind` | `tools/vol_malfind.rs` | ⏳ |
-| `yara_scan` | `tools/yara_scan.rs` | ⏳ |
-| `usnjrnl_query` | `tools/usnjrnl_query.rs` | ⏳ |
-| `registry_query` | `tools/registry_query.rs` | ⏳ |
-| `prefetch_parse` | `tools/prefetch_parse.rs` | ⏳ |
-| `vel_collect` | `tools/vel_collect.rs` | ⏳ |
+| Tool | Module | Backing | Pool |
+|---|---|---|---|
+| `case_open` | `tools/case_open.rs` | in-process: `sha2`, `uuid` | n/a |
+| `evtx_query` | `tools/evtx_query.rs` | in-process: `evtx = 0.11.2` | A |
+| `prefetch_parse` | `tools/prefetch_parse.rs` | in-process: `frnsc-prefetch + forensic-rs` | A (execution) |
+| `mft_timeline` | `tools/mft_timeline.rs` | in-process: `mft = 0.6.1` | A (timeline) |
+| `registry_query` | `tools/registry_query.rs` | in-process: `frnsc-hive = 0.13.4` | A (persistence) |
+| `yara_scan` | `tools/yara_scan.rs` | in-process: `yara-x = 1.12.0` | B (malware/IOC) |
+| `usnjrnl_query` | `tools/usnjrnl_query.rs` | in-process: `usnjrnl-forensic = 0.6.0` | A/B (filesystem changes) |
+| `hayabusa_scan` | `tools/hayabusa_scan.rs` | subprocess: `hayabusa` (AGPL) | A (Sigma rules) |
+| `vol_pslist` | `tools/vol_pslist.rs` | subprocess: `volatility3` (BSD-2) | A (memory processes) |
+| `vol_malfind` | `tools/vol_malfind.rs` | subprocess: `volatility3` (BSD-2) | A/B (code injection) |
+| `vel_collect` | `tools/vel_collect.rs` | subprocess: `velociraptor` (Apache-2.0) | A/B (live response) |
+
+Subprocess tools resolve their binary via a tool-specific env var first (`$HAYABUSA_BIN`, `$VOLATILITY_BIN`, `$VELOCIRAPTOR_BIN`), then PATH lookup. AGPL/GPL backing tools are NEVER linked — see Spec #2 invariant in `CLAUDE.md`.
 
 ## Structure for swarm-written tools
 
@@ -53,17 +55,31 @@ Every tool module must:
 - Never call `std::process::Command` without also declaring the tool invocation in the module docstring (AGPL/GPL binaries run via subprocess only; see `CLAUDE.md`).
 - Ship integration tests under `services/mcp/tests/` that use `tempfile` + `FINDEVIL_HOME` override so they never stomp on the developer's real case store.
 
-## Pinned dependencies (Spec #2 §16)
+## Pinned dependencies (Spec #2 §16; see `Cargo.toml` for authoritative pins)
 
-- `sha2 = "0.10"`
-- `uuid = "1"` + `v4,serde`
-- `serde = "1"` + `derive`
-- `thiserror = "1"`
-- `tokio = "1"` (activated when rmcp server lands)
-- `chrono = "0.4"` + `serde`
-- `tracing` + `tracing-subscriber`
+Core MCP plumbing:
+- `serde`, `serde_json`, `schemars` (JSON Schema for `tools/list`)
+- `thiserror` (structured error types)
+- `sha2` (content addressing of evidence + tool outputs)
+- `uuid = 1` (`v4` for case IDs)
+- `hex` (output digest formatting in `_meta.output_sha256`)
+- `chrono` + `serde`
+- `tracing`, `tracing-subscriber`
+- `tokio` (async runtime; reserved for streaming tools)
 
-Development-only: `tempfile`, `hex`.
+Forensic parsers (in-process):
+- `evtx = =0.11.2` — Windows Event Log
+- `frnsc-prefetch = =0.13.3` + `forensic-rs = =0.13` — Prefetch
+- `mft = =0.6.1` — `$MFT` (pinned 0.6.1: 0.7+ requires rustc 1.90)
+- `frnsc-hive = =0.13.4` — Registry hives (notatin 1.0.1 broke under rustc 1.88)
+- `yara-x = =1.12.0` + `yara-x-{macros,parser,proto} = =1.12.0` — YARA scan (1.13+ requires rustc 1.89)
+- `usnjrnl-forensic = =0.6.0` — USN Journal
+
+Subprocess tools (AGPL/GPL, never linked): hayabusa, volatility3, velociraptor.
+
+Development-only: `tempfile`.
+
+> **NB:** `rmcp` is intentionally NOT a runtime dep. The server is a hand-rolled stdio JSON-RPC 2.0 implementation pinned to MCP 2024-11-05 (`src/server.rs`) — chosen for wire-format stability across rmcp churn and to mirror the Python `findevil-agent-mcp` dispatch shape.
 
 ## Tests
 
