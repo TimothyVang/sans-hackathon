@@ -114,6 +114,15 @@ services:
           python3 scripts/verdict-policy-smoke.py
         fi
 
+        # Same idea for fleet_correlate's COMMON_WIN_PROCS filter +
+        # 14-char Volatility-truncation matcher + selfscore aggregate.
+        # docs/false-positives.md "Fleet cross-host correlation" entry
+        # describes these as the load-bearing FP mitigations.
+        if [ -f scripts/fleet-policy-smoke.py ]; then
+          echo "== scripts/fleet-policy-smoke.py (FP filter + selfscore_aggregate lock) =="
+          python3 scripts/fleet-policy-smoke.py
+        fi
+
         echo "L1 complete."
 
 volumes:
