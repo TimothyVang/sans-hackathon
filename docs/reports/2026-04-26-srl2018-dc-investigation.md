@@ -228,7 +228,7 @@ This is the live result reproducible from the run artifacts at `/home/sansforens
 
 In the spirit of Heuer's emphasis on epistemic honesty [^heuer-1999], the limitations of this investigation are documented explicitly:
 
-**8.1 Tool surface coverage.** Find Evil! wraps 11 typed Rust MCP tools and 10 typed Python MCP tools. SIFT Workstation ships hundreds of DFIR tools. The following SIFT capabilities are *not* in the agent's tool surface today:
+**8.1 Tool surface coverage.** Find Evil! wraps 12 typed Rust MCP tools (`vol_psscan` was added after `vol_pslist` for DKOM cross-validation) and 10 typed Python MCP tools. SIFT Workstation ships hundreds of DFIR tools. The following SIFT capabilities are *not* in the agent's tool surface today:
 
 * Plaso / `log2timeline` — full filesystem super-timeline (a major gap)
 * The Sleuth Kit (`fls`, `icat`, `mmls`, `blkls`) — raw filesystem navigation
