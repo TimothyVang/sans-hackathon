@@ -25,6 +25,7 @@ pub mod usnjrnl_query;
 pub mod vel_collect;
 pub mod vol_malfind;
 pub mod vol_pslist;
+pub mod vol_psscan;
 pub mod yara_scan;
 
 /// Convenience re-exports.
@@ -54,6 +55,9 @@ pub use vol_malfind::{
 };
 pub use vol_pslist::{
     path_looks_like_memory_image, vol_pslist, VolError, VolProcess, VolPslistInput, VolPslistOutput,
+};
+pub use vol_psscan::{
+    vol_psscan, VolPsscanError, VolPsscanInput, VolPsscanOutput, VolPsscanProcess,
 };
 pub use yara_scan::{
     path_looks_like_yara_rules, yara_scan, YaraError, YaraInput, YaraMatch, YaraOutput,

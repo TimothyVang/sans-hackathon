@@ -205,6 +205,7 @@ def main() -> int:
                 "hayabusa_scan",
                 "vol_pslist",
                 "vol_malfind",
+                "vol_psscan",
                 "vel_collect",
             ]
         )
@@ -450,7 +451,23 @@ def main() -> int:
         )
         log("  -> -32602 invalid_params with 'memory image not found' as expected")
 
-        # ---- 14. vel_collect invalid-artifact-name (-32602) -------------
+        # ---- 14a. vol_psscan (error path -32602) ------------------------
+        log("vol_psscan: missing-image error path (-32602)...")
+        expect_error_response(
+            "tools/call",
+            {
+                "name": "vol_psscan",
+                "arguments": {
+                    "case_id": handle["id"],
+                    "memory_path": str(workdir / "nope.mem"),
+                },
+            },
+            "memory image not found",
+            expected_code=-32602,
+        )
+        log("  -> -32602 invalid_params with 'memory image not found' as expected")
+
+        # ---- 14b. vel_collect invalid-artifact-name (-32602) -------------
         log("vel_collect: invalid artifact name (-32602)...")
         expect_error_response(
             "tools/call",
@@ -518,7 +535,7 @@ def main() -> int:
         print()
         print("=" * 60)
         print("OK — Rust MCP server speaks 2024-11-05 over stdio.")
-        print("  All 11 tools dispatchable, error paths well-formed.")
+        print("  All 12 tools dispatchable, error paths well-formed.")
         print("=" * 60)
         return 0
     finally:
