@@ -107,6 +107,60 @@ Output (inside VM, agent's case dir):
 
 Run it with `--no-report` if you just want the verdict + manifest and skip PDF rendering (saves ~5 seconds).
 
+### Option 2C — Fleet investigation (entire host inventory)
+
+When the case is "we have N memory images, find all the evil," the
+fleet pipeline is the operator path. Three scripts compose:
+
+```bash
+# 1. Walk every .img under /mnt/hgfs/evidence/extracted/<host>/ and
+#    invoke find-evil-auto per host. Sequential by default to avoid
+#    VM RAM contention; vol3 keeps a symbol cache so per-image
+#    overhead drops after the first run.
+python scripts/fleet_investigate.py [--limit N] [--skip BASENAMES]
+
+# 2. Cross-host pattern detection: process names appearing on ≥2
+#    hosts, 60-second-window temporal clusters across hosts, MITRE
+#    technique density, Merkle-root uniqueness check.
+python scripts/fleet_correlate.py [tmp/fleet-runs/<fleet-id>]
+
+# 3. Render the fleet report — 4 matplotlib figures
+#    (verdict_distribution, mitre_density, cross_host_processes,
+#    temporal_clusters) + Markdown + HTML + PDF, same pandoc +
+#    Chrome-headless chain as the per-host reports.
+python scripts/render_fleet_report.py [tmp/fleet-runs/<fleet-id>]
+```
+
+Output:
+```
+tmp/fleet-runs/fleet-<timestamp>/
+├── fleet.json                 — per-host verdict summary
+├── fleet-summary.md           — terse per-host rollup
+├── fleet_correlation.json     — cross-host findings (machine-readable)
+├── fleet_correlation.md       — cross-host findings (analyst summary)
+├── FLEET_REPORT.md/html/pdf   — final analyst-facing report
+└── figures/
+    ├── verdict_distribution.png
+    ├── mitre_density.png
+    ├── cross_host_processes.png
+    └── temporal_clusters.png
+```
+
+The headline visual is `temporal_clusters.png` — each row is a
+cluster of process creations across ≥2 hosts within 60 seconds,
+color-coded by host. The fingerprint of automated lateral-movement
+tradecraft (PsExec waves, WMI execution chains, scheduled-task
+pivots) reads off this chart immediately.
+
+Cross-host process correlations filter known-benign enterprise
+binaries (McAfee/Trellix endpoint stack, VMware Tools, Windows
+infrastructure, Microsoft Defender) via `COMMON_WIN_PROCS` in
+`scripts/fleet_correlate.py` — see `docs/false-positives.md`
+"Fleet cross-host correlation" for what is and isn't filtered and
+why. Sysinternals tools (Autorunsc, PsExec) are *not* filtered
+because cross-host runs of those are themselves a finding worth
+analyst attention.
+
 ---
 
 ## 3. (If interactive) the agent drives the playbook
