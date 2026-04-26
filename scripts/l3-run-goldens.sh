@@ -147,13 +147,15 @@ for fixture in "${FIXTURES[@]}"; do
   case_path="~/${fixture}"
   run_log="${LOG_DIR}/${fixture}-run.log"
 
-  # Product isn't built yet — the `find-evil` invocation below is
-  # what L3 WILL look like once the Product lands. Guarded by
-  # `|| true` so L3 workflow is still exercised pre-Week-2.
-  ssh_exec "find-evil run --case ${case_path} --unattended --output-format json 2>/dev/null" \
+  # Under Amendment A2 the headless single-shot orchestrator is
+  # `scripts/find-evil-auto` (Tesla mode); the pre-A2 `find-evil run`
+  # subcommand was dropped along with findevil_agent/cli.py.
+  # Guarded by `|| true` so the L3 workflow stays exercised even
+  # when the SIFT VM doesn't have the orchestrator deployed yet.
+  ssh_exec "bash scripts/find-evil-auto ${case_path} --unattended 2>/dev/null" \
     > "${run_log}" \
     || {
-      log "WARN: find-evil not installed on VM yet (expected pre-Week-2)"
+      log "WARN: find-evil-auto not callable on VM yet (expected pre-Week-2)"
       continue
     }
 

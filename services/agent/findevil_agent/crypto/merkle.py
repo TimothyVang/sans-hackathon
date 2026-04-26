@@ -137,7 +137,9 @@ def verify_inclusion_proof(proof: InclusionProof) -> bool:
 
     Stateless — you don't need the MerkleTree instance; only the
     proof + the claimed leaf hash + the expected root. This is what
-    the judge's ``find-evil verify`` runs.
+    ``verify_manifest`` (and the ``manifest_verify`` MCP tool) call
+    when re-validating an inclusion proof during third-party offline
+    verification.
     """
     if len(proof.leaf_hash) != 32:
         return False

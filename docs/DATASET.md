@@ -174,7 +174,7 @@ goldens/
     └── …same layout (expected empty findings)…
 ```
 
-Each `run-manifest.json` is verifiable offline by any third party using `find-evil verify <manifest>` — see Spec #2 §7.2 for the verification UX.
+Each `run.manifest.json` is verifiable offline by any third party — under Amendment A2 the entry points are the `verify_manifest` library function (`from findevil_agent.crypto.manifest import verify_manifest`) or the `manifest_verify` MCP tool. The pre-A2 `find-evil verify <manifest>` CLI was dropped along with `findevil_agent/cli.py`. See `docs/cryptographic-attestation.md` "How a third party verifies offline" for the working recipe.
 
 ---
 
