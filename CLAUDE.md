@@ -96,7 +96,7 @@ Shipped tree — these are the directories that end up in the submission:
 └── .github/workflows/                              # l0/l1/l2/l3 + release + competitor-watch + devpost-submit + budget-guard
 ```
 
-The Python CLI inside the shipped Docker image is invoked as `find-evil` (see `Dockerfile` line 74–78: `exec python3 -m findevil_agent.cli "$@"`). In dev, that's `uv run python -m findevil_agent.cli …`.
+The shipped `Dockerfile` lines 74–78 still wrap an in-container CLI as `exec python3 -m findevil_agent.cli "$@"` — but Amendment A2 dropped `findevil_agent/cli.py`, so that wrapper currently calls a module that doesn't exist (flagged in "Spec/code divergences" §3 Caveat (A2) as a hard blocker pending architectural decision). In dev under A2, **don't** invoke `findevil_agent.cli` — it isn't there. The dev entry points are `scripts/find-evil` (interactive Claude Code session) and `bash scripts/find-evil-auto <evidence>` (headless single-shot orchestrator); see "Commands" below.
 
 ## The 4 subsystems (master design §3)
 
@@ -147,13 +147,14 @@ None of these succeed today — the code they target doesn't exist yet. They are
 - Single test (named fn in an integration test file): `cargo test -p findevil-mcp --test tool_smoke test_case_open_returns_handle`
 - Single crate's unit tests: `cargo test -p findevil-mcp --lib`
 
-**Python agent + swarm (`services/agent/`, `services/swarm/`):**
-- Env sync: `uv sync` (root `pyproject.toml` is a uv workspace)
-- Lint + format check: `ruff check . && ruff format --check .`
-- All tests: `uv run pytest -xvs --cov`
-- Single file: `uv run pytest tests/swarm/test_package_imports.py -v`
-- Single test function: `uv run pytest tests/agent/test_graph_smoke.py::test_kill_resume_restores_state -v`
-- Run the agent graph directly (dev): `uv run python -m findevil_agent.cli run --case path/to/case.e01` (the installed console script is `find-evil`; see `Dockerfile` line 74)
+**Python agent + swarm (`services/agent/`, `services/agent_mcp/`, `services/swarm/`):**
+- There is **no root `pyproject.toml`** — each service is its own uv project. Use `--directory <svc>` (or `cd` first) for any uv command that needs a project context.
+- Env sync (per service): `uv sync --directory services/agent` (likewise `services/agent_mcp`, `services/swarm`)
+- Lint + format check (works from repo root — ruff walks the tree): `ruff check . && ruff format --check .`
+- All tests (the L1 way — iterate per service): see `docker/l1-compose.yml` lines 60–68; locally use `bash scripts/run-all-smokes.sh` or run each service's pytest separately
+- Single file: `uv run --directory services/agent pytest tests/test_crypto_audit_log.py -v`
+- Single test function: `uv run --directory services/agent pytest tests/test_crypto_audit_log.py::TestCanonicalize::test_sorted_keys -v`
+- Run an investigation directly (dev, under A2): `scripts/find-evil` (interactive Claude Code session) or `bash scripts/find-evil-auto <evidence-path>` (headless single-shot orchestrator). The pre-A2 `python -m findevil_agent.cli` entry point was dropped — see the "## Agent investigation prompt" guidance at the top of this file.
 
 **Next.js web + MCP widgets (`apps/web/`, `apps/mcp-widgets/`):**
 - Install: `pnpm install --frozen-lockfile`
