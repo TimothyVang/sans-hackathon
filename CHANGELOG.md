@@ -191,6 +191,19 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **`run-all-smokes.sh` also gates `cargo fmt --check`** (commit
+  `7549cba`). L0 GHA runs `cargo fmt --all --check` but
+  run-all-smokes only mirrored ruff. Same shape as the earlier
+  ruff lint-gate addition (`f0dbfb1`) — local-runner-mirrors-
+  only-one-CI-workflow misses violations. Added as entry 12,
+  gated on `command -v cargo && [ -f Cargo.toml ]` for clean
+  SKIP. Negative-tested by tampering with services/mcp/src/lib.rs
+  (cargo fmt --check exit 1 caught it) and restoring (exit 0
+  clean). QUICKSTART smoke-count 11 → 12 entries. Second
+  instance of the local-runner-mirrors-only-one-CI-workflow
+  pattern; if a third surfaces (shellcheck / hadolint?), the
+  right move is to audit the full L0 job set against
+  run-all-smokes end-to-end rather than fix one at a time.
 - **`scripts/smoke-regex-tests.py` protects the audit-smoke regexes**
   (commit `0de00b2`). The 3 audit smokes (divergence + launcher +
   path-existence) catch drift in the rest of the codebase, but the
