@@ -191,6 +191,25 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **`11 → 12` Rust MCP tool count downstream sweep**
+  (commit `e6ddc2d`). Same divergence-sweep procedure as 782f364,
+  applied to CLAUDE.md "Spec/code divergences" §4. The earlier
+  11→12 sweep (6cba0cd) had hit the architecture diagram +
+  QUICKSTART + PLAYBOOK but missed four more downstream usages:
+  docs/architecture.md:263 (pre-A2-vs-A2 comparison table),
+  docs/reports/2026-04-26-srl2018-dc-investigation.md:231
+  (§8.1 in the showcase analyst report — a SANS judge would have
+  seen "11" there and "12" in CLAUDE.md and wondered which is
+  correct), docs/templates/devpost-readme.md:35 (Devpost
+  submission template, envsubst'd at v-submit), and
+  scripts/sift-vm-setup.sh:6 (the script header). Re-rendered
+  the showcase report's HTML+PDF since judges read the PDF
+  artifact, not the markdown source. Same pandoc + chrome
+  --headless recipe as f7df6c4. PDF grew from 1325101 to 1594607
+  bytes (different Chrome build embeds fonts more aggressively;
+  content delta is one sentence + one parenthetical). Process
+  win: documenting a divergence + applying the sweep is now a
+  repeatable two-step workflow.
 - **`find-evil verify` / `find-evil run` downstream sweep**
   (commit `782f364`). Last iteration's lesson said "when a
   divergence is documented, sweep for downstream usages." Applied
