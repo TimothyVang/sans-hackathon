@@ -191,6 +191,20 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **L0 docs-consistency catches deletion of all load-bearing docs**
+  (commit `bd06995`). The L0 GHA job verified existence of 4
+  per-subsystem specs + 4 plans + 3 root docs, but CLAUDE.md
+  "Document hierarchy" treats more files as load-bearing
+  (master design + 2 active amendments + 4 root ops docs +
+  6 canonical analyst docs + 7 agent-config runtime-identity
+  files = 20 newly-gated paths). Silent deletion of any would
+  only surface at read time; a SANS judge opening the repo
+  could hit a 404 cross-reference. Extended the file-existence
+  check to cover all 20. Verified yaml parses + every path
+  exists in the current tree. Wall-clock unchanged
+  (test -f is microseconds). Catches deletion-rot, complementing
+  the divergence-smoke + launcher-smoke (which catch content
+  drift).
 - **`docs/runbooks/dockerfile-a2-decision.md`** (commit `ea14aeb`).
   Decision-helper for the Dockerfile A2 hard blocker that's been
   open since commit `47f67b0`. Lays out both architectural paths
