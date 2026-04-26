@@ -37,7 +37,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from queue import Queue
+from queue import Empty, Queue
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -101,7 +101,7 @@ class SshMcpClient:
         self._q.put(None)
 
     def call(
-        self, method: str, params: dict[str, Any] | None = None, timeout: float = 120.0
+        self, method: str, params: dict[str, Any] | None = None, timeout: float = 600.0
     ) -> dict[str, Any]:
         i = self._next_id
         self._next_id += 1
@@ -110,7 +110,12 @@ class SshMcpClient:
         self.proc.stdin.flush()
         deadline = time.monotonic() + timeout
         while True:
-            line = self._q.get(timeout=max(0.1, deadline - time.monotonic()))
+            try:
+                line = self._q.get(timeout=max(0.1, deadline - time.monotonic()))
+            except Empty as exc:
+                raise RuntimeError(
+                    f"{self.label} {method}: timed out after {timeout:.0f}s"
+                ) from exc
             if line is None:
                 raise RuntimeError(f"{self.label}: server closed stdout")
             line = line.strip()
@@ -126,9 +131,13 @@ class SshMcpClient:
                 )
             return env.get("result", {})
 
-    def call_tool(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+    def call_tool(
+        self, name: str, args: dict[str, Any], timeout: float = 600.0
+    ) -> dict[str, Any]:
         try:
-            result = self.call("tools/call", {"name": name, "arguments": args})
+            result = self.call(
+                "tools/call", {"name": name, "arguments": args}, timeout=timeout
+            )
         except RuntimeError as e:
             return {"_error": {"message": str(e)}}
         try:
@@ -368,7 +377,10 @@ class Investigation:
         )
         print(f"  vol_pslist: {len(ps)}/{ps_seen} processes")
 
-        # Tool 2: vol_malfind
+        # Tool 2: vol_malfind — slowest of the vol_* plugins. On a 5+GB
+        # memory image (e.g. a domain controller's RAM) it can take well
+        # over the 600s default; give it a 30-minute budget to avoid
+        # spurious queue.Empty failures on the larger fleet hosts.
         mal = rust.call_tool(
             "vol_malfind",
             {
@@ -376,6 +388,7 @@ class Investigation:
                 "memory_path": self.evidence,
                 "limit": 200,
             },
+            timeout=1800.0,
         )
         if "_error" in mal:
             print(f"  vol_malfind error: {mal['_error']['message'][:80]}")
