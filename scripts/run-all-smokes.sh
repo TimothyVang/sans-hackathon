@@ -115,7 +115,12 @@ run_smoke \
     "path-existence-smoke (every backtick-quoted path resolves to a real file/dir)" \
     "python3 scripts/path-existence-smoke.py"
 
-# 9 + 10. Lint / format gate.  L0 GHA workflow runs these; mirror
+# 9. Self-test the audit-smoke regexes themselves (protect the protectors).
+run_smoke \
+    "smoke-regex-tests (synthetic +/- cases against the 3 audit-smoke regex tables)" \
+    "python3 scripts/smoke-regex-tests.py"
+
+# 10 + 11. Lint / format gate.  L0 GHA workflow runs these; mirror
 # locally so a contributor running this script before commit
 # catches a missing `ruff format` before the push.  Skipped if
 # ruff isn't on PATH (unusual on a dev host).

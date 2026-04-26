@@ -78,6 +78,11 @@ ALLOWED_FILES = {
     # The launcher-smoke also contains the `claude-code` bad
     # pattern in its own check logic.
     "scripts/launcher-smoke.py",
+    # smoke-regex-tests carries synthetic positive + negative
+    # test fixtures for every smoke's regex; those fixtures
+    # legitimately contain the bad-half patterns to verify the
+    # regexes catch them.
+    "scripts/smoke-regex-tests.py",
     # Historical specs + plans (per CLAUDE.md "code wins" rule -
     # they were written pre-divergence and have top-of-doc
     # banner per commit 608f6b8).
