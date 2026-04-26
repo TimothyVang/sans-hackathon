@@ -11,7 +11,7 @@ Boot:
 
 In normal operation the launcher is the repo-root ``.mcp.json`` —
 Claude Code spawns this server alongside ``findevil-mcp`` (Rust)
-when the user opens an investigation session.
+when the user opens an investigation against a case directory.
 
 Logging note: stdio is the wire; we MUST NOT print to stdout.
 ``structlog`` is configured to write to stderr only.
