@@ -78,7 +78,7 @@ Shipped tree — these are the directories that end up in the submission:
 ├── sift-2026.03.24.ova                             # 9.3 GB SIFT VM image — Packer input; gitignored (*.ova)
 ├── agent-config/                                   # Runtime DFIR agent identity (SOUL/AGENTS/TOOLS/MEMORY/HEARTBEAT/JUDGING/PLAYBOOK)
 ├── docs/superpowers/specs/ + plans/                # 5 specs (incl. Amendment A1) + 4 TDD plans
-├── services/mcp/                                   # Rust MCP server (rmcp-based; evtx/duckdb/rs_merkle linked; others subprocess-only)
+├── services/mcp/                                   # Rust MCP server (hand-rolled stdio JSON-RPC 2.0 per "Spec/code divergences" §5; evtx/duckdb/rs_merkle linked; others subprocess-only)
 ├── services/agent/                                 # Python package findevil_agent — M2 crypto + M4 ACH (FastAPI/LangGraph DROPPED under A2)
 ├── services/agent_mcp/                             # Python MCP server (A2) wrapping M2+M4 as 10 typed tools for Claude Code
 ├── services/swarm/                                 # Python build swarm (Option B — Claude CLI subagents)

@@ -18,12 +18,16 @@ name = "findevil-mcp"
 path = "src/main.rs"
 
 # Dependency pins per Spec #2 §16.
-# rmcp, evtx, rs_merkle, duckdb versions are locked; do not upgrade
+# evtx, rs_merkle, duckdb versions are locked; do not upgrade
 # without a spec amendment.
 [dependencies]
-# rmcp is the Rust MCP SDK. Import kept dormant in this first crate
-# until the full tool surface lands — lib.rs exposes types the
-# server will consume, plus an in-process test harness.
+# rmcp (Spec #2 §4.1) was the planned MCP SDK but was deliberately
+# NOT activated — see CLAUDE.md "Spec/code divergences" §5.  The
+# server in `src/server.rs` is a hand-rolled stdio JSON-RPC 2.0
+# implementation pinned to MCP 2024-11-05 for wire-format stability
+# across rmcp's API churn and dispatch-shape parity with the
+# Python `findevil-agent-mcp`.  This commented-out line is left
+# as a deliberate marker; don't uncomment without a spec amendment.
 # rmcp = { version = "=0.16.0", features = ["server", "transport-io"] }
 
 # Hashing — stdlib-friendly sha2 crate. No pin across workspace
@@ -75,7 +79,9 @@ usnjrnl-forensic = "=0.6.0"
 # UUID v4 for deterministic case_id generation.
 uuid = { version = "1", features = ["v4", "serde"] }
 
-# Serde for the typed JSON schema the MCP server will hand to rmcp.
+# Serde for the typed JSON schema the hand-rolled stdio server in
+# `src/server.rs` emits in tools/list responses (Spec/code
+# divergence §5 — rmcp not used).
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -88,7 +94,10 @@ schemars = { version = "1", features = ["preserve_order"] }
 # thiserror for structured, documented error types.
 thiserror = "1"
 
-# Async runtime — required when rmcp integration lands; harmless now.
+# Async runtime. Used by tool modules that benefit from async
+# subprocess management (vol_*, hayabusa_scan, vel_collect) and by
+# the stdio reader in `src/server.rs`.  Originally added in
+# anticipation of rmcp; the hand-rolled server uses it directly.
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "io-util"] }
 
 # Time/chrono for ISO-8601 timestamps in the eventual audit trail.
