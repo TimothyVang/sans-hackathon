@@ -14,24 +14,29 @@
 A DFIR agent built on the SANS SIFT Workstation that takes a memory image, EVTX log, or disk image and produces a signed verdict — `SUSPICIOUS`, `INDETERMINATE`, or `NO_EVIL` — with the full reasoning trace cryptographically attested to.
 
 ```
-$ bash scripts/find-evil-auto /mnt/hgfs/evidence/extracted/base-dc/base-dc-memory.img --unattended
+$ bash scripts/find-evil-auto /mnt/hgfs/evidence/extracted/<host>/<host>-memory.img --unattended
 === case_open ===
-  case_id    = ec529a1d-0e59-49e8-adbe-7815f007fc02
-  image_hash = d58343cb4e4a06ecc56012c8e25760b297594bf4695303527a5cbb2331726891
+  case_id    = <uuid4>
+  image_hash = <sha256-of-evidence>
 === memory image investigation ===
-  vol_pslist:  0 / 0  processes      ← active list walked clean (suspicious)
-  vol_psscan:  124 processes         ← signature scan recovered 124 EPROCESS blocks
-  → DKOM/T1014 (Rootkit) signal: pslist=0 + psscan>0 is the textbook divergence.
+  vol_pslist:  N1 processes          <- active-list walk
+  vol_psscan:  N2 processes          <- EPROCESS pool signature scan
+  -> if N1 << N2: DKOM/T1014 (Rootkit) signal -- the 22-host SRL-2018
+                  fleet showed this on 11 hosts (docs/reports/...).
 === reasoning phase ===
-  contradictions: 1     judge merged: 2 findings    correlator: 2 kept
+  contradictions: K     judge merged: F findings    correlator: F' kept
 === judge self-score ===
-  #1 failures=0 corrections=0
-  #2 C=0% I=100% H=0% (n=2)
-  ...
+  6 audit records, kind=judge_selfscore, written BEFORE manifest_finalize
+  so the score is part of the cryptographic attestation.
 === manifest finalize ===
-  merkle_root_hex  = 21a2859b0502e97d7cbe7bdafcda43b8642c31fb84b844bc0736b8b14378a3e2
-  verdict          = SUSPICIOUS
+  merkle_root_hex  = <hex digest>
+  verdict          = SUSPICIOUS | INDETERMINATE | NO_EVIL
+                     (per docs/verdict-semantics.md compute_verdict policy)
 ```
+
+(Stylized. Real artifacts from a 22-host fleet investigation live at
+`docs/reports/2026-04-26-srl2018-dc-investigation.md` + the embedded
+`figures-2026-04-26/` set + `tmp/fleet-runs/fleet-20260426T055440Z/`.)
 
 The chain of custody: `dc3dd` → `sha256sum` (analyst receipt) → `case_open` SHA-256 (Rust `sha2`, in-process) → audit-log `prev_hash` chain → `rs_merkle` Merkle leaf → sigstore signature → OpenTimestamps Bitcoin anchor. Any third party verifies the run offline via the `manifest_verify` + `ots_verify` MCP tools.
 
