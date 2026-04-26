@@ -391,8 +391,8 @@ def main() -> int:
     unique_roots = merkle_uniqueness(verdicts)
 
     write_outputs(fleet_dir, verdicts, cross, clusters, mitre, distrib, unique_roots)
-    print(f"  → {fleet_dir / 'fleet_correlation.md'}")
-    print(f"  → {fleet_dir / 'fleet_correlation.json'}")
+    print(f"  -> {fleet_dir / 'fleet_correlation.md'}")
+    print(f"  -> {fleet_dir / 'fleet_correlation.json'}")
     return 0
 
 
