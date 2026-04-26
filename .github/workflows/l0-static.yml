@@ -200,3 +200,42 @@ jobs:
           else
             echo "No services/swarm/ yet — skip."
           fi
+
+  amendment-a2-guard:
+    name: Amendment A2 invariants (custom orchestrator dropped)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: dropped Python orchestrator files must not reappear
+        run: |
+          # Amendment A2 (2026-04-25, active) replaces the custom Python
+          # orchestrator (graph.py / api.py / cli.py / supervisor.py /
+          # specialists/) with Claude Code itself driving the typed MCP
+          # surface. If a future contributor regenerates any of these
+          # files (e.g. by re-running an old TDD plan), the architectural
+          # claim "Direct Agent Extension §1 + Custom MCP Server §2"
+          # silently becomes false. Catch it at L0.
+          #
+          # See docs/superpowers/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md
+          banned=(
+            services/agent/findevil_agent/graph.py
+            services/agent/findevil_agent/api.py
+            services/agent/findevil_agent/cli.py
+            services/agent/findevil_agent/supervisor.py
+            services/agent/findevil_agent/specialists
+          )
+          violation=0
+          for path in "${banned[@]}"; do
+            if [ -e "$path" ]; then
+              echo "ERROR: Amendment A2 forbids '$path' (was dropped 2026-04-25)."
+              violation=1
+            fi
+          done
+          if [ "$violation" -eq 1 ]; then
+            echo
+            echo "If you genuinely need to revive the custom orchestrator,"
+            echo "amend Spec #2 first and update the architecture diagram."
+            echo "Reference: docs/superpowers/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md"
+            exit 1
+          fi
+          echo "Amendment A2 compliance: OK (no resurrected orchestrator files)."
