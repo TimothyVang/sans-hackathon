@@ -32,7 +32,7 @@ This document covers every fixture the Find Evil! submission was tested against.
 | Content | EnCase E01 (~4.5 GB compressed / ~4.8 GB raw NTFS); Windows host evidence |
 | Purpose | Canonical DFIR benchmark case; industry-standard ground truth |
 | SHA-256 | *(recorded on first pull)* |
-| Expected findings | **14 canonical findings** — enumerated in `goldens/nist-hacking-case.findings.json` |
+| Expected findings | **14 canonical findings** — enumerated in `goldens/nist-hacking-case/expected-findings.json` |
 | Verdict | `CONFIRMED_EVIL` |
 
 **Rationale:** NIST's authority makes this a standard reference. Multiple DFIR tools publish accuracy against it, so our DFIR-Metric score is directly comparable to any competitor.

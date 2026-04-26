@@ -18,7 +18,7 @@ Autonomous build swarm that drives Claude Code subagents to execute `BUILD_PLAN_
 
 ## Entry points
 
-Documented in `CLAUDE.md` (repo root) and generated from `services/swarm/main.py`:
+Documented in `CLAUDE.md` (repo root) and generated from `services/swarm/findevil_swarm/main.py`:
 
 ```
 bash scripts/swarm-start.sh                                                       # pre-flight + nightly supervisor run
@@ -33,6 +33,6 @@ The package is `findevil_swarm` (Python identifier) / `findevil-swarm` (PyPI / c
 
 - No LiteLLM. No USD budget. No `ANTHROPIC_API_KEY` in the swarm's runtime path.
 - Workers invoke `claude` CLI subprocess with `CLAUDE_CODE_FORK_SUBAGENT=1`.
-- `services/swarm/session_guard.py` detects rate limits and halts — no retry. Postgres checkpoint carries forward.
+- `services/swarm/findevil_swarm/session_guard.py` detects rate limits and halts — no retry. Postgres checkpoint carries forward.
 - Per-subagent `--max-turns=40` + no-progress detector (3 zero-diff tool calls → kill) + 8-hour wall-clock watchdog.
 - One git worktree per PR. Never two workers on the same branch. Never auto-merge.
