@@ -105,10 +105,12 @@ def fig_mitre_density(corr: dict, fig_path: Path) -> None:
         linewidth=0.4,
     )
     ax.invert_yaxis()
-    ax.set_xlabel("Hosts")
+    ax.set_xlabel("Distinct hosts where this technique was observed")
+    host_count = corr.get("host_count", 0)
     ax.set_title(
         f"MITRE ATT&CK technique density across the fleet\n"
-        f"{sum(counts)} total findings spanning {len(techniques)} techniques"
+        f"{len(techniques)} techniques observed across {host_count} hosts "
+        "(bars show distinct-host count per technique)"
     )
     for i, c in enumerate(counts):
         ax.text(c + 0.1, i, str(c), va="center", fontsize=9)
