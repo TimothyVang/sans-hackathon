@@ -191,6 +191,29 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **CLAUDE.md "Python agent + swarm" Commands section drift**
+  (commit `93a9def`). Five drifts caught by attempting the
+  documented commands literally: `uv sync` from repo root claimed
+  "root pyproject.toml is a uv workspace" but there is none (verified
+  errors "No pyproject.toml found"); `uv run pytest -xvs --cov` from
+  repo root collects 156 tests but errors on swarm imports without
+  the service-specific deps; `tests/swarm/test_package_imports.py`
+  doesn't exist (the actual tree is `services/swarm/tests/`);
+  `tests/agent/test_graph_smoke.py::test_kill_resume_restores_state`
+  doesn't exist either (was part of the pre-A2 graph.py the L0
+  amendment-a2-guard now forbids); the "Run the agent graph
+  directly (dev)" entry pointed at
+  `python -m findevil_agent.cli run --case ...` — but A2 dropped
+  `findevil_agent/cli.py`. Fixed all five with commands that
+  actually execute (`uv run --directory services/agent pytest
+  tests/test_crypto_audit_log.py::TestCanonicalize::test_sorted_keys
+  -v` verified runs + passes). Also brought the line-99
+  Repo-layout footer's Dockerfile reference in line with the
+  "Spec/code divergences" §3 caveat already in the same file.
+  Same drift shape as the previous seven prose-vs-code fixes;
+  internally-consistent because the A2 caveat that flagged this
+  was *already* in CLAUDE.md - just the dev-command examples
+  hadn't been rewritten to match.
 - **`scripts/find-evil-sift` `claude-code` remnant** (commit
   `cc4e93e`). The earlier `claude-code → claude` sweep (c167aec)
   used grep filters `--include="*.sh"`, which missed
