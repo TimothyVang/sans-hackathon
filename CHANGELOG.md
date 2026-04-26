@@ -191,6 +191,29 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **4 broken paths from extended path-existence audit**
+  (commit `385c867`). Second pass of the path-existence audit
+  shape, this time across agent-config/*.md + services/*/README.md
+  + docs/runbooks/ + docs/DATASET.md (the previous pass covered
+  CLAUDE.md + README + QUICKSTART + 4 docs/). 108 paths checked;
+  47 missing of which 43 were false positives (package-relative
+  paths, MCP wire identifiers like `tools/list`, deferred-per-A2
+  paths, runtime user dirs). 4 real bugs:
+  services/swarm/README.md:21 `services/swarm/main.py` →
+  `services/swarm/findevil_swarm/main.py` (same drift the
+  CLAUDE.md fix in 5e01954 caught — the README was missed);
+  services/swarm/README.md:36 same shape on `session_guard.py`;
+  docs/DATASET.md:35 named the NIST goldens file
+  `goldens/nist-hacking-case.findings.json` but the actual path
+  is `goldens/nist-hacking-case/expected-findings.json` (subdir
+  + different name) — a contributor reading the "14 canonical
+  findings" claim would have hit a 404 trying to verify the
+  recall target; agent-config/TOOLS.md:39 `.LOG1/2` reformatted
+  to `.LOG1` / `.LOG2` (registry transaction-log abbreviation).
+  Across two iterations the path-existence audit has now found
+  3 + 4 = 7 real bugs — graduating it to a CI smoke is now
+  warranted (deferred to a future iteration since this commit
+  is already self-contained).
 - **CLAUDE.md "Vendored reference clones" section drift**
   (commit `861d1ed`). The section claimed 4 directories
   (`openclaw/`, `hermes-agent/`, `Linear-Coding-Agent-Harness/`,
