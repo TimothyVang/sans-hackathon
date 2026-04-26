@@ -4,6 +4,8 @@
 **v2 date:** 2026-04-23. **Deadline:** 2026-06-15 22:45 CDT (53 days).
 **Purpose:** Capture what changed after April 2026 web research into Lovable-grade autonomy UX, 2026 agent orchestration primitives, and Find Evil! competitor activity. v1 is still the source of truth for DFIR fundamentals, rubric analysis, evidence-integrity invariants, and the References section.
 
+> **Superseded sections (read this first):** Sections that name `services/agent/graph.py`, `services/agent/api.py`, `services/agent/cli.py`, `services/agent/supervisor.py`, or `services/agent/specialists/` describe the pre-A2 architecture. Amendment A2 (2026-04-25, see `docs/superpowers/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md`) drops the custom Python orchestrator entirely — Claude Code IS the orchestrator, and the M2 + M4 stacks ship as a Python MCP server (`services/agent_mcp/`). The `apps/web/` Next.js SPA is deferred to bonus polish. The DFIR fundamentals, rubric analysis, demo beat structure (§9), risk register (§11), and research questions (§12) all stand. Treat any §10 "Week-1 skeleton" file path that names a dropped module as historical context, not as guidance.
+
 ---
 
 ## 1. What changed (one-paragraph summary)
