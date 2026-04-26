@@ -191,6 +191,25 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **3 broken file-path references in operator docs**
+  (commit `5e01954`). New audit shape: extract backtick-quoted
+  path-shaped strings from ops-facing docs, verify each exists
+  on disk. 61 paths checked; 14 missing of which 11 were false
+  positives (URLs/wildcards/deferred-per-A2 paths/runtime-user
+  dirs/protocol-sift-example paths) and 3 were real:
+  `crypto/audit.py` (actual: `audit_log.py`) in
+  cryptographic-attestation.md's five-link chain table;
+  `services/swarm/session_guard.py` (actual:
+  `services/swarm/findevil_swarm/session_guard.py`, package
+  level) in CLAUDE.md's build-swarm rate-limit-handling
+  paragraph; `tests/acceptance/AC13_no_execute_shell.sh`
+  (doesn't exist anywhere) in architecture.md's testable-
+  bypass claim — reframed to match the actual `goldens/`
+  layout. Different audit shape from the prose-vs-code patterns
+  launcher-smoke + divergence-smoke cover; complementary. If
+  similar drift surfaces in future iterations, this audit
+  warrants its own smoke with the same allow-list pattern as
+  divergence-smoke (deferred-per-A2 paths get exceptions).
 - **`scripts/divergence-smoke.py` locks the 6-divergence list**
   (commit `c5bfa1b`). Three iterations of the divergence-sweep
   procedure (782f364, e6ddc2d, fb319dd) cleaned active drift; this
