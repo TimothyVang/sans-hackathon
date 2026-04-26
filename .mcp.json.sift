@@ -1,0 +1,34 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/specification/main/schema/draft/schema.json",
+  "_comment": "SSH-transport variant. Activate with `scripts/find-evil-sift` or `cp .mcp.json.sift .mcp.json`. Requires the SIFT VM running with port-forwarding 2222 → 22 and an SSH key at ~/.ssh/sift_key whose pubkey is in the VM's authorized_keys. Repo path inside VM is assumed at /home/sansforensics/find-evil — change SIFT_REPO_PATH below if you put it elsewhere.",
+  "mcpServers": {
+    "findevil-mcp": {
+      "type": "stdio",
+      "command": "ssh",
+      "args": [
+        "-p", "2222",
+        "-i", "~/.ssh/sift_key",
+        "-T",
+        "-o", "StrictHostKeyChecking=accept-new",
+        "-o", "ServerAliveInterval=30",
+        "-o", "ServerAliveCountMax=3",
+        "sansforensics@localhost",
+        "/home/sansforensics/find-evil/target/release/findevil-mcp"
+      ]
+    },
+    "findevil-agent-mcp": {
+      "type": "stdio",
+      "command": "ssh",
+      "args": [
+        "-p", "2222",
+        "-i", "~/.ssh/sift_key",
+        "-T",
+        "-o", "StrictHostKeyChecking=accept-new",
+        "-o", "ServerAliveInterval=30",
+        "-o", "ServerAliveCountMax=3",
+        "sansforensics@localhost",
+        "cd /home/sansforensics/find-evil/services/agent_mcp && exec uv run python -m findevil_agent_mcp.server"
+      ]
+    }
+  }
+}

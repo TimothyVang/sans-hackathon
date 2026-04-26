@@ -8,9 +8,10 @@ When a session opens in this repo and the user asks you to **"investigate \<case
 
 1. **`agent-config/SOUL.md`** — your purpose, the epistemic hierarchy (CONFIRMED > INFERRED > HYPOTHESIS), the FRE 902(14) self-authenticating-evidence stance, the strict cross-artifact rule for execution claims, the no-attribution rule.
 2. **`agent-config/AGENTS.md`** — the supervisor/Pool A/Pool B/judge/verifier/correlator role descriptions. You are the supervisor; the two pools are spawned as forked subagents (`CLAUDE_CODE_FORK_SUBAGENT=1`).
-3. **`agent-config/TOOLS.md`** — the typed tool surface (Rust `findevil-mcp` + Python `findevil-agent-mcp`).
-4. **`agent-config/MEMORY.md`** — Tier-1 DFIR caveats (Amcache LastModified ≠ execution, ShimCache order changed at Win8.1, EVTX Logon Type 3 vs 10, etc.).
-5. **`agent-config/HEARTBEAT.md`** — the per-iteration self-check loop.
+3. **`agent-config/PLAYBOOK.md`** — investigation tool sequences per evidence type (`.e01`, `.mem`, `.evtx`, Velociraptor `.zip`, mixed case dirs). Treat as defaults, not laws — deviate when the case shape diverges and log the deviation.
+4. **`agent-config/TOOLS.md`** — the typed tool surface (Rust `findevil-mcp` + Python `findevil-agent-mcp`).
+5. **`agent-config/MEMORY.md`** — Tier-1 DFIR caveats (Amcache LastModified ≠ execution, ShimCache order changed at Win8.1, EVTX Logon Type 3 vs 10, etc.).
+6. **`agent-config/HEARTBEAT.md`** — the per-iteration self-check loop.
 
 Two MCP servers are registered in `.mcp.json` and auto-spawned by Claude Code on session start:
 
@@ -151,7 +152,8 @@ None of these succeed today — the code they target doesn't exist yet. They are
 - Test one file (web): `pnpm --filter @findevil/web test -- components/narrative/StreamingSpanTree.test.tsx`
 
 **Launchers under Amendment A2 (Claude Code as primary interface):**
-- Open an investigation (the demo entry point): `scripts/find-evil` or `claude-code .` from the repo root. `.mcp.json` auto-spawns both MCP servers.
+- Open an investigation, **local mode** (the demo entry point): `scripts/find-evil` or `claude-code .` from the repo root. `.mcp.json` auto-spawns both MCP servers locally. Use this when the DFIR tool binaries (Hayabusa, Volatility3, Velociraptor) are installed on the host machine.
+- Open an investigation, **SIFT-VM mode** (Tesla-mode automation against the SANS-blessed environment): `bash scripts/find-evil-sift` from the repo root. Pre-flight: import `sift-2026.03.24.ova` in VirtualBox, port-forward 2222 → 22, run `bash scripts/sift-vm-setup.sh` once inside the VM, install an SSH key. The launcher swaps `.mcp.json` → `.mcp.json.sift` so the MCP servers spawn over SSH inside SIFT (where Volatility/Hayabusa/Velociraptor/YARA are natively present); restores `.mcp.json` on exit.
 - Verify a submitted manifest cryptographically (offline): the agent calls the `manifest_verify` MCP tool from `findevil-agent-mcp`. CLI fallback: `uv run --directory services/agent_mcp python -m findevil_agent_mcp.server` then drive over stdio.
 - Verify the Bitcoin anchor: `ots verify run.manifest.ots` (the third-party `opentimestamps-client` CLI; the agent uses the same logic via `ots_verify` MCP tool).
 - Pre-A2 launchers (`./find-evil serve|run|verify`, `find-evil` console script, `openclaw run`) are deprecated and not on the critical path.
