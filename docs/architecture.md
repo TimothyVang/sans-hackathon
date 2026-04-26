@@ -124,7 +124,7 @@ flowchart TB
 - `agent-config/MEMORY.md` DFIR artifact semantics (Amcache ≠ execution time, etc.)
 - `agent-config/HEARTBEAT.md` canary string self-check every turn
 
-These are **testable for bypass** in L3 golden runs — a prompt-injection fixture is included in `tests/acceptance/AC13_no_execute_shell.sh`. Prompt guardrails can fail; when they do, the architectural guardrails below must catch the fallout.
+These are **testable for bypass** in L3 golden runs — prompt-injection fixtures live alongside the standard golden cases in `goldens/`. Prompt guardrails can fail; when they do, the architectural guardrails below must catch the fallout.
 
 **Architectural guardrails (structural controls that PHYSICALLY PREVENT bad outcomes):**
 - Read-only evidence mount (filesystem-enforced; even root can't mutate original .e01)

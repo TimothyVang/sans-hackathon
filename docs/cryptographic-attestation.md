@@ -45,7 +45,7 @@ Each link's role:
 | # | Primitive | What it proves | Library |
 |---|---|---|---|
 | 1 | SHA-256 of the evidence | The image we read is the image we received | `sha2 = 0.10` (Rust) |
-| 2 | Audit hash chain | No record was deleted, reordered, or back-dated after the fact | `services/agent/findevil_agent/crypto/audit.py` |
+| 2 | Audit hash chain | No record was deleted, reordered, or back-dated after the fact | `services/agent/findevil_agent/crypto/audit_log.py` |
 | 3 | rs_merkle tree | The set of records named in the manifest is the set the agent actually wrote | `rs_merkle = 1.4.0` (Rust) |
 | 4 | sigstore signature | The manifest was produced by a key whose Fulcio cert is logged in Rekor — non-repudiable provenance | `sigstore = 3.x` (Python) |
 | 5 | OpenTimestamps proof | The manifest existed AT OR BEFORE the named Bitcoin block — independent time attestation | `opentimestamps-client` |
