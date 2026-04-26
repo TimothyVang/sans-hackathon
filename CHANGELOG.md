@@ -236,14 +236,16 @@ once the first `v0.x` is cut on the `v-submit` tag.
   `docker/l1-compose.yml` after fleet-policy-smoke. CI now runs
   three policy-lock smokes per L1 build (~180ms total).
 - **`scripts/run-all-smokes.sh` — local-iteration smoke runner**
-  (commit `cecef5d`). Single command for the 5 L1 smokes outside
-  docker, in the same order docker/l1-compose.yml runs them.
-  Per-smoke ✓/✗/SKIP status with prereq checks (clean SKIP if
-  `target/release/findevil-mcp` missing or `services/agent_mcp/`
-  absent rather than confusing failure), final tally, and
-  remediation footer naming `cargo build --release -p
-  findevil-mcp` and `uv sync --extra dev` if anything fails.
-  ~25s wall-clock combined (dominated by the two MCP-server
+  (commits `cecef5d` + `f7ff81f` for TTY detection). Single
+  command for the 5 L1 smokes outside docker, in the same order
+  docker/l1-compose.yml runs them. Per-smoke ✓/✗/SKIP status with
+  prereq checks (clean SKIP if `target/release/findevil-mcp`
+  missing or `services/agent_mcp/` absent rather than confusing
+  failure), final tally, and remediation footer naming `cargo
+  build --release -p findevil-mcp` and `uv sync --extra dev` if
+  anything fails. ANSI color codes are gated on `[ -t 1 ]` so
+  CI-captured logs and Windows-cmd-without-VT output stays plain
+  ASCII. ~25s wall-clock combined (dominated by the two MCP-server
   spawn smokes). Closes the local-iteration friction gap for a
   developer changing `compute_verdict`, fleet_correlate logic,
   or the demo script.
