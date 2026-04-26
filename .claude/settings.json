@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+
+  "_comment": "Protocol SIFT §2 adapted for the SANS Find Evil! stack. Differences vs the upstream Protocol SIFT pattern: (1) we do NOT deny curl/wget — fetch-fixtures.sh, fetch-nist-fixture.sh, and competitor-watch.sh need them; (2) DFIR tool binaries (Volatility, Hayabusa, Velociraptor, YARA) are NOT in the Bash allow-list — they are invoked by the typed Rust MCP server, not by Claude Code directly. This is an architectural guardrail per CLAUDE.md non-negotiable invariant 'No execute_shell MCP tool, ever' — the MCP surface is the only legal path to those tools; (3) audit logging is handled by the audit_append MCP tool (M2 hash-chained JSONL with prev_hash linking), not by a Stop hook — adding a parallel hook log would create an unverified second trail.",
+
+  "permissions": {
+    "defaultMode": "acceptEdits",
+
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+
+      "Bash(cargo build:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo run:*)",
+      "Bash(cargo fmt:*)",
+
+      "Bash(uv sync)",
+      "Bash(uv sync:*)",
+      "Bash(uv run:*)",
+      "Bash(uv lock:*)",
+      "Bash(uv pip:*)",
+
+      "Bash(pnpm install:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm -r:*)",
+      "Bash(pnpm --filter:*)",
+
+      "Bash(pytest:*)",
+      "Bash(ruff check:*)",
+      "Bash(ruff format:*)",
+
+      "Bash(git status)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git stash list)",
+
+      "Bash(sha256sum:*)",
+      "Bash(md5sum:*)",
+      "Bash(file:*)",
+      "Bash(stat:*)",
+      "Bash(wc:*)",
+
+      "Bash(bash scripts/*)",
+      "Bash(scripts/find-evil)",
+      "Bash(scripts/find-evil-sift)",
+
+      "Bash(actionlint:*)",
+      "Bash(act:*)",
+      "Bash(docker compose:*)",
+      "Bash(packer build:*)",
+
+      "mcp__findevil-mcp__*",
+      "mcp__findevil-agent-mcp__*"
+    ],
+
+    "deny": [
+      "Write(./test-forensics/**)",
+      "Edit(./test-forensics/**)",
+
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git commit --amend:*)",
+      "Bash(dd:*)"
+    ]
+  },
+
+  "hooks": {
+    "_comment": "Audit logging during an investigation is handled by the audit_append MCP tool from findevil-agent-mcp (hash-chained JSONL with prev_hash linking — see CLAUDE.md non-negotiable invariant). Adding a Claude Code Stop hook here would create a parallel, unverified log; intentionally omitted."
+  }
+}
