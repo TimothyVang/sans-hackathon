@@ -18,7 +18,7 @@ Two MCP servers are registered in `.mcp.json` and auto-spawned by Claude Code on
 
 | Server | Lang | Tools |
 |---|---|---|
-| `findevil-mcp` | Rust (`services/mcp/`) | DFIR tool surface — `case_open`, `evtx_query`, plus 9 more (`mft_timeline`, `hayabusa_scan`, `vol_pslist`, `vol_malfind`, `yara_scan`, `usnjrnl_query`, `registry_query`, `prefetch_parse`, `vel_collect`). Read-only on evidence; SHA-256 every output. |
+| `findevil-mcp` | Rust (`services/mcp/`) | DFIR tool surface — `case_open`, `evtx_query`, plus 10 more (`mft_timeline`, `hayabusa_scan`, `vol_pslist`, `vol_psscan`, `vol_malfind`, `yara_scan`, `usnjrnl_query`, `registry_query`, `prefetch_parse`, `vel_collect`). Read-only on evidence; SHA-256 every output. The `vol_pslist` + `vol_psscan` pair is deliberately redundant — pslist walks the active list, psscan signature-scans EPROCESS pool memory; divergence between the two is the textbook DKOM/T1014 (Rootkit) signature. |
 | `findevil-agent-mcp` | Python (`services/agent_mcp/`) | Crypto + ACH plumbing — `audit_append`, `audit_verify`, `manifest_finalize`, `manifest_verify`, `ots_stamp`, `ots_verify`, `verify_finding`, `detect_contradictions`, `judge_findings`, `correlate_findings`. |
 
 The investigation flow is roughly: `case_open` → split into Pool A (persistence) + Pool B (exfil) subagents → each pool runs DFIR tools and emits Findings (each citing a `tool_call_id`) → `detect_contradictions` → analyst resolves → `verify_finding` re-runs each cited tool → `judge_findings` (credibility-weighted merge) → `correlate_findings` → `manifest_finalize` (signs the run) → `ots_stamp` (Bitcoin anchor). The terminal beat map for the judge demo lives in Amendment A2 §2.3.
@@ -76,7 +76,7 @@ Shipped tree — these are the directories that end up in the submission:
 ├── BUILD_PLAN_v2.md / Find_Evil_Research_and_Build_Plan.docx
 ├── SUBMISSION_NOTES.md                             # Stub; edit before cutting v-submit
 ├── sift-2026.03.24.ova                             # 9.3 GB SIFT VM image — Packer input; gitignored (*.ova)
-├── agent-config/                                   # Runtime DFIR agent identity (SOUL/AGENTS/TOOLS/MEMORY/HEARTBEAT)
+├── agent-config/                                   # Runtime DFIR agent identity (SOUL/AGENTS/TOOLS/MEMORY/HEARTBEAT/JUDGING/PLAYBOOK)
 ├── docs/superpowers/specs/ + plans/                # 5 specs (incl. Amendment A1) + 4 TDD plans
 ├── services/mcp/                                   # Rust MCP server (rmcp-based; evtx/duckdb/rs_merkle linked; others subprocess-only)
 ├── services/agent/                                 # Python package findevil_agent — M2 crypto + M4 ACH (FastAPI/LangGraph DROPPED under A2)
@@ -89,6 +89,9 @@ Shipped tree — these are the directories that end up in the submission:
 ├── scripts/                                        # swarm-start, swarm-status, l2-dfir-smoke, l3-run-goldens, fetch-fixtures,
 │                                                   # build-deb, package-devpost, push-leaderboard-score, competitor-watch,
 │                                                   # setup-branch-protection, sift-provision, verify-sandbox, json-to-benchmark-csv.py
+│                                                   # find-evil-auto + find_evil_auto.py (Tesla-mode end-to-end orchestrator),
+│                                                   # fleet_investigate.py + fleet_correlate.py + render_fleet_report.py (multi-host pipeline),
+│                                                   # render_report.py + _report_style.css (per-case PDF rendering)
 ├── goldens/                                        # nist-hacking-case/, synthetic-benign/ — L3 golden fixtures
 └── .github/workflows/                              # l0/l1/l2/l3 + release + competitor-watch + devpost-submit + budget-guard
 ```
@@ -112,7 +115,7 @@ The Python CLI inside the shipped Docker image is invoked as `find-evil` (see `D
 
 These show up across multiple specs and the agent-config files. Violating any of them breaks the judging story or an integration contract:
 
-- **No `execute_shell` MCP tool, ever.** The Rust MCP server's typed surface (11 tools, Spec #2 §6) is deliberately narrow. Adding shell pass-through undoes the "reduces the attack surface" pitch.
+- **No `execute_shell` MCP tool, ever.** The Rust MCP server's typed surface (12 tools — the 11 from Spec #2 §6 plus `vol_psscan` for DKOM cross-validation) is deliberately narrow. Adding shell pass-through undoes the "reduces the attack surface" pitch.
 - **Every Finding cites a `tool_call_id`.** The verifier node vetos any Finding without one (Spec #2, `agent-config/SOUL.md`). UI chips render `[confirmed · tool · sha256]` per finding.
 - **Epistemic hierarchy is strict.** `CONFIRMED` (backed by tool output) > `INFERRED` (≥2 confirmed facts, labeled) > `HYPOTHESIS` (prefixed "hypothesis:"). Nothing else is legal.
 - **AGPL/GPL tools (Hayabusa, Chainsaw, Volatility3, Velociraptor, YARA) are subprocess-only — never linked.** Violating this contaminates the submission license (must be MIT or Apache-2.0 per SANS rules).
@@ -233,6 +236,7 @@ Specs were written 2026-04-23; code has been shipped since 2026-04-24. Where the
 - **Rust toolchain: spec pins 1.83, repo ships 1.88.** `Cargo.toml` (`rust-version = "1.88"`) and `rust-toolchain.toml` (`channel = "1.88.0"`) both note the bump was needed because transitive deps (e.g. `clap_builder` 4.6) now require edition-2024 stabilization (Rust ≥1.85). Spec #2 §16 is superseded; don't downgrade.
 - **`Cargo.lock` is committed.** `.gitignore` has an explicit comment: "Cargo.lock IS committed — this is an application workspace with a shipped binary (findevil-mcp), not a library." Don't add it back to the ignore list.
 - **Python CLI package is `findevil_agent`, not `services.agent`.** The shipped `Dockerfile` calls `python3 -m findevil_agent.cli`; dev invocations should match. The `services/agent/` directory hosts the package source.
+- **Rust MCP tool count is 12, not 11.** Spec #2 §6 enumerates 11; we shipped a 12th — `vol_psscan` — to support DKOM cross-validation against `vol_pslist`. The pair is deliberately redundant (active-list walk vs pool-memory signature scan); divergence between them IS the T1014/Rootkit forensic finding. Don't remove psscan or fold it into pslist.
 
 When you spot a new divergence, append it here (one bullet, one line) before continuing with the task — so the next session doesn't re-litigate the same decision.
 
