@@ -81,6 +81,10 @@ def run_find_evil_auto(evidence_path: str) -> dict:
             evidence_path,
             "--unattended",
             "--no-report",
+            # Fleet investigate already verified the VM is reachable
+            # via list_evidence(); skip the per-host SSH preflight to
+            # save ~50ms × 22 hosts on a fleet run.
+            "--skip-preflight",
         ],
         capture_output=True,
         text=True,

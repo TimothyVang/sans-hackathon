@@ -1017,6 +1017,45 @@ class Investigation:
 # ---------------------------------------------------------------------------
 
 
+def preflight_check() -> None:
+    """Verify SSH key + reachable VM + remote findevil-mcp binary
+    BEFORE spawning the orchestrator. A judge running this script
+    without a configured SIFT VM will see a clear error pointing at
+    scripts/sift-vm-bootstrap.sh, not a Python stack trace."""
+    if not Path(SSH_KEY).is_file():
+        print(
+            f"ERROR: SSH key not found at {SSH_KEY}\n\n"
+            "Either:\n"
+            "  - run scripts/sift-vm-bootstrap.sh to generate one, OR\n"
+            "  - set FIND_EVIL_SSH_KEY=<path> to point at an existing key.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    try:
+        code, _, stderr = ssh_run(
+            f"test -x {RUST_BIN} && echo ok",
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired:
+        code, stderr = 124, "ssh connect timed out after 10s"
+    if code != 0:
+        print(
+            f"ERROR: cannot reach SIFT VM at {GUEST_USER}@{GUEST_IP} or "
+            f"the findevil-mcp binary is missing.\n\n"
+            f"Pre-flight tried: ssh {GUEST_USER}@{GUEST_IP} "
+            f"'test -x {RUST_BIN}'\n"
+            f"  exit code: {code}\n"
+            f"  stderr   : {stderr.strip()[:200]}\n\n"
+            "Fix:\n"
+            "  - first time: run scripts/sift-vm-bootstrap.sh (one-shot ~15min)\n"
+            "  - VM down  : run scripts/find-evil-sift (auto-boots)\n"
+            "  - alt host : set FIND_EVIL_GUEST_IP / FIND_EVIL_GUEST_USER /\n"
+            "               FIND_EVIL_GUEST_REPO env vars before re-running.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         description="Automated Find Evil! investigation orchestrator",
@@ -1037,10 +1076,20 @@ def main() -> int:
         action="store_true",
         help="Skip PDF report generation at the end.",
     )
+    p.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="Skip SSH/VM pre-flight checks. Useful when the orchestrator "
+        "is invoked from fleet_investigate.py which already verified "
+        "the VM is reachable for the whole fleet run.",
+    )
     args = p.parse_args()
 
     # Make sibling scripts importable (render_report.py)
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+    if not args.skip_preflight:
+        preflight_check()
 
     inv = Investigation(
         args.evidence_path,
