@@ -108,6 +108,19 @@ run_smoke \
     "divergence-smoke (5 active divergences from CLAUDE.md downstream-clean)" \
     "python3 scripts/divergence-smoke.py"
 
+# 8 + 9. Lint / format gate.  L0 GHA workflow runs these; mirror
+# locally so a contributor running this script before commit
+# catches a missing `ruff format` before the push.  Skipped if
+# ruff isn't on PATH (unusual on a dev host).
+run_smoke \
+    "ruff check . (lint clean across all Python services)" \
+    "ruff check ." \
+    "command -v ruff"
+run_smoke \
+    "ruff format --check . (formatter clean — matches L0 GHA gate)" \
+    "ruff format --check ." \
+    "command -v ruff"
+
 total=$((passed + failed + skipped))
 echo
 echo "=========================================="
