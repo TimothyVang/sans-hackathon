@@ -21,11 +21,13 @@ Autonomous build swarm that drives Claude Code subagents to execute `BUILD_PLAN_
 Documented in `CLAUDE.md` (repo root) and generated from `services/swarm/main.py`:
 
 ```
-bash scripts/swarm-start.sh                    # pre-flight + nightly supervisor run
-uv run python -m services.swarm.main --week 4 --dry-run-gate
-uv run python -m services.swarm.main --resume  # after laptop sleep
-bash scripts/swarm-status.sh                   # morning triage dashboard
+bash scripts/swarm-start.sh                                                       # pre-flight + nightly supervisor run
+cd services/swarm && uv run python -m findevil_swarm.main run --week 4 --dry-run-gate
+cd services/swarm && uv run python -m findevil_swarm.main run --resume            # after laptop sleep
+bash scripts/swarm-status.sh                                                      # morning triage dashboard
 ```
+
+The package is `findevil_swarm` (Python identifier) / `findevil-swarm` (PyPI / console-script name) — this is the **shipped** name and matches the other `findevil_*` Python packages in this repo. The original Spec #1 build-swarm-plan TDD doc still uses `services.swarm.*` imports; that's a known plan-vs-code divergence captured in the root CLAUDE.md "Spec/code divergences" guidance. The canonical invocation pattern lives at `scripts/swarm-start.sh:105` — match that if you're hand-running the swarm.
 
 ## Invariants (Amendment A1)
 

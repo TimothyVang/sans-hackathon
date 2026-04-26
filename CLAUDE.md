@@ -171,11 +171,13 @@ None of these succeed today — the code they target doesn't exist yet. They are
 - Pre-A2 launchers (`./find-evil serve|run|verify`, `find-evil` console script, `openclaw run`) are deprecated and not on the critical path.
 
 **Build swarm (Spec #1, interpret through Amendment A1):**
-- Pre-flight + start a nightly run: `bash scripts/swarm-start.sh` (verifies Postgres + git clean, then invokes `services/swarm/main.py`)
-- Dry-run gate for a specific week: `uv run python -m services.swarm.main --week 4 --dry-run-gate`
-- Resume after laptop sleep: `uv run python -m services.swarm.main --resume`
+- Pre-flight + start a nightly run: `bash scripts/swarm-start.sh` (verifies Postgres + git clean, then `cd services/swarm && uv run python -m findevil_swarm.main run …`)
+- Dry-run gate for a specific week: `cd services/swarm && uv run python -m findevil_swarm.main run --week 4 --dry-run-gate`
+- Resume after laptop sleep: `cd services/swarm && uv run python -m findevil_swarm.main run --resume`
 - Morning triage status: `bash scripts/swarm-status.sh`
 - Postgres DAG state lives in Docker Compose service: `docker compose -f docker/swarm-postgres.yml up -d`
+
+  Note: the swarm package is `findevil_swarm` (matches the `findevil_*` naming convention shared with `findevil_agent` + `findevil_agent_mcp`). The original Spec #1 / build-swarm-plan TDD doc imports from `services.swarm.*` — that's a known **plan-vs-code divergence** (the plan was written with the `services.swarm.*` namespace; the code shipped under `findevil_swarm.*` for consistency with the other Python packages). When in doubt, match `scripts/swarm-start.sh` line 105 — that's the canonical invocation.
 
 **Sandbox layers (Spec #3):**
 - L1 locally: `docker compose -f docker/l1-compose.yml up --build --exit-code-from l1` (base image is `docker/l1-devbase.Dockerfile`)
@@ -238,6 +240,7 @@ Specs were written 2026-04-23; code has been shipped since 2026-04-24. Where the
 - **Python CLI package is `findevil_agent`, not `services.agent`.** The shipped `Dockerfile` calls `python3 -m findevil_agent.cli`; dev invocations should match. The `services/agent/` directory hosts the package source. **Caveat (A2):** Amendment A2 dropped `services/agent/findevil_agent/cli.py`, so the Dockerfile's `find-evil` wrapper currently calls a module that no longer exists. The `.deb` package therefore does not work under A2 today — the path forward is to either rewrite the Dockerfile so `find-evil` invokes `scripts/find-evil-auto` (Tesla mode in the SIFT VM) OR to cut the `find-evil` wrapper entirely (since A2's "Claude Code IS the orchestrator" means the in-container CLI has no runtime). This is a user-facing architectural decision; flagged as a Devpost-submission hard blocker until resolved.
 - **Rust MCP tool count is 12, not 11.** Spec #2 §6 enumerates 11; we shipped a 12th — `vol_psscan` — to support DKOM cross-validation against `vol_pslist`. The pair is deliberately redundant (active-list walk vs pool-memory signature scan); divergence between them IS the T1014/Rootkit forensic finding. Don't remove psscan or fold it into pslist.
 - **`rmcp` is intentionally NOT a runtime dependency.** Spec #2 §4.1 + the per-tool source-tree section list `rmcp 0.16.x` as the MCP server framework. We ship a **hand-rolled** stdio JSON-RPC 2.0 implementation pinned to MCP 2024-11-05 in `services/mcp/src/server.rs` instead — chosen for wire-format stability across rmcp's churn and to mirror the Python `findevil-agent-mcp` dispatch shape. `services/mcp/Cargo.toml` line 27 has the `rmcp = { version = "=0.16.0", ... }` line commented out as a deliberate marker. Don't uncomment it without a spec amendment; reasons in `services/mcp/README.md`.
+- **Swarm Python package is `findevil_swarm`, not `services.swarm`.** Spec #1 / `docs/superpowers/plans/2026-04-23-build-swarm-plan.md` use `from services.swarm.foo import bar` throughout. The code shipped under `findevil_swarm.*` instead — same convention as `findevil_agent`, `findevil_agent_mcp`, and the `findevil-mcp` Rust crate. Tests + console script (`findevil-swarm = "findevil_swarm.main:main"`) + the canonical `scripts/swarm-start.sh:105` invocation (`cd services/swarm && exec uv run python -m findevil_swarm.main run "$@"`) all use the shipped name. When the plan and the code disagree on import paths, the code wins.
 
 When you spot a new divergence, append it here (one bullet, one line) before continuing with the task — so the next session doesn't re-litigate the same decision.
 
