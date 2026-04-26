@@ -4,8 +4,9 @@
 //! package so the Rust MCP server can independently produce the
 //! same audit-log line hashes + Merkle roots over the same input
 //! events. Cross-language byte-identical output is required for
-//! ``find-evil verify`` to replay a manifest produced by either
-//! side.
+//! ``verify_manifest`` (in Python ``findevil_agent.crypto.manifest``,
+//! also exposed via the ``manifest_verify`` MCP tool) to replay
+//! a manifest produced by either side.
 //!
 //! Sub-modules:
 //!

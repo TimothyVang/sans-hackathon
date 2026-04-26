@@ -103,6 +103,11 @@ run_smoke \
     "launcher-smoke (bash -n + claude binary + no positional .)" \
     "python3 scripts/launcher-smoke.py"
 
+# 7. Spec/code divergence lock — asserts no doc has re-introduced a bad-half pattern.
+run_smoke \
+    "divergence-smoke (5 active divergences from CLAUDE.md downstream-clean)" \
+    "python3 scripts/divergence-smoke.py"
+
 total=$((passed + failed + skipped))
 echo
 echo "=========================================="
