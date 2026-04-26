@@ -31,14 +31,17 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO / "scripts"
 
-# Extension-less launchers that wrap claude / python and are critical
-# operator-facing entry points. Adding a new one? Add it here so the
-# bash-syntax check catches typos before they ship.
-EXTENSIONLESS_LAUNCHERS = [
-    "find-evil",
-    "find-evil-auto",
-    "find-evil-sift",
-]
+# Shebangs that mark a file as a shell script we should audit.
+# Extension-less files (the find-evil family deliberately drops .sh
+# to read like CLI tools) get auto-discovered via this check so a
+# new launcher dropped under scripts/ is gated next CI run without
+# anyone having to update an explicit list.
+SHELL_SHEBANGS: tuple[bytes, ...] = (
+    b"#!/usr/bin/env bash",
+    b"#!/bin/bash",
+    b"#!/usr/bin/env sh",
+    b"#!/bin/sh",
+)
 
 # CLI binary the launchers should resolve to.
 CANONICAL_CLAUDE_BINARY = "claude"
@@ -66,15 +69,35 @@ OK = "[OK  ]"
 FAIL = "[FAIL]"
 
 
+def _has_shell_shebang(p: Path) -> bool:
+    """True if p starts with one of SHELL_SHEBANGS. Reads only the
+    first ~80 bytes to keep this cheap."""
+    try:
+        with p.open("rb") as f:
+            first = f.read(80)
+    except OSError:
+        return False
+    return any(first.startswith(s) for s in SHELL_SHEBANGS)
+
+
 def _list_launchers() -> list[Path]:
-    """Every launcher we need to syntax-check + audit."""
-    out = []
-    for name in EXTENSIONLESS_LAUNCHERS:
-        p = SCRIPTS_DIR / name
-        if p.exists():
-            out.append(p)
-    out.extend(sorted(SCRIPTS_DIR.glob("*.sh")))
-    return out
+    """Every launcher we need to syntax-check + audit.
+
+    Discovery is two-pronged so a new launcher dropped under
+    scripts/ is auto-gated:
+      1. *.sh glob - any shell script with the conventional suffix.
+      2. extension-less files in scripts/ that have a shell shebang
+         (the find-evil family drops .sh to read like CLI tools).
+    """
+    out: set[Path] = set(SCRIPTS_DIR.glob("*.sh"))
+    for p in SCRIPTS_DIR.iterdir():
+        if not p.is_file():
+            continue
+        if "." in p.name:
+            continue  # Skip *.py, *.css, etc; only extension-less.
+        if _has_shell_shebang(p):
+            out.add(p)
+    return sorted(out)
 
 
 def _bash_syntax_check(p: Path) -> tuple[bool, str]:
