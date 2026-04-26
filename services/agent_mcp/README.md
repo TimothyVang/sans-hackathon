@@ -43,3 +43,30 @@ emitted to the MCP client at `list_tools` time.
 ```bash
 uv run --directory services/agent_mcp pytest
 ```
+
+## End-to-end smoke harness
+
+`scripts/agent-mcp-smoke.py` spawns this server (matching the
+`.mcp.json` boot recipe) and drives the full demo flow over stdio
+JSON-RPC — `tools/list`, then `audit_append` × 12 chained records,
+`audit_verify`, `detect_contradictions`, `judge_findings`,
+`correlate_findings`, `manifest_finalize`, `manifest_verify`, plus
+a tampered-manifest negative test.
+
+```bash
+# Synthetic Findings (default — exercises all 9 tools that don't
+# need the Rust DFIR server or network):
+uv run --directory services/agent_mcp python ../../scripts/agent-mcp-smoke.py
+
+# Real-evidence regression (loads a real find-evil-auto case dir,
+# replays its verdict.json + audit.jsonl + run.manifest.json
+# through the agent_mcp surface — proves we still parse production
+# output shape after any schema change):
+uv run --directory services/agent_mcp python ../../scripts/agent-mcp-smoke.py --real-evidence
+```
+
+Both flows run in CI as part of `docker/l1-compose.yml`'s command
+sequence (see `.github/workflows/l1-unit.yml`). The synthetic
+flow is sufficient to gate merges; the real-evidence flow needs
+a populated `tmp/auto-runs/auto-<uuid>/` and is run manually
+post-investigation as a regression check.
