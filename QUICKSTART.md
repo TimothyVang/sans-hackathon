@@ -32,9 +32,9 @@ winget install Velociraptor  # or github.com/Velocidex/velociraptor/releases
 
 ---
 
-## 2. Open Claude Code in this repo
+## 2. Choose: interactive (Claude Code) or fully-automated (Tesla mode)
 
-Two equivalent commands:
+### Option 2A — Interactive Claude Code session (best for exploration)
 
 ```bash
 # Local mode:
@@ -48,28 +48,70 @@ bash scripts/find-evil-sift
 
 `.mcp.json` (or `.mcp.json.sift`, swapped automatically) tells Claude Code to spawn both MCP servers — `findevil-mcp` (Rust, 11 typed DFIR tools) and `findevil-agent-mcp` (Python, 10 typed crypto/ACH tools). The agent now has its tool surface.
 
----
-
-## 3. Investigate
-
-In the Claude Code session, prompt:
+In the session, prompt:
 
 > investigate `<path-to-evidence>`
 
+The agent reads `agent-config/SOUL.md` → `AGENTS.md` → `PLAYBOOK.md` → `TOOLS.md` → `MEMORY.md` → `HEARTBEAT.md` at session start, then drives the playbook tool sequence for that evidence type.
+
+### Option 2B — `find-evil-auto` (Tesla mode, single command, no human input)
+
+```bash
+bash scripts/find-evil-auto <evidence-path-inside-VM> [--unattended] [--no-report]
+```
+
 Examples:
 
+```bash
+# Memory image:
+bash scripts/find-evil-auto /mnt/hgfs/evidence/extracted/base-dc/base-dc-memory.img --unattended
+
+# Single EVTX:
+bash scripts/find-evil-auto /home/sansforensics/find-evil/fixtures/single-evtx/Security.evtx --unattended
+
+# Disk image (case_open + chain-of-custody only; deeper analysis requires interactive mode):
+bash scripts/find-evil-auto /mnt/hgfs/evidence/disk-images/base-dc-cdrive.E01 --unattended
 ```
-# A disk image:
-investigate /mnt/hgfs/evidence/disk-images/base-dc-cdrive.E01
 
-# A memory image:
-investigate /mnt/hgfs/evidence/extracted/base-dc/base-dc-memory.img
+What it does in one command (no interactive prompts):
 
-# A single EVTX:
-investigate /mnt/hgfs/evidence/single-evtx/Security.evtx
+1. Detects evidence type from the file extension
+2. Opens both MCP servers inside the SIFT VM via SSH stdio
+3. case_open → tool sequence per type → audit chain → judge → correlator → manifest_finalize
+4. Synthesizes Pool A (persistence-biased) and Pool B (exfil-biased) findings deterministically from tool outputs
+5. Writes `verdict.json` with the verdict (`SUSPICIOUS` / `NO_EVIL` / `INDETERMINATE`)
+6. Generates a fully-templated PDF investigation report (figures + findings + chain-of-custody attestation)
+
+Output (on host, host-local):
+```
+tmp/auto-runs/auto-<uuid>/
+├── audit.jsonl
+├── run.manifest.json
+├── verdict.json
+├── REPORT.md
+├── REPORT.html
+├── REPORT.pdf
+└── figures/
+    ├── chain_of_custody.png
+    ├── findings_table.png
+    └── psscan_timeline.png  (memory images only)
 ```
 
-The agent reads `agent-config/SOUL.md` → `AGENTS.md` → `PLAYBOOK.md` → `TOOLS.md` → `MEMORY.md` → `HEARTBEAT.md` at session start, then drives the playbook tool sequence for that evidence type. You'll see:
+Output (inside VM, agent's case dir):
+```
+/home/sansforensics/find-evil/tmp/auto-<uuid>/
+├── audit.jsonl
+├── run.manifest.json
+└── verdict.json
+```
+
+Run it with `--no-report` if you just want the verdict + manifest and skip PDF rendering (saves ~5 seconds).
+
+---
+
+## 3. (If interactive) the agent drives the playbook
+
+You'll see:
 
 1. `case_open` — SHA-256 of the evidence (chain of custody starts here)
 2. **Pool A** (persistence) and **Pool B** (exfil) subagents fork in parallel and run their tool sequences
