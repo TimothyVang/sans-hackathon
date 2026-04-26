@@ -109,6 +109,7 @@ See [QUICKSTART.md](QUICKSTART.md) for the full per-mode walkthrough and [docs/a
 ├── docs/
 │   ├── architecture.md       — five trust boundaries + Mermaid diagrams
 │   ├── cryptographic-attestation.md — the five-link chain (audit → Merkle → sigstore → OTS → FRE 902(14))
+│   ├── verdict-semantics.md  — what SUSPICIOUS / INDETERMINATE / NO_EVIL mean + triage flow
 │   ├── false-positives.md    — three architectural FP layers + four operational habits
 │   ├── demo-script-a2.md     — 5-minute Devpost video script (per-beat narration)
 │   ├── reports/              — analyst-facing investigation reports (real evidence)
