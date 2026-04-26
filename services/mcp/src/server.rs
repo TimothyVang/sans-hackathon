@@ -42,9 +42,9 @@ use sha2::{Digest, Sha256};
 use crate::tools::{
     case_open, evtx_query::evtx_query, hayabusa_scan::hayabusa_scan, mft_timeline::mft_timeline,
     prefetch_parse::prefetch_parse, registry_query::registry_query, usnjrnl_query::usnjrnl_query,
-    vol_malfind::vol_malfind, vol_pslist::vol_pslist, yara_scan::yara_scan, CaseOpenInput,
-    EvtxQueryInput, HayabusaInput, MftInput, PrefetchInput, RegistryInput, UsnJrnlInput,
-    VolMalfindInput, VolPslistInput, YaraInput,
+    vel_collect::vel_collect, vol_malfind::vol_malfind, vol_pslist::vol_pslist,
+    yara_scan::yara_scan, CaseOpenInput, EvtxQueryInput, HayabusaInput, MftInput, PrefetchInput,
+    RegistryInput, UsnJrnlInput, VelCollectInput, VolMalfindInput, VolPslistInput, YaraInput,
 };
 use crate::CRATE_VERSION;
 
@@ -345,6 +345,39 @@ fn build_registry() -> Vec<ToolEntry> {
             schema: || schema_for::<VolMalfindInput>(),
             handler: |args| dispatch_vol_malfind(args),
         },
+        ToolEntry {
+            name: "vel_collect",
+            description: "Run a Velociraptor artifact via `velociraptor artifacts collect` and \
+                 stream the resulting rows. Generic trampoline over Velociraptor's 200+ \
+                 built-in DFIR artifacts (Windows.Forensics.Prefetch, \
+                 Windows.Persistence.Services, Generic.Forensic.LocalHashes, etc.) — the \
+                 agent picks the artifact name and supplies any required parameters via \
+                 `args` (e.g. {\"device\":\"C:\"}). Apache-2.0; subprocess-only per Spec #2. \
+                 Use AFTER case_open. artifact must be a dotted-path name like \
+                 `Windows.Forensics.Prefetch` (validated up-front to keep injection out of \
+                 argv). args is an optional `key=value` map; keys must be \
+                 `[A-Za-z_][A-Za-z0-9_]*`. Default limit 10000 rows. \
+                 Velociraptor binary discovery: $VELOCIRAPTOR_BIN env var first, then PATH \
+                 lookup for `velociraptor` (single-binary release; install from \
+                 https://github.com/Velocidex/velociraptor/releases). \
+                 Returns rows[] {artifact, fields: free-form column map} + rows_seen + \
+                 stderr_tail. The fields map is intentionally unstructured — every artifact \
+                 has its own column set, and pinning a typed shape would be hostile to the \
+                 agent's flexibility. \
+                 PAIR WITH yara_scan and registry_query for live-response corroboration: \
+                 Velociraptor artifacts often surface persistence and execution evidence in \
+                 a single row whose source artifacts also exist as standalone tools — \
+                 cross-checking those tools confirms the Velociraptor row is not a parsing \
+                 artefact. \
+                 ERRORS: BinaryNotFound (install Velociraptor or set $VELOCIRAPTOR_BIN), \
+                 InvalidArtifactName (artifact name failed dotted-path validation; check \
+                 spelling against `velociraptor artifacts list`), InvalidArgName (an arg \
+                 key contained shell-meaningful characters), SubprocessFailed (Velociraptor \
+                 returned non-zero; check stderr_tail), OutputParse (stdout was neither \
+                 JSONL nor a JSON array — usually a Velociraptor version mismatch).",
+            schema: || schema_for::<VelCollectInput>(),
+            handler: |args| dispatch_vel_collect(args),
+        },
     ]
 }
 
@@ -571,6 +604,21 @@ fn dispatch_vol_malfind(args: Value) -> Result<Value, ToolError> {
     serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
 }
 
+fn dispatch_vel_collect(args: Value) -> Result<Value, ToolError> {
+    let input: VelCollectInput = parse_args(args)?;
+    // InvalidArtifactName / InvalidArgName are user-input issues; surface as -32602.
+    match vel_collect(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(
+            e @ (crate::tools::VelCollectError::InvalidArtifactName(_)
+            | crate::tools::VelCollectError::InvalidArgName(_)),
+        ) => Err(ToolError::InvalidParams(format!("{e}"))),
+        Err(e) => Err(ToolError::Internal(format!("vel_collect: {e}"))),
+    }
+}
+
 fn parse_args<T: DeserializeOwned>(args: Value) -> Result<T, ToolError> {
     serde_json::from_value(args).map_err(|e| ToolError::InvalidParams(format!("invalid args: {e}")))
 }
@@ -667,6 +715,7 @@ mod tests {
             "hayabusa_scan",
             "vol_pslist",
             "vol_malfind",
+            "vel_collect",
         ];
         assert_eq!(names.len(), expected.len());
         for want in expected {

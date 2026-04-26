@@ -195,6 +195,7 @@ def main() -> int:
                 "hayabusa_scan",
                 "vol_pslist",
                 "vol_malfind",
+                "vel_collect",
             ]
         )
         if names != expected:
@@ -407,7 +408,22 @@ def main() -> int:
         )
         log("  -> -32603 with 'memory image not found' as expected")
 
-        # ---- 14. unknown tool dispatch is rejected ----------------------
+        # ---- 14. vel_collect invalid-artifact-name (-32602) -------------
+        log("vel_collect: invalid artifact name (-32602)...")
+        expect_error_response(
+            "tools/call",
+            {
+                "name": "vel_collect",
+                "arguments": {
+                    "case_id": handle["id"],
+                    "artifact": "Has Spaces",
+                },
+            },
+            "invalid artifact name",
+        )
+        log("  -> -32602 invalid_params with 'invalid artifact name' as expected")
+
+        # ---- 15. unknown tool dispatch is rejected ----------------------
         log("unknown tool: expect JSON-RPC error...")
         client.send(
             {
@@ -425,7 +441,7 @@ def main() -> int:
         print()
         print("=" * 60)
         print("OK — Rust MCP server speaks 2024-11-05 over stdio.")
-        print("  All 10 tools dispatchable, error paths well-formed.")
+        print("  All 11 tools dispatchable, error paths well-formed.")
         print("=" * 60)
         return 0
     finally:

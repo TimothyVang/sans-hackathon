@@ -46,6 +46,9 @@ pub use crate::tools::registry_query::{
 pub use crate::tools::usnjrnl_query::{
     path_looks_like_usnjrnl, usnjrnl_query, UsnJrnlEntry, UsnJrnlError, UsnJrnlInput, UsnJrnlOutput,
 };
+pub use crate::tools::vel_collect::{
+    vel_collect, VelCollectError, VelCollectInput, VelCollectOutput, VelRow,
+};
 pub use crate::tools::vol_malfind::{
     vol_malfind, VolInjection, VolMalfindError, VolMalfindInput, VolMalfindOutput,
 };
