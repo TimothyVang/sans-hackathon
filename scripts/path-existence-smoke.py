@@ -78,6 +78,7 @@ SCAN_LIST: tuple[str, ...] = (
     "services/swarm/README.md",
     # Decision runbooks.
     "docs/runbooks/dockerfile-a2-decision.md",
+    "docs/runbooks/github-remote-bootstrap.md",
     "docs/runbooks/ci-smoke-checklist.md",
 )
 
