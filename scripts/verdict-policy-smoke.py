@@ -30,9 +30,9 @@ from typing import Any
 REPO = Path(__file__).resolve().parent.parent
 
 
-def load_compute_verdict():
-    """Load Investigation.compute_verdict from scripts/find_evil_auto.py
-    without spinning up the orchestrator's main()."""
+def load_find_evil_auto():
+    """Load scripts/find_evil_auto.py as a module without spinning up
+    the orchestrator's main()."""
     spec = importlib.util.spec_from_file_location(
         "find_evil_auto_under_test",
         REPO / "scripts" / "find_evil_auto.py",
@@ -41,15 +41,7 @@ def load_compute_verdict():
         raise RuntimeError("could not build spec for find_evil_auto.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-
-    # `compute_verdict` is an instance method on Investigation but
-    # only reads `self` for nothing — it's pure on `merged`. We can
-    # call it as an unbound method by passing None for self. Python
-    # doesn't care.
-    def call(merged: list[dict[str, Any]]) -> str:
-        return mod.Investigation.compute_verdict(None, merged)
-
-    return call
+    return mod
 
 
 def case(label: str, merged: list[dict[str, Any]], expected: str) -> tuple[str, bool]:
@@ -57,9 +49,14 @@ def case(label: str, merged: list[dict[str, Any]], expected: str) -> tuple[str, 
 
 
 def main() -> int:
-    compute_verdict = load_compute_verdict()
+    fea = load_find_evil_auto()
+    # compute_verdict is an instance method on Investigation but only
+    # reads `self` for nothing — pure on `merged`. Call as unbound
+    # method passing None for self; Python doesn't care.
+    compute_verdict = lambda merged: fea.Investigation.compute_verdict(None, merged)  # noqa: E731
+    detect_evidence_type = fea.detect_evidence_type
     print("=" * 60)
-    print("Find Evil! — verdict policy smoke (compute_verdict)")
+    print("Find Evil! — verdict + evidence-type policy smoke")
     print("=" * 60)
 
     cases: list[tuple[str, list[dict[str, Any]], str]] = [
@@ -141,21 +138,64 @@ def main() -> int:
         actual = compute_verdict(merged)
         ok = actual == expected
         marker = "OK  " if ok else "FAIL"
-        print(f"  [{marker}] {label}")
+        print(f"  [{marker}] verdict: {label}")
         if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
+    # ----- detect_evidence_type dispatch -----------------------------
+    # Routes the orchestrator to the right per-type playbook (memory
+    # → vol_pslist+psscan+malfind; evtx → evtx_query+hayabusa;
+    # disk → case_open only). A regression here means evidence
+    # silently dispatches to the wrong tool sequence.
+    et_cases: list[tuple[str, str, str]] = [
+        # memory variants
+        ("base-dc-memory.img -> memory", "/mnt/x/base-dc-memory.img", "memory"),
+        ("foo.mem -> memory", "foo.mem", "memory"),
+        ("foo.raw -> memory", "foo.raw", "memory"),
+        ("foo.vmem -> memory", "foo.vmem", "memory"),
+        ("foo.dmp -> memory", "foo.dmp", "memory"),
+        ("foo.lime -> memory", "foo.lime", "memory"),
+        # evtx
+        ("Security.evtx -> evtx", "/var/log/Security.evtx", "evtx"),
+        # disk variants
+        ("foo.E01 -> disk (case-insensitive)", "foo.E01", "disk"),
+        ("foo.e01 -> disk", "foo.e01", "disk"),
+        ("foo.dd -> disk", "foo.dd", "disk"),
+        ("foo.aff -> disk", "foo.aff", "disk"),
+        ("foo.aff4 -> disk", "foo.aff4", "disk"),
+        ("foo.001 -> disk (split-image)", "foo.001", "disk"),
+        # unknown
+        ("foo.txt -> unknown", "foo.txt", "unknown"),
+        (
+            "foo.zip -> unknown (Velociraptor zip needs explicit handling)",
+            "foo.zip",
+            "unknown",
+        ),
+        ("no extension -> unknown", "foo", "unknown"),
+    ]
+    for label, path, expected in et_cases:
+        actual = detect_evidence_type(path)
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] evtype: {label}")
+        if not ok:
+            print(f"         path    : {path!r}")
             print(f"         expected: {expected!r}")
             print(f"         actual  : {actual!r}")
             failures += 1
 
     print()
     print("=" * 60)
+    total = len(cases) + len(et_cases)
     if failures == 0:
-        print(f"OK - all {len(cases)} compute_verdict cases pass.")
+        print(f"OK - all {total} verdict + evidence-type cases pass.")
         print("=" * 60)
         return 0
-    print(f"FAIL - {failures} of {len(cases)} compute_verdict cases failed.")
+    print(f"FAIL - {failures} of {total} cases failed.")
     print("If the change is intentional, update both:")
-    print("  - scripts/find_evil_auto.py::compute_verdict")
+    print("  - scripts/find_evil_auto.py (compute_verdict / detect_evidence_type)")
     print("  - scripts/verdict-policy-smoke.py expected outputs")
     print("  - docs/verdict-semantics.md per-verdict trigger list")
     print("=" * 60)
