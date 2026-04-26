@@ -367,7 +367,10 @@ mod tests {
         });
         let inj = json_value_to_injection(&v);
         assert_eq!(inj.pid, 1234);
-        assert!(inj.mz_match, "MZ in Notes string must surface as mz_match=true");
+        assert!(
+            inj.mz_match,
+            "MZ in Notes string must surface as mz_match=true"
+        );
     }
 
     #[test]
