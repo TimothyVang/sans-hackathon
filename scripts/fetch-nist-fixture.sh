@@ -80,8 +80,12 @@ if [[ -n "${NIST_FIXTURE_SHA256:-}" ]] && [[ "${got_sha}" != "${NIST_FIXTURE_SHA
   exit 1
 fi
 
-# Cheap magic-byte sanity check — EVTX files start with "ElfFile\x00".
-head -c 8 "${DEST_FILE}" | od -An -c | tr -d ' \n' | grep -q 'ElfFile' || {
+# Cheap magic-byte sanity check — EVTX files start with the exact 8 bytes
+# "ElfFile\0". `od -An -c` renders the trailing null as the literal `\0`
+# token; we require it explicitly so a file that happens to start with
+# "ElfFile" but is not a real EVTX (e.g. a stub HTML page named .evtx
+# or a different binary format) cannot pass.
+head -c 8 "${DEST_FILE}" | od -An -c | tr -d ' \n' | grep -q 'ElfFile\\0' || {
   log "ERROR: ${DEST_FILE} does not start with EVTX magic bytes (\"ElfFile\\0\")"
   log "  got: $(head -c 8 "${DEST_FILE}" | od -An -c)"
   log "  the URL likely served HTML or a redirect page, not the .evtx file."

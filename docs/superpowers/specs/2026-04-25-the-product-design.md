@@ -970,7 +970,7 @@ Aligns to master design `§7` revised 8-week schedule.
 | `@tanstack/react-table` | 8.x | MIT | EventTable |
 | Hayabusa | 2.x (subprocess) | AGPL-3.0 | Sigma scoring |
 | Chainsaw | v2.x (subprocess) | GPL-2.0 | MFT/Shimcache/timeline |
-| Volatility3 | 2.x (subprocess) | BSD-2-Clause | Memory analysis |
+| Volatility3 | 2.x (subprocess) | AGPL-3.0 | Memory analysis |
 | Velociraptor | 0.7.x (subprocess) | AGPL-3.0 | Artifact collection |
 | YARA Forge Core | weekly tarball | Mixed (Core tier) | YARA rules |
 

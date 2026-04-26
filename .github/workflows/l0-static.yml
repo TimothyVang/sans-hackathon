@@ -238,4 +238,30 @@ jobs:
             echo "Reference: docs/superpowers/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md"
             exit 1
           fi
-          echo "Amendment A2 compliance: OK (no resurrected orchestrator files)."
+          echo "Amendment A2 compliance: path check OK (no resurrected orchestrator files)."
+      - name: orchestrator code must not reappear under any filename
+        run: |
+          # The path-based check above blocks the exact files A2 dropped.
+          # This second pass blocks the ARCHITECTURAL pattern: if anyone
+          # adds LangGraph/FastAPI orchestrator code back under a
+          # different filename (e.g. agent_graph.py, runner.py), the
+          # path check would miss it. The Option-B guard uses the same
+          # content-pattern technique for LiteLLM resurrection.
+          #
+          # Match logic: code lines that *use* the orchestrator imports
+          # (not lines that merely document the prohibition). A leading
+          # `#` is excluded so docstrings/comments documenting the rule
+          # itself don't trip the guard.
+          if [ -d services/agent/findevil_agent ]; then
+            if grep -rn -E '^[^#]*\b(import langgraph|from langgraph|StateGraph\(|from fastapi import|from fastapi\.|import fastapi\b)' \
+              services/agent/findevil_agent/ \
+              --include='*.py'; then
+              echo "ERROR: Amendment A2 forbids LangGraph/FastAPI orchestrator code"
+              echo "       in services/agent/findevil_agent/."
+              echo "       Reference: docs/superpowers/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md"
+              exit 1
+            fi
+            echo "Amendment A2 compliance: content check OK (no orchestrator imports)."
+          else
+            echo "No services/agent/findevil_agent/ — skip content check."
+          fi
