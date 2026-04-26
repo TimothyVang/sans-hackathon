@@ -139,6 +139,15 @@ once the first `v0.x` is cut on the `v-submit` tag.
   PDF render silently dropped. New flow leaves the .new.pdf in
   place and prints a clear warning naming both paths if the rename
   fails.
+- **Demo-script Beat 6 on-screen command** (commit `102c59e`).
+  The fleet-pipeline beat showed `bash scripts/find-evil-auto && …`
+  but `find-evil-auto` is the single-host orchestrator and errors
+  out without an evidence-path arg. Replaced with the actual fleet
+  pipeline command (`fleet_investigate.py && fleet_correlate.py
+  && render_fleet_report.py`) so a future re-recording doesn't
+  fail mid-take. demo-script-smoke (4ddb04a) parses the beat-map
+  structure not the prose, so this passed CI before — caught by
+  fresh-eyes read of Beat 6.
 
 ### Operator UX
 
