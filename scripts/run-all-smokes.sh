@@ -57,11 +57,14 @@ run_smoke() {
         return 0
     fi
 
+    local start=${SECONDS}
     if eval "${cmd}"; then
-        echo "${c_grn}  ✓ ${label} passed${c_off}"
+        local elapsed=$((SECONDS - start))
+        echo "${c_grn}  ✓ ${label} passed (${elapsed}s)${c_off}"
         passed=$((passed + 1))
     else
-        echo "${c_red}  ✗ ${label} FAILED${c_off}"
+        local elapsed=$((SECONDS - start))
+        echo "${c_red}  ✗ ${label} FAILED (${elapsed}s)${c_off}"
         failed=$((failed + 1))
     fi
 }
