@@ -1,33 +1,38 @@
 #!/usr/bin/env python3
 """End-to-end smoke for the findevil-agent-mcp Python MCP server.
 
-Spawns the server as a subprocess (matching the ``.mcp.json`` boot
-recipe) and drives a full investigation through all 10 MCP tools.
-This is the demo flow under Amendment A2 minus the actual SCHARDT.001
-disk image — synthetic Findings shaped like the NIST CFReDS golden
-exercise the same crypto/ACH paths the live demo will.
+Two modes:
+
+**Synthetic** (default): spawns the server as a subprocess (matching
+the ``.mcp.json`` boot recipe) and drives a full investigation
+through 9 of 10 MCP tools with hand-crafted Findings. This is the
+demo flow under Amendment A2 minus the actual SCHARDT.001 disk
+image — exercises the same crypto/ACH paths the live demo will.
+
+**Real-evidence** (``--real-evidence [<auto-run-dir>]``): replays a
+real ``find-evil-auto`` case directory through the agent_mcp surface.
+Loads its ``verdict.json`` + ``audit.jsonl`` + ``run.manifest.json``,
+splits findings by ``pool_origin``, and pushes them through the
+ACH stack (audit_verify → manifest_verify → detect_contradictions
+→ judge_findings → correlate_findings). The point is regression
+coverage: prove the agent_mcp tools still parse production output
+shape after any schema change. ``verify_finding`` and ``ots_stamp``
+are skipped — the former needs the Rust DFIR server, the latter
+needs network access. If no path is given, the latest dir under
+``tmp/auto-runs/`` is used.
 
 Usage::
 
     uv run --directory services/agent_mcp python ../../scripts/agent-mcp-smoke.py
-
-What it proves:
-  1. Server boots and completes the MCP initialize handshake.
-  2. ``tools/list`` returns all 10 expected tools with valid schemas.
-  3. ``audit_append`` chains 12 representative records (tool calls,
-     findings, agent messages).
-  4. ``audit_verify`` replays the chain cleanly.
-  5. ``detect_contradictions`` surfaces a Pool A/B disagreement.
-  6. ``judge_findings`` merges with credibility weighting.
-  7. ``correlate_findings`` enforces SOUL.md cross-artifact rules.
-  8. ``manifest_finalize`` writes a signed run.manifest.json.
-  9. ``manifest_verify`` confirms audit chain + Merkle root + signature.
+    uv run --directory services/agent_mcp python ../../scripts/agent-mcp-smoke.py --real-evidence
+    uv run --directory services/agent_mcp python ../../scripts/agent-mcp-smoke.py --real-evidence tmp/auto-runs/auto-<uuid>
 
 Exit code: 0 on full success, 1 on the first assertion failure.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -190,11 +195,149 @@ def _finding(
     }
 
 
-def main() -> int:
-    print("=" * 60)
-    print("Find Evil! — agent_mcp end-to-end smoke (Amendment A2)")
-    print("=" * 60)
+def latest_auto_run() -> Path | None:
+    base = REPO / "tmp" / "auto-runs"
+    if not base.is_dir():
+        return None
+    candidates = sorted(
+        (p for p in base.glob("auto-*") if (p / "verdict.json").is_file()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else None
 
+
+def real_evidence_flow(client: StdioClient, case_dir: Path) -> int:
+    """Drive the agent_mcp surface against a real find-evil-auto case dir.
+
+    Skips verify_finding (needs Rust DFIR server) and ots_stamp (needs
+    network) — both are demonstrated in the synthetic flow's siblings.
+    """
+    audit_path = case_dir / "audit.jsonl"
+    manifest_path = case_dir / "run.manifest.json"
+    verdict_path = case_dir / "verdict.json"
+    for required in (audit_path, manifest_path, verdict_path):
+        if not required.is_file():
+            fatal(f"missing required file in case_dir: {required}")
+
+    verdict = json.loads(verdict_path.read_text(encoding="utf-8"))
+    findings = verdict.get("findings", [])
+    case_id = verdict.get("case_id") or "real-evidence-case"
+    log(f"loaded {len(findings)} findings from {verdict_path}")
+    log(f"  case_id      = {case_id}")
+    log(f"  verdict      = {verdict.get('verdict')}")
+    log(f"  evidence     = {verdict.get('evidence_path')}")
+
+    # ---- 1. audit_verify on the recorded chain ------------------------
+    log("audit_verify: replay the recorded chain...")
+    av = client.call_tool("audit_verify", {"path": str(audit_path)})
+    if not av["ok"]:
+        fatal(f"recorded audit chain did NOT verify: {av}")
+    log(f"  -> chain verifies, {av['record_count']} records")
+
+    # ---- 2. manifest_verify on the recorded manifest ------------------
+    # The manifest's `audit_log_path` is the path AS SEEN by the agent
+    # at investigation time. find-evil-auto runs the agent inside the
+    # SIFT VM; the path is /home/sansforensics/.../audit.jsonl over
+    # there. Locally the same audit.jsonl is mirrored at <case_dir>/
+    # audit.jsonl. Rewrite the manifest in-place to the local path,
+    # verify, then restore — surgical, doesn't mutate the on-disk
+    # cryptographic record long-term.
+    log("manifest_verify: replay the recorded manifest...")
+    original = manifest_path.read_text(encoding="utf-8")
+    loaded = json.loads(original)
+    saved_audit_log_path = loaded.get("audit_log_path")
+    loaded["audit_log_path"] = str(audit_path)
+    manifest_path.write_text(
+        json.dumps(loaded, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    try:
+        mv = client.call_tool("manifest_verify", {"manifest_path": str(manifest_path)})
+    finally:
+        manifest_path.write_text(original, encoding="utf-8")
+
+    if not mv["overall"]:
+        fatal(f"recorded manifest did NOT verify (after path rewrite): {mv}")
+    log(
+        "  -> overall=True  audit_chain={a}  merkle={m}  sig_present={s} "
+        "(audit_log_path rewritten {orig!r} -> local copy)".format(
+            a=mv["audit_chain_ok"],
+            m=mv["merkle_root_ok"],
+            s=mv["signature_present"],
+            orig=saved_audit_log_path,
+        )
+    )
+
+    # ---- 3. split findings by pool_origin -----------------------------
+    pool_a = [f for f in findings if f.get("pool_origin") == "A"]
+    pool_b = [f for f in findings if f.get("pool_origin") == "B"]
+    if not (pool_a or pool_b):
+        log("no pool-tagged findings — synthesizing by index for A/B split")
+        # detect_contradictions / judge_findings still need *some* split;
+        # spread findings round-robin across pools so the shape assertions
+        # exercise both branches.
+        for i, f in enumerate(findings):
+            (pool_a if i % 2 == 0 else pool_b).append(f)
+
+    log(f"split: pool_a={len(pool_a)}  pool_b={len(pool_b)}")
+
+    # ---- 4. detect_contradictions -------------------------------------
+    log("detect_contradictions: replay against real findings...")
+    cs = client.call_tool(
+        "detect_contradictions",
+        {
+            "case_id": case_id,
+            "pool_a": pool_a,
+            "pool_b": pool_b,
+            "resolution_required": False,
+        },
+    )
+    if cs["pool_a_count"] != len(pool_a) or cs["pool_b_count"] != len(pool_b):
+        fatal(f"pool counts mismatch: {cs}")
+    log(f"  -> {len(cs['contradictions'])} contradictions surfaced")
+
+    # ---- 5. judge_findings --------------------------------------------
+    log("judge_findings: replay against real findings...")
+    j = client.call_tool(
+        "judge_findings",
+        {
+            "pool_a_findings": pool_a,
+            "pool_b_findings": pool_b,
+            "pool_a_verifier_actions": [],
+            "pool_b_verifier_actions": [],
+        },
+    )
+    if "merged" not in j:
+        fatal(f"judge response missing 'merged' key: {j}")
+    log(
+        f"  -> {len(j['merged'])} merged findings (budget_exceeded={j['budget_exceeded']})"
+    )
+
+    # ---- 6. correlate_findings ----------------------------------------
+    log("correlate_findings: replay against real findings...")
+    merged_only = [m["finding"] for m in j["merged"]]
+    if merged_only:
+        c = client.call_tool("correlate_findings", {"findings": merged_only})
+        kept = sum(1 for o in c["outcomes"] if o["action"] == "kept")
+        downgraded = sum(1 for o in c["outcomes"] if o["action"] == "downgraded")
+        log(f"  -> {kept} kept, {downgraded} downgraded by SOUL.md rules")
+    else:
+        log("  -> skipped (judge produced no merged findings)")
+
+    print()
+    print("=" * 60)
+    print("OK — agent_mcp surface still parses real production output.")
+    print(f"  case_dir       : {case_dir}")
+    print(f"  case_id        : {case_id}")
+    print(f"  audit records  : {av['record_count']}")
+    print(f"  findings       : {len(findings)} ({len(pool_a)} A + {len(pool_b)} B)")
+    print(f"  contradictions : {len(cs['contradictions'])}")
+    print(f"  merged         : {len(j['merged'])}")
+    print("=" * 60)
+    return 0
+
+
+def synthetic_flow(client: StdioClient) -> int:
     case_id = f"smoke-{uuid.uuid4()}"
     run_id = f"run-{int(time.time())}"
     workdir = REPO / "tmp" / "smoke" / case_id
@@ -203,54 +346,9 @@ def main() -> int:
     manifest_path = workdir / "run.manifest.json"
     started_at = _now_iso()
 
-    cmd = [
-        "uv",
-        "run",
-        "--directory",
-        str(AGENT_MCP_DIR),
-        "python",
-        "-m",
-        "findevil_agent_mcp.server",
-    ]
-    log(f"spawning: {' '.join(cmd)}")
-    client = StdioClient(cmd)
     try:
-        # ---- 1. initialize handshake ------------------------------------
-        log("initialize handshake...")
-        init = client.call(
-            "initialize",
-            {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "agent-mcp-smoke", "version": "1.0"},
-            },
-        )
-        assert "capabilities" in init, f"no capabilities in init result: {init}"
-        client.notify("notifications/initialized")
-
-        # ---- 2. tools/list ---------------------------------------------
-        log("tools/list...")
-        tools_resp = client.call("tools/list")
-        names = sorted(t["name"] for t in tools_resp["tools"])
-        expected = sorted(
-            [
-                "audit_append",
-                "audit_verify",
-                "manifest_finalize",
-                "manifest_verify",
-                "ots_stamp",
-                "ots_verify",
-                "verify_finding",
-                "detect_contradictions",
-                "judge_findings",
-                "correlate_findings",
-            ]
-        )
-        if names != expected:
-            fatal(f"tools mismatch: got {names}, expected {expected}")
-        log(f"  -> {len(names)} tools registered")
-
-        # ---- 3. audit_append a representative tool-call sequence -------
+        # ---- 1. audit_append a representative tool-call sequence -------
+        # (initialize + tools/list happened in main() before dispatch.)
         log("audit_append: chaining 12 records...")
         records = [
             (
@@ -433,6 +531,95 @@ def main() -> int:
         print(f"  manifest       : {manifest_path}")
         print("=" * 60)
         return 0
+    finally:
+        # Client lifecycle is owned by the caller (main); leaving the
+        # try/finally as a structural placeholder so the flow's nested
+        # exits (`fatal`) still unwind cleanly even when extended later.
+        pass
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument(
+        "--real-evidence",
+        nargs="?",
+        const="<latest>",
+        default=None,
+        metavar="AUTO_RUN_DIR",
+        help=(
+            "Replay a real find-evil-auto case dir through the agent_mcp "
+            "surface. Pass a path, or omit to use the latest dir under "
+            "tmp/auto-runs/."
+        ),
+    )
+    args = parser.parse_args()
+
+    print("=" * 60)
+    if args.real_evidence is not None:
+        print("Find Evil! — agent_mcp real-evidence regression smoke")
+    else:
+        print("Find Evil! — agent_mcp end-to-end smoke (Amendment A2)")
+    print("=" * 60)
+
+    cmd = [
+        "uv",
+        "run",
+        "--directory",
+        str(AGENT_MCP_DIR),
+        "python",
+        "-m",
+        "findevil_agent_mcp.server",
+    ]
+    log(f"spawning: {' '.join(cmd)}")
+    client = StdioClient(cmd)
+    try:
+        log("initialize handshake...")
+        init = client.call(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "agent-mcp-smoke", "version": "1.0"},
+            },
+        )
+        assert "capabilities" in init, f"no capabilities in init result: {init}"
+        client.notify("notifications/initialized")
+
+        log("tools/list...")
+        tools_resp = client.call("tools/list")
+        names = sorted(t["name"] for t in tools_resp["tools"])
+        expected = sorted(
+            [
+                "audit_append",
+                "audit_verify",
+                "manifest_finalize",
+                "manifest_verify",
+                "ots_stamp",
+                "ots_verify",
+                "verify_finding",
+                "detect_contradictions",
+                "judge_findings",
+                "correlate_findings",
+            ]
+        )
+        if names != expected:
+            fatal(f"tools mismatch: got {names}, expected {expected}")
+        log(f"  -> {len(names)} tools registered")
+
+        if args.real_evidence is not None:
+            if args.real_evidence == "<latest>":
+                case_dir = latest_auto_run()
+                if case_dir is None:
+                    fatal(
+                        "no auto-run dir found under tmp/auto-runs/ — "
+                        "run scripts/find-evil-auto first"
+                    )
+            else:
+                case_dir = Path(args.real_evidence)
+                if not case_dir.is_dir():
+                    fatal(f"--real-evidence path is not a directory: {case_dir}")
+            return real_evidence_flow(client, case_dir)
+        return synthetic_flow(client)
     finally:
         client.close()
 
