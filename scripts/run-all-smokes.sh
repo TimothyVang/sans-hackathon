@@ -98,6 +98,11 @@ run_smoke \
     "python3 scripts/demo-script-smoke.py" \
     "[ -f docs/demo-script-a2.md ]"
 
+# 6. Launcher invariants lock.
+run_smoke \
+    "launcher-smoke (bash -n + claude binary + no positional .)" \
+    "python3 scripts/launcher-smoke.py"
+
 total=$((passed + failed + skipped))
 echo
 echo "=========================================="
