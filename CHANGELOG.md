@@ -179,6 +179,31 @@ once the first `v0.x` is cut on the `v-submit` tag.
   the actual MCP wire. Same prose-vs-code drift shape as the Beat 6
   + swarm-invocation fixes — this one was a recipe that looked
   plausible but couldn't be executed.
+- **`claude-code` → `claude` across the Product entry path**
+  (commit `c167aec`). The Anthropic Claude Code CLI binary is
+  `claude`, not `claude-code`. The repo had `claude-code` everywhere
+  including in the **actual executable** `scripts/find-evil` (the
+  Product entry point judges run): `command -v claude-code` +
+  `exec claude-code . "$@"`. Verified — `which claude-code` returns
+  non-zero on this system, `which claude` resolves to
+  ~/.local/bin/claude. Following the documented recipe verbatim
+  (`bash scripts/find-evil` OR `claude-code .`) would have errored
+  "command not found". Also: `claude` doesn't take a positional path
+  arg (per `claude --help`); it uses cwd. The trailing `.` was
+  wrong in either form. Surgical sweep across 8 active files:
+  scripts/find-evil (3 spots), scripts/install.sh (stdout instruction),
+  README.md, QUICKSTART.md, CLAUDE.md (3 refs), docs/architecture.md
+  (4 refs), docs/demo-script-a2.md (recording playbook),
+  docs/templates/devpost-readme.md. Deliberately untouched: filenames
+  with `claude-code` (amendment doc names like
+  `claude-code-mode.md`), the third-party `claude-code-scheduler`
+  project name, the `docs.anthropic.com/.../claude-code/install` URL
+  path, the test-fixture string in test_session_guard.py (tests a
+  regex that matches "rate limit exceeded" globally; CLI-name prefix
+  is illustrative not load-bearing). Highest-impact prose-vs-code
+  drift caught this session — previous three fixes were doc-only;
+  this one broke the Product's actual entry-point script. Caught by
+  attempting `which claude-code` after auditing the doc references.
 
 ### Operator UX
 
