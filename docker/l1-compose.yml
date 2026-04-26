@@ -157,6 +157,18 @@ services:
           python3 scripts/divergence-smoke.py
         fi
 
+        # Path-existence audit graduated to a smoke after two
+        # iterations of manual sweeps caught 7 broken `\`path/to\``
+        # references in operator-facing docs (commits 5e01954,
+        # 385c867).  Asserts every backtick-quoted path resolves
+        # to a real file or dir.  Allow-list covers URLs, MCP wire
+        # identifiers, runtime/install paths, deferred-per-A2
+        # surfaces, and documented-removed-but-quoted paths.
+        if [ -f scripts/path-existence-smoke.py ]; then
+          echo "== scripts/path-existence-smoke.py (every backtick-path resolves) =="
+          python3 scripts/path-existence-smoke.py
+        fi
+
         echo "L1 complete."
 
 volumes:

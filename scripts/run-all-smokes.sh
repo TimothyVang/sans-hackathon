@@ -108,7 +108,12 @@ run_smoke \
     "divergence-smoke (5 active divergences from CLAUDE.md downstream-clean)" \
     "python3 scripts/divergence-smoke.py"
 
-# 8 + 9. Lint / format gate.  L0 GHA workflow runs these; mirror
+# 8. Path-existence audit — every backtick-quoted path in 22 operator docs resolves.
+run_smoke \
+    "path-existence-smoke (every backtick-quoted path resolves to a real file/dir)" \
+    "python3 scripts/path-existence-smoke.py"
+
+# 9 + 10. Lint / format gate.  L0 GHA workflow runs these; mirror
 # locally so a contributor running this script before commit
 # catches a missing `ruff format` before the push.  Skipped if
 # ruff isn't on PATH (unusual on a dev host).
