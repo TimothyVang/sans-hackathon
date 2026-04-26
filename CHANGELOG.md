@@ -191,6 +191,25 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **rmcp-related stale docs sweep — divergence §5**
+  (commit `fb319dd`). Third iteration of the divergence-sweep
+  procedure. CLAUDE.md "Spec/code divergences" §5 has long flagged
+  that `rmcp` is intentionally NOT a runtime dep — the server is
+  hand-rolled. Four stale references survived implying rmcp is
+  used at runtime: CLAUDE.md:81 (Repo-layout entry called
+  services/mcp "rmcp-based"), services/mcp/src/lib.rs:4 (crate-
+  level docstring said the binary wires modules into an rmcp
+  ServerHandler), services/mcp/src/tools/mod.rs:9 (tools module
+  docstring said each tool is callable from the rmcp wire-up),
+  and three legacy Cargo.toml comments that framed rmcp as
+  "kept dormant until the full tool surface lands". Each
+  reframed to reflect the shipped state with a pointer to the
+  divergence. cargo check still succeeds; 6/6 smokes pass.
+  Process win: the divergence-sweep procedure has now run three
+  times, all four "active" divergences swept (§1 Rust toolchain,
+  §3 A2/cli.py, §4 11→12, §5 rmcp); the remaining two (§2
+  Cargo.lock-committed and §6 swarm-package-name) are
+  declarative + already swept in-band in earlier iterations.
 - **`11 → 12` Rust MCP tool count downstream sweep**
   (commit `e6ddc2d`). Same divergence-sweep procedure as 782f364,
   applied to CLAUDE.md "Spec/code divergences" §4. The earlier
