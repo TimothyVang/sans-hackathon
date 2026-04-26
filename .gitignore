@@ -78,6 +78,10 @@ Thumbs.db
 /hermes-agent/
 /Linear-Coding-Agent-Harness/
 /.playwright-mcp/
+# The same reference clones, now relocated under ref-folders/ —
+# also research-only, also never shipped, and ruff should not scan
+# them.
+/ref-folders/
 
 # Smoke test working dir (Amendment A2) — produces audit logs +
 # manifests under tmp/smoke/ that should never be committed.

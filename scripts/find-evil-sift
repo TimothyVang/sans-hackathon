@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# find-evil-sift — Windows-host launcher that points Claude Code at the
+# SIFT-VM-hosted MCP servers (instead of the local ones).
+#
+# Pre-flight:
+#   1. SIFT VM imported in VirtualBox with port-forwarding 2222 → 22.
+#   2. ~/.ssh/sift_key keypair exists; pubkey installed in the VM's
+#      ~sansforensics/.ssh/authorized_keys.
+#   3. The repo is rsync'd or git-cloned inside the VM at
+#      /home/sansforensics/find-evil and `bash scripts/sift-vm-setup.sh`
+#      has been run there once.
+#
+# What this launcher does:
+#   1. Checks the VM is reachable over SSH (else prints actionable hint).
+#   2. Backs up the existing .mcp.json (local-mode) → .mcp.json.local.
+#   3. Activates the SIFT-mode config: cp .mcp.json.sift .mcp.json.
+#   4. Spawns `claude-code .` in the repo so the SIFT-mode MCP servers
+#      are picked up by the new session.
+#   5. On exit, restores .mcp.json.local so subsequent regular runs
+#      see the local config again. (Use --no-restore to leave SIFT
+#      mode active.)
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${REPO_ROOT}"
+
+VM_HOST="${SIFT_HOST:-localhost}"
+VM_PORT="${SIFT_PORT:-2222}"
+VM_USER="${SIFT_USER:-sansforensics}"
+SSH_KEY="${SIFT_SSH_KEY:-$HOME/.ssh/sift_key}"
+
+RESTORE_ON_EXIT=1
+for arg in "$@"; do
+  case "${arg}" in
+    --no-restore) RESTORE_ON_EXIT=0 ;;
+  esac
+done
+
+log() { printf '[find-evil-sift] %s\n' "$*" >&2; }
+fail() { printf '[find-evil-sift] FAIL: %s\n' "$*" >&2; exit 1; }
+
+# ---------------------------------------------------------------------
+# 1. Pre-flight checks.
+# ---------------------------------------------------------------------
+[[ -f "${REPO_ROOT}/.mcp.json.sift" ]] || fail ".mcp.json.sift missing — run from a checkout that has it."
+[[ -f "${SSH_KEY}" ]] || fail "SSH key ${SSH_KEY} missing — generate with:
+    ssh-keygen -t ed25519 -f ${SSH_KEY}
+  then copy the .pub into the VM's ~sansforensics/.ssh/authorized_keys."
+
+log "ssh ${VM_USER}@${VM_HOST}:${VM_PORT} reachability check..."
+if ! ssh -i "${SSH_KEY}" \
+    -p "${VM_PORT}" \
+    -o BatchMode=yes \
+    -o ConnectTimeout=5 \
+    -o StrictHostKeyChecking=accept-new \
+    "${VM_USER}@${VM_HOST}" \
+    'echo SIFT_VM_REACHABLE && command -v cargo && command -v uv' >/dev/null 2>&1; then
+  fail "VM unreachable. Start it in VirtualBox, ensure port-forwarding 2222 → 22 is set,
+  and confirm: ssh -p ${VM_PORT} ${VM_USER}@${VM_HOST}
+  If you haven't run scripts/sift-vm-setup.sh inside the VM yet, do that first."
+fi
+log "  VM reachable; cargo + uv on PATH inside the VM."
+
+# ---------------------------------------------------------------------
+# 2. Pre-flight: confirm the Rust binary is built inside the VM.
+# ---------------------------------------------------------------------
+if ! ssh -i "${SSH_KEY}" -p "${VM_PORT}" -o BatchMode=yes \
+    "${VM_USER}@${VM_HOST}" \
+    'test -x /home/sansforensics/find-evil/target/release/findevil-mcp' >/dev/null 2>&1; then
+  log "VM has no built findevil-mcp binary; building (may take ~3 min cold)..."
+  ssh -i "${SSH_KEY}" -p "${VM_PORT}" -o BatchMode=yes \
+    "${VM_USER}@${VM_HOST}" \
+    'cd /home/sansforensics/find-evil && cargo build --release -p findevil-mcp --locked' \
+    || fail "remote build failed; check the VM's logs."
+  log "  build complete."
+fi
+
+# ---------------------------------------------------------------------
+# 3. Swap .mcp.json: back up local; activate SIFT.
+# ---------------------------------------------------------------------
+if [[ -f .mcp.json ]]; then
+  if ! diff -q .mcp.json .mcp.json.sift >/dev/null 2>&1; then
+    log "backing up local .mcp.json → .mcp.json.local"
+    cp -f .mcp.json .mcp.json.local
+  fi
+fi
+log "activating SIFT-mode .mcp.json..."
+cp -f .mcp.json.sift .mcp.json
+
+restore_local() {
+  if [[ "${RESTORE_ON_EXIT}" == "1" && -f .mcp.json.local ]]; then
+    log "restoring local .mcp.json from .mcp.json.local"
+    mv -f .mcp.json.local .mcp.json
+  fi
+}
+trap restore_local EXIT
+
+# ---------------------------------------------------------------------
+# 4. Hand off to Claude Code.
+# ---------------------------------------------------------------------
+log "starting Claude Code with SIFT-mode MCP servers."
+log "  When prompted, try: investigate /home/sansforensics/find-evil/fixtures/single-evtx/Security.evtx"
+
+if command -v claude-code >/dev/null 2>&1; then
+  claude-code .
+elif command -v claude >/dev/null 2>&1; then
+  claude .
+else
+  log "neither 'claude-code' nor 'claude' found on PATH — open Claude Code manually in:"
+  log "  ${REPO_ROOT}"
+fi

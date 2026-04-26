@@ -1,0 +1,122 @@
+# PLAYBOOK.md — Investigation tool sequences
+
+**Read after AGENTS.md, before TOOLS.md.** This file tells you (the supervisor) the canonical tool sequences for common evidence types so you don't have to re-derive them every investigation. Treat these as **defaults**, not laws — when the case shape diverges, deviate and say so explicitly in the audit trail.
+
+---
+
+## Activation rule
+
+When the analyst says **"investigate &lt;path&gt;"**, **"find evil in &lt;path&gt;"**, **"do DFIR on &lt;path&gt;"**, or any clear analog:
+
+1. Call `case_open` with the path. Read the returned `image_hash`, `image_size_bytes`, and `id` (the case_id you'll use everywhere).
+2. Inspect the path's extension and the case-open size to pick a playbook below.
+3. Fork **two subagents** with `CLAUDE_CODE_FORK_SUBAGENT=1` — one with the Pool A persistence prompt, one with Pool B exfil prompt (see `AGENTS.md`). Each pool reads this file and runs its biased-but-still-overlapping tool sequence.
+4. After both pools return Findings, run `detect_contradictions` → resolve (or auto-pass under `--unattended`) → `judge_findings` → `verify_finding` per Finding → `correlate_findings` → `manifest_finalize` → `ots_stamp`.
+5. Render the verdict + manifest path.
+
+---
+
+## Evidence-type playbooks
+
+Pick the one whose extension matches the input. If multiple apply (e.g., a case directory containing both an `.e01` and a `.mem`), run them in order and let the case_id thread them together.
+
+### `.e01` / `.E01` / `.dd` / `.raw` / `.aff` — full disk image
+
+The deepest evidence type. Run all the disk-class tools.
+
+| Order | Tool | Purpose | Pool |
+|---|---|---|---|
+| 1 | `case_open` | SHA-256 + case_id | both |
+| 2 | `mft_timeline` | Master File Table — what existed when, with timestomp detection (`$SI` vs `$FN`) | both |
+| 3 | `prefetch_parse` | Per-binary execution evidence (run_count, last 8 run times) | A |
+| 4 | `usnjrnl_query` | Filesystem mutation log — corroborates MFT, surfaces deletes | both |
+| 5 | `registry_query` | Run / RunOnce / IFEO / Services / WMI consumers / Scheduled Tasks | A |
+| 6 | `evtx_query` | Security.evtx (4624/4625/4688/7045), System.evtx, Application.evtx | A |
+| 7 | `hayabusa_scan` | Sigma rules over the EVTX dir — surfaces persistence + lateral movement patterns | A |
+| 8 | `yara_scan` | YARA-Forge rules over `\Users\*\AppData\Roaming\` and any `.exe`/`.dll` newer than 30d | B |
+| 9 | `vel_collect` (optional) | Pull additional OS-level artifacts the wrappers above don't cover (browser history, scheduled tasks raw) | both |
+
+### `.mem` / `.raw` / `.dmp` / `.vmem` — memory image
+
+Memory tells you what was *running*, not just what was *installed*.
+
+| Order | Tool | Purpose | Pool |
+|---|---|---|---|
+| 1 | `case_open` | SHA-256 + case_id | both |
+| 2 | `vol_pslist` | Process list from `PsActiveProcessHead` | both |
+| 3 | `vol_malfind` | RWX VADs + MZ headers in unexpected places (code injection) | both |
+| 4 | `yara_scan` | YARA over the raw memory image — catches in-memory-only payloads | B |
+
+After memory: if a disk image for the same host is available, **cross-reference** PIDs from `vol_pslist` against `prefetch_parse` run lists. A process running in memory with no Prefetch entry is a strong signal of an unprefetched (likely manual or scripted) execution — surface as a Finding.
+
+### `.evtx` — single Windows event log
+
+The lightweight case (matches our `--real-evidence` smoke flow).
+
+| Order | Tool | Purpose | Pool |
+|---|---|---|---|
+| 1 | `case_open` | SHA-256 + case_id | both |
+| 2 | `evtx_query` | Parse the log; pull EID histogram | both |
+| 3 | `hayabusa_scan` (optional, if a `.evtx` directory is available) | Sigma rule scan | A |
+
+### Velociraptor `.zip` collection
+
+Triage zips produced by `velociraptor` collection.
+
+| Order | Tool | Purpose | Pool |
+|---|---|---|---|
+| 1 | `case_open` | SHA-256 + case_id | both |
+| 2 | `vel_collect` | Re-read the artifacts inside the zip via Velociraptor's own CLI | both |
+| 3 | Per-artifact tools | E.g. if the zip contains a Prefetch artifact, run `prefetch_parse` against the extracted file | both |
+
+### Mixed case directory (most realistic)
+
+A case dir contains a disk image, a memory image, a Velociraptor zip, and a few EVTX files extracted out-of-band. Run each per its type playbook above; the supervisor stitches case_ids together via the `case_id` argument every tool accepts.
+
+---
+
+## Pool biases (recap from `AGENTS.md`)
+
+The same tool sequence runs in both pools, but each pool's **prompt** biases interpretation:
+
+- **Pool A — Persistence.** Looks for "the attacker is staying": Run keys, Services, IFEO, ScheduledTasks, WMI subscription consumers, LSASS-injected modules, browser-helper-objects, autoruns. Findings cite MITRE T1547 / T1543 / T1546 / T1053 / T1574.
+- **Pool B — Exfiltration / general malware.** Looks for "the attacker took something": staging directories (often `\Users\Public\`, `\Temp\`), `certutil`/`bitsadmin`/`curl`/`wget`/`Invoke-WebRequest` execution, cloud-sync clients, USB writes, large-file rename-then-delete patterns, suspicious outbound network endpoints in EVTX or memory. Findings cite MITRE T1041 / T1567 / T1048 / T1052 / T1110.
+
+Where the pools see the same artifact and disagree on confidence or interpretation, **`detect_contradictions` is supposed to fire** — that's the architectural feature, not a bug. Surface it before the judge.
+
+---
+
+## Unattended-mode policy (`--unattended`)
+
+When the analyst is not present (CI runs, batch processing, demo recordings):
+
+- **Contradictions** are auto-resolved by trusting the higher-credibility pool, and the auto-trust decision is logged with `approved_by: "auto"` in the audit chain. This is auditable; it is not a free pass.
+- **HYPOTHESIS-tier Findings are kept** rather than dropped — the verifier vetoes only Findings without a `tool_call_id`.
+- **Network-touching tools** (`vel_collect` artifacts that hit external systems; `ots_stamp`) still run. If network is unreachable, log the failure to the audit chain and continue; don't abort the manifest.
+- **Final verdict** is rendered to stdout AND written to `$FINDEVIL_HOME/cases/<id>/verdict.json` so a downstream process can read it without re-parsing terminal output.
+
+In attended mode, the supervisor pauses at:
+1. Contradiction surface (Trust A / Trust B / Flag)
+2. Verifier veto (re-run cited tool to re-confirm)
+3. Final manifest review before signing
+
+These pause points are **resumable** — the audit chain is hash-chained, so the supervisor can be killed mid-run and resume from the last record.
+
+---
+
+## Stop conditions (the agent must stop and ask)
+
+Even in unattended mode, halt and surface to the analyst when:
+
+- A tool returns a `BinaryNotFound` error (the user's environment is missing a SIFT tool — they need to install it, not the agent's call to make).
+- Two consecutive iterations produce no new Findings AND no new contradictions (you're stuck; further tool calls won't help).
+- A Finding's `confidence` is `CONFIRMED` but the corroboration count from `correlate_findings` is < 2 artifact classes (SOUL.md violation; auto-downgrade is the right answer but flag it explicitly).
+- The case's evidence vault is mid-run modified (a write to `/evidence/<case_id>/` from outside the agent loop) — this means the chain of custody is compromised; refuse to sign the manifest.
+
+---
+
+## What this playbook is NOT
+
+- **Not a script.** The supervisor is the agent; this file is its prior. If a case looks weird, deviate.
+- **Not exhaustive of DFIR.** It covers what the 11 typed Rust MCP tools can reach. If the case needs Plaso/log2timeline, Sleuthkit's `fls`/`icat`, Bulk Extractor, network-capture analysis, or browser-history extraction, those are out of our automation scope today; surface that as a gap to the analyst.
+- **Not a substitute for SOUL.md or AGENTS.md.** Read those first; this file is the operational layer that sits below the epistemic and role-definition layers.
