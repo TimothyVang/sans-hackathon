@@ -11,7 +11,7 @@ match the canonical "VGAuthService.exe" entry. Same hazard as the
 verdict policy: a future contributor could change either piece
 and the docs would silently disagree.
 
-This smoke locks in five behaviors:
+This smoke locks in six behaviors:
 
   1. `normalize_image_name` does the right thing (lowercase + trim +
      14-char truncation).
@@ -25,7 +25,11 @@ This smoke locks in five behaviors:
      past-window events stay isolated. Anchors the SRL-2018
      "Autorunsc on 6 hosts at the exact same second" pattern that
      headlines `FLEET_REPORT.pdf`.
-  5. `selfscore_aggregate` produces a stable shape against a
+  5. `mitre_density` counts *distinct hosts* per technique, not
+     findings. Regression anchor for the bug fix in commit `bf11c4d`
+     (the original code counted Pool A + Pool B as 2 hosts when they
+     were one host emitting twice).
+  6. `selfscore_aggregate` produces a stable shape against a
      small synthetic fleet of 3 hosts × 6 selfscore records.
 
 Loaded via importlib like verdict-policy-smoke.py, so the test
@@ -313,6 +317,64 @@ def main() -> int:
             print(f"         actual  : {actual!r}")
             failures += 1
 
+    # ---- mitre_density: distinct-host count per technique ---------------
+    # Regression anchor for the bug fixed in commit bf11c4d: previous
+    # implementation counted findings (so a host with Pool A + Pool B
+    # both emitting T1014 was counted as 2). The fix counts distinct
+    # hosts per technique. The 22-host SRL-2018 fleet originally
+    # reported "T1014 = 24" on a 21-host fleet — impossible, exactly
+    # the kind of bug this lock catches.
+    md_synthetic = [
+        {
+            "_host": "h1",
+            "findings": [
+                # h1 emits T1014 from BOTH Pool A and Pool B.
+                # Old buggy behavior would count this as 2; the fix
+                # counts as 1 (one distinct host).
+                {"mitre_technique": "T1014", "pool_origin": "A"},
+                {"mitre_technique": "T1014", "pool_origin": "B"},
+                # h1 also emits T1055 from Pool B.
+                {"mitre_technique": "T1055", "pool_origin": "B"},
+                # A finding without a MITRE technique is ignored.
+                {"mitre_technique": None, "pool_origin": "A"},
+            ],
+        },
+        {
+            "_host": "h2",
+            "findings": [
+                # h2 emits T1014 from Pool A only.
+                {"mitre_technique": "T1014", "pool_origin": "A"},
+            ],
+        },
+        {
+            "_host": "h3",
+            "findings": [],  # no findings -> contributes nothing
+        },
+    ]
+    md = fc.mitre_density(md_synthetic)
+    md_checks: list[tuple[str, Any, Any]] = [
+        # T1014 on h1 (twice) + h2 (once) -> 2 distinct hosts.
+        ("T1014 distinct-host count = 2 (NOT 3 findings)", md["T1014"], 2),
+        # T1055 on h1 only -> 1 distinct host.
+        ("T1055 distinct-host count = 1", md["T1055"], 1),
+        # A non-existent technique -> 0 (Counter default).
+        ("absent technique returns 0", md["T9999"], 0),
+        # h3 (empty findings) and the None-technique finding contribute nothing.
+        (
+            "only T1014 + T1055 present (no None technique)",
+            set(md.keys()),
+            {"T1014", "T1055"},
+        ),
+    ]
+    for label, actual, expected in md_checks:
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] mitre_density: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
     sa_checks: list[tuple[str, Any, Any]] = [
         ("hosts_total counts everything", agg["hosts_total"], 3),
         ("hosts_with_selfscore counts non-empty", agg["hosts_with_selfscore"], 2),
@@ -354,6 +416,7 @@ def main() -> int:
         + len(must_not_be_filtered)
         + len(chp_checks)
         + len(tc_checks)
+        + len(md_checks)
         + len(sa_checks)
     )
     if failures == 0:
