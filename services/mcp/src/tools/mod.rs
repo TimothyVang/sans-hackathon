@@ -6,7 +6,8 @@
 //!   * an output type that implements [`serde::Serialize`],
 //!   * an error type `<Name>Error` with `thiserror::Error`,
 //!   * an async (or sync) entrypoint function callable from the
-//!     rmcp `ServerHandler` wire-up in `lib.rs` / `main.rs`.
+//!     hand-rolled stdio JSON-RPC 2.0 dispatcher in
+//!     `crate::server` (see CLAUDE.md "Spec/code divergences" §5).
 //!
 //! Constraints from Spec #2 §3:
 //!   * No tool exposes raw shell exec.

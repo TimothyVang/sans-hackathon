@@ -1,10 +1,14 @@
 //! Find Evil! typed MCP server — library face.
 //!
 //! Spec #2 §3 + §6. The crate's binary ([`bin/findevil-mcp`]) wires
-//! these modules into an rmcp `ServerHandler` over stdio; the
-//! library face lets integration tests + the Python agent's
-//! in-process harness exercise tool modules directly without a
-//! full subprocess round-trip.
+//! these modules into a hand-rolled stdio JSON-RPC 2.0 server in
+//! [`server`] (see CLAUDE.md "Spec/code divergences" §5 — the spec
+//! lists `rmcp 0.16.x` as the framework but we ship a hand-rolled
+//! implementation pinned to MCP 2024-11-05 for wire-format
+//! stability across rmcp's API churn). The library face lets
+//! integration tests + the Python agent's in-process harness
+//! exercise tool modules directly without a full subprocess
+//! round-trip.
 //!
 //! Invariants (see `CLAUDE.md`):
 //! - No `execute_shell` tool, ever.
