@@ -64,6 +64,19 @@ once the first `v0.x` is cut on the `v-submit` tag.
 ### Added — documentation
 
 - **Repo-root `README.md`** (commit `6813566`) — GitHub front page.
+- **`services/agent/README.md` rewrite for A2** (commit `532b1db`).
+  The package's README still described the pre-A2 architecture
+  ("Hosts the LangGraph ACH graph, FastAPI SSE bus ... and CLI"),
+  status table showed ⏳ Week N for components that have shipped
+  under A2 (the entire crypto/ stack, mcp_client, verifier, pools,
+  judge, contradiction, correlator), and "For swarm workers"
+  recommended writing `findevil_agent/specialists/<name>.py` —
+  which the L0 amendment-a2-guard explicitly forbids. Rewrote
+  the header as "library not service under A2", bumped 15
+  components ⏳→✅, added 5 strikethrough rows for the dropped
+  pre-A2 modules with explicit "dropped per A2" annotations and
+  L0-guard pointers, replaced the swarm-worker specialist bullet
+  with explicit DO-NOT-generate guidance.
 - **`docs/cryptographic-attestation.md`** (commit `08a9ff5`) — the
   five-link chain narrative (sha256 → audit prev_hash → rs_merkle →
   sigstore → OpenTimestamps Bitcoin) collected in one canonical
