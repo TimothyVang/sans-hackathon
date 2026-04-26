@@ -179,6 +179,18 @@ once the first `v0.x` is cut on the `v-submit` tag.
   the actual MCP wire. Same prose-vs-code drift shape as the Beat 6
   + swarm-invocation fixes — this one was a recipe that looked
   plausible but couldn't be executed.
+- **`find_evil_auto.py` argparse prog name** (commit `6f22382`).
+  `bash scripts/find-evil-auto --help` printed
+  `usage: find_evil_auto.py ...` — but every doc invokes the script
+  as `find-evil-auto` (the bash wrapper). One-line fix passing
+  `prog="find-evil-auto"` to ArgumentParser. Usage line now matches.
+  Lower impact than the previous four prose-vs-code fixes (cosmetic
+  rather than executable bug) but same drift shape — doc name vs
+  self-reported name. The other four argparse scripts in scripts/
+  (fleet_investigate, fleet_correlate, render_report,
+  render_fleet_report) are invoked directly as
+  `python scripts/<name>.py` so their default prog matches; left
+  alone.
 - **`claude-code` → `claude` across the Product entry path**
   (commit `c167aec`). The Anthropic Claude Code CLI binary is
   `claude`, not `claude-code`. The repo had `claude-code` everywhere
