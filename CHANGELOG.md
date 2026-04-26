@@ -191,6 +191,18 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **`launcher-smoke` shebang-based extension-less launcher discovery**
+  (commit `3dc51b1`). Same anti-drift refactor as `5c1f324`
+  (path-existence) applied to launcher-smoke. Replaced the explicit
+  3-entry `EXTENSIONLESS_LAUNCHERS = ["find-evil", "find-evil-auto",
+  "find-evil-sift"]` with a glob over `scripts/*` filtered by no-dot
+  basename + shell-shebang detection (reads first 80 bytes,
+  matches `#!/usr/bin/env bash` etc.). Same 22 launchers / 66
+  assertions found. Negative-tested by dropping a synthetic
+  extension-less launcher with a bash shebang + bad invocation;
+  new discovery picked it up (count went 22→23) and the smoke
+  FAILed correctly. Two of the three audit smokes (path-existence
+  + launcher) are now drop-in-resistant.
 - **`path-existence-smoke` glob-based doc discovery** (commit
   `5c1f324`). Replaced the explicit 22-entry `SCAN_LIST` tuple
   with `EXPLICIT_DOCS` (3 root-level entries) + 4 `GLOB_PATTERNS`
