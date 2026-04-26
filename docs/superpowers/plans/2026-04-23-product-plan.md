@@ -8,7 +8,7 @@
 
 **Architecture:** Seven layers — evidence vault, SIFT tool subprocesses, typed Rust MCP server (rmcp 0.16.x), three-layer memory (DuckDB per case / SqliteSaver / Hermes cross-case), M4 ACH agent graph (single supervisor + two opposing-prior pools + judge + contradiction node), FastAPI+LangGraph Python runtime, Next.js 15 SPA + MCP Apps widgets.
 
-**Tech Stack:** Rust 1.83 (rmcp 0.16.x, evtx 0.11.2, rs_merkle 1.4.0, duckdb 0.10, pyo3), Python 3.11 (langgraph>=1.0, anthropic Claude Agent SDK, fastapi, sigstore 3.x, opentimestamps-client), Next.js 15 + shadcn + Tailwind v4 + @ai-sdk/react, Hayabusa/Chainsaw/Volatility3/Velociraptor as subprocess-only (AGPL/GPL).
+**Tech Stack:** Rust 1.88 (bumped from the original 1.83 pin — see CLAUDE.md "Spec/code divergences" §1; rmcp 0.16.x, evtx 0.11.2, rs_merkle 1.4.0, duckdb 0.10, pyo3), Python 3.11 (langgraph>=1.0, anthropic Claude Agent SDK, fastapi, sigstore 3.x, opentimestamps-client), Next.js 15 + shadcn + Tailwind v4 + @ai-sdk/react, Hayabusa/Chainsaw/Volatility3/Velociraptor as subprocess-only (AGPL/GPL).
 
 ---
 
@@ -28,7 +28,7 @@
 ## Task A1 — Cargo workspace + `services/mcp/Cargo.toml` with pinned deps
 
 - [ ] Create workspace root `Cargo.toml` at repo root with `[workspace] members = ["services/mcp"]` and `resolver = "2"`.
-- [ ] Create `services/mcp/Cargo.toml` with `[package] name = "findevil-mcp"`, `version = "0.1.0"`, `edition = "2021"`, `rust-version = "1.83"`.
+- [ ] Create `services/mcp/Cargo.toml` with `[package] name = "findevil-mcp"`, `version = "0.1.0"`, `edition = "2021"`, `rust-version = "1.88"` (the original spec pin was 1.83 — see CLAUDE.md "Spec/code divergences" §1).
 - [ ] Add pinned `[dependencies]`:
   - `rmcp = { version = "=0.16.0", features = ["server", "transport-io"] }`
   - `evtx = "=0.11.2"`

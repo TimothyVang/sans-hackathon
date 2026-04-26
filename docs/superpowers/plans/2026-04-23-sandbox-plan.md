@@ -192,7 +192,7 @@ fall back to no-op until later tasks land the crates/packages."
 
 ## Task 2: L1 dev-base Dockerfile
 
-**Scope:** Ubuntu 22.04 dev-base image with Rust 1.83, Python 3.11, Node 20, SIFT apt deps. Used by L1 unit tests and by local dev compose.
+**Scope:** Ubuntu 22.04 dev-base image with Rust 1.88 (bumped from the original 1.83 pin per CLAUDE.md "Spec/code divergences" §1), Python 3.11, Node 20, SIFT apt deps. Used by L1 unit tests and by local dev compose.
 
 ### 2.1 Failing test — `Create: tests/sandbox/test_l1_dockerfile.py`
 
@@ -316,7 +316,7 @@ WORKDIR /workspace
 - [ ] Run:
   ```
   git add tests/sandbox/test_l1_dockerfile.py docker/l1-devbase.Dockerfile
-  git commit -m "feat(sandbox): L1 dev-base Dockerfile (Ubuntu 22.04 + Rust 1.83 + pnpm 9.12 + uv 0.5.8)
+  git commit -m "feat(sandbox): L1 dev-base Dockerfile (Ubuntu 22.04 + Rust 1.88 + pnpm 9.12 + uv 0.5.8)
 
 Matches SIFT's Ubuntu 22.04 base per teamdfir/sift-saltstack, with every
 toolchain version pinned so cache keys are stable and the build swarm's
