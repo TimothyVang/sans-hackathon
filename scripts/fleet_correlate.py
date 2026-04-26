@@ -188,13 +188,26 @@ def _cluster_to_dict(cluster: list[tuple[datetime, str, dict]]) -> dict[str, Any
 
 
 def mitre_density(verdicts: list[dict[str, Any]]) -> Counter:
-    c: Counter = Counter()
+    """Count *distinct hosts* per MITRE technique (not findings).
+
+    A host that emits T1014 from both Pool A and Pool B should still
+    count once — what the analyst cares about is "how many hosts
+    show this technique," not "how loud the agents were on each one."
+
+    `load_verdicts` decorates each verdict with `_host`; fall back to
+    `host` for callers that already pass a host-tagged dict.
+    """
+    by_technique: dict[str, set[str]] = {}
     for v in verdicts:
-        for f in v.get("findings", []):
-            mt = f.get("mitre_technique")
-            if mt:
-                c[mt] += 1
-    return c
+        host = v.get("_host") or v.get("host") or "?"
+        techniques_on_host = {
+            f.get("mitre_technique")
+            for f in v.get("findings", [])
+            if f.get("mitre_technique")
+        }
+        for mt in techniques_on_host:
+            by_technique.setdefault(mt, set()).add(host)
+    return Counter({mt: len(hosts) for mt, hosts in by_technique.items()})
 
 
 def verdict_distribution(verdicts: list[dict[str, Any]]) -> Counter:
