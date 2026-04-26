@@ -134,7 +134,7 @@ The Product (`scripts/install.sh`) detects three credential paths in priority or
 2. Interactive Claude Code session (`~/.claude/` populated via `claude auth login`) — used in dev.
 3. `ANTHROPIC_API_KEY` env var — direct metered API, used when no Claude Code is available.
 
-**For the build swarm specifically:** only modes 1 and 2 apply. Option B removed all LiteLLM/USD-cap code; rate-limit handling is `services/swarm/session_guard.py`, which halts the supervisor cleanly on 429 and resumes from the Postgres checkpoint the next night. There is no in-flight retry.
+**For the build swarm specifically:** only modes 1 and 2 apply. Option B removed all LiteLLM/USD-cap code; rate-limit handling is `services/swarm/findevil_swarm/session_guard.py`, which halts the supervisor cleanly on 429 and resumes from the Postgres checkpoint the next night. There is no in-flight retry.
 
 ## Commands
 
