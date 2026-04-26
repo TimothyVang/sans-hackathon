@@ -173,6 +173,19 @@ once the first `v0.x` is cut on the `v-submit` tag.
   "Spec/code divergences" §1; only the historical CHANGELOG
   reference describing what the OLD Cargo.toml said remains as
   audit-trail.
+- **`rmcp` hand-rolled divergence flagged in CLAUDE.md** (commit
+  `e89848d`). Spec #2 §4.1 lists `rmcp 0.16.x` as the MCP server
+  framework; we ship a hand-rolled stdio JSON-RPC 2.0
+  implementation in `services/mcp/src/server.rs` instead (chosen
+  for wire-format stability across rmcp churn + dispatch-shape
+  parity with the Python `findevil-agent-mcp`). The deliberate
+  omission was visible only in `services/mcp/Cargo.toml` line 27
+  (commented-out rmcp line) and `services/mcp/README.md`'s NB
+  note — neither was guaranteed reading. CLAUDE.md "Spec/code
+  divergences" now has a 5th entry making the architectural
+  choice load-bearing across the codebase: a future contributor
+  cleaning up commented code can no longer silently re-introduce
+  the dep.
 
 ### Hard blockers discovered
 
