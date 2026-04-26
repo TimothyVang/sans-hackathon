@@ -108,7 +108,9 @@ run_smoke \
     "divergence-smoke (5 active divergences from CLAUDE.md downstream-clean)" \
     "python3 scripts/divergence-smoke.py"
 
-# 8. Path-existence audit — every backtick-quoted path in 22 operator docs resolves.
+# 8. Path-existence audit — every backtick-quoted path in glob-discovered
+#    operator docs (~23 currently; auto-grows as new docs/ + agent-config/
+#    + services/*/README.md files are added) resolves to a real file/dir.
 run_smoke \
     "path-existence-smoke (every backtick-quoted path resolves to a real file/dir)" \
     "python3 scripts/path-existence-smoke.py"
