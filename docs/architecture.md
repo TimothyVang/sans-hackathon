@@ -30,13 +30,13 @@ flowchart TB
     subgraph Trust1["**TRUST BOUNDARY 1** — SIFT Tool Subprocesses (unprivileged, sandboxed)"]
         Hayabusa[Hayabusa<br/>AGPL-3.0<br/>subprocess]
         Chainsaw[Chainsaw v2<br/>GPL-2.0<br/>subprocess]
-        Volatility[Volatility3<br/>BSD-2<br/>subprocess]
+        Volatility[Volatility3<br/>AGPL-3.0<br/>subprocess]
         Velociraptor[Velociraptor<br/>AGPL-3.0<br/>gRPC subprocess]
         YARA[YARA + Forge Core<br/>subprocess scan]
     end
 
     subgraph Trust2["**TRUST BOUNDARY 2** — Two MCP Servers (typed tool surface)"]
-        RustMcp["**findevil-mcp** (Rust, rmcp 0.16)<br/>11 typed DFIR tools<br/>NO execute_shell<br/>---<br/>case_open, mft_timeline,<br/>evtx_query, hayabusa_scan,<br/>vol_pslist, vol_malfind,<br/>yara_scan, usnjrnl_query,<br/>registry_query, prefetch_parse,<br/>vel_collect"]
+        RustMcp["**findevil-mcp** (Rust, hand-rolled MCP 2024-11-05)<br/>11 typed DFIR tools<br/>NO execute_shell<br/>---<br/>case_open, mft_timeline,<br/>evtx_query, hayabusa_scan,<br/>vol_pslist, vol_malfind,<br/>yara_scan, usnjrnl_query,<br/>registry_query, prefetch_parse,<br/>vel_collect"]
         AgentMcp["**findevil-agent-mcp** (Python, mcp SDK 1.x)<br/>10 typed crypto/ACH tools<br/>---<br/>audit_append/verify,<br/>manifest_finalize/verify,<br/>ots_stamp/verify,<br/>verify_finding,<br/>detect_contradictions,<br/>judge_findings,<br/>correlate_findings"]
         EvtxCrate["evtx crate<br/>MIT, in-process<br/>1600× python-evtx"]
         Merkle["rs_merkle 1.4.0<br/>append-only tree"]
