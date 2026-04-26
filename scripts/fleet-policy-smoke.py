@@ -11,13 +11,16 @@ match the canonical "VGAuthService.exe" entry. Same hazard as the
 verdict policy: a future contributor could change either piece
 and the docs would silently disagree.
 
-This smoke locks in three behaviors:
+This smoke locks in four behaviors:
 
   1. `normalize_image_name` does the right thing (lowercase + trim +
      14-char truncation).
   2. Truncated and untruncated forms compare equal under the
      normalizer.
-  3. `selfscore_aggregate` produces a stable shape against a
+  3. `cross_host_processes` end-to-end: filter applies to canonical
+     and Volatility-truncated forms, suspicious binaries on ≥2 hosts
+     surface, single-host names are excluded by the threshold.
+  4. `selfscore_aggregate` produces a stable shape against a
      small synthetic fleet of 3 hosts × 6 selfscore records.
 
 Loaded via importlib like verdict-policy-smoke.py, so the test
@@ -141,6 +144,86 @@ def main() -> int:
     ]
     agg = fc.selfscore_aggregate(synthetic)
 
+    # ---- cross_host_processes: end-to-end FP filter behavior -----------
+    # Synthesize 3 hosts seeing a mix of:
+    #   - Filtered binaries (svchost.exe, masvc.exe) on all hosts
+    #   - Truncated-form filtered binary ("VGAuthService.") on all hosts
+    #   - Suspicious binary (rubyw.exe) on 2 hosts -> should surface
+    #   - Single-host name (legit-only.exe) -> should NOT surface
+    #     (function only returns names appearing on ≥2 hosts)
+    chp_synthetic = [
+        {
+            "_host": h,
+            "_psscan": [
+                {
+                    "ImageFileName": "svchost.exe",
+                    "PID": 100 + i,
+                    "PPID": 4,
+                    "CreateTime": "2024-01-01T00:00:00Z",
+                },
+                {
+                    "ImageFileName": "masvc.exe",
+                    "PID": 200 + i,
+                    "PPID": 4,
+                    "CreateTime": "2024-01-01T00:00:00Z",
+                },
+                {
+                    "ImageFileName": "VGAuthService.",
+                    "PID": 300 + i,
+                    "PPID": 4,
+                    "CreateTime": "2024-01-01T00:00:00Z",
+                },
+                {
+                    "ImageFileName": "rubyw.exe" if h in ("h1", "h2") else "other.exe",
+                    "PID": 400 + i,
+                    "PPID": 1000,
+                    "CreateTime": "2024-01-01T00:00:00Z",
+                },
+            ],
+        }
+        for i, h in enumerate(("h1", "h2", "h3"))
+    ]
+    # Add a single-host-only name so we verify the ≥2 threshold
+    chp_synthetic[0]["_psscan"].append(
+        {
+            "ImageFileName": "legit-only.exe",
+            "PID": 999,
+            "PPID": 1,
+            "CreateTime": "2024-01-01T00:00:00Z",
+        }
+    )
+
+    chp = fc.cross_host_processes(chp_synthetic)
+    chp_checks: list[tuple[str, Any, Any]] = [
+        ("svchost.exe filtered (in COMMON_WIN_PROCS)", "svchost.exe" in chp, False),
+        ("masvc.exe filtered (McAfee)", "masvc.exe" in chp, False),
+        (
+            "VGAuthService. filtered via 14-char truncation",
+            "VGAuthService." in chp,
+            False,
+        ),
+        ("rubyw.exe surfaces (uncommon, on 2 hosts)", "rubyw.exe" in chp, True),
+        (
+            "rubyw.exe has 2 distinct hosts",
+            len({h["host"] for h in chp.get("rubyw.exe", [])}),
+            2,
+        ),
+        (
+            "legit-only.exe excluded (1 host only, threshold is 2)",
+            "legit-only.exe" in chp,
+            False,
+        ),
+        ("other.exe excluded (1 host only)", "other.exe" in chp, False),
+    ]
+    for label, actual, expected in chp_checks:
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] cross_host_processes: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
     sa_checks: list[tuple[str, Any, Any]] = [
         ("hosts_total counts everything", agg["hosts_total"], 3),
         ("hosts_with_selfscore counts non-empty", agg["hosts_with_selfscore"], 2),
@@ -180,6 +263,7 @@ def main() -> int:
         len(cases_norm)
         + len(must_be_filtered)
         + len(must_not_be_filtered)
+        + len(chp_checks)
         + len(sa_checks)
     )
     if failures == 0:
