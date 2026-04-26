@@ -191,6 +191,21 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **`run-all-smokes.sh` adds `cargo clippy` + `cargo test`**
+  (commit `e021c46`). Closes the last 2 gaps with the autonomous-
+  loop directive's verification spec ("cargo test + cargo clippy
+  -D warnings + ruff check + ruff format check"). Of those 4,
+  ruff was original; cargo fmt added in `7549cba`; cargo clippy
+  + cargo test added here. Both invocations match L0 GHA exactly
+  (`cargo clippy --workspace --all-targets --locked -- -D warnings`
+  + `cargo test --workspace --locked`). Cargo test gated on
+  `SKIP_SLOW_RUST` env for fast-iteration mode. Local
+  verification: 14/14 pass in ~10s incremental;
+  `SKIP_SLOW_RUST=1` drops to 13/13. The local-runner-mirrors-
+  only-one-CI-workflow pattern has now been closed across all
+  four gates the user's directive expects (ruff check, ruff
+  format, cargo clippy, cargo test) — third instance of the
+  pattern, fix is now structural.
 - **`run-all-smokes.sh` also gates `cargo fmt --check`** (commit
   `7549cba`). L0 GHA runs `cargo fmt --all --check` but
   run-all-smokes only mirrored ruff. Same shape as the earlier
