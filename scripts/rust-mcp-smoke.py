@@ -462,6 +462,7 @@ def main() -> int:
                 },
             },
             "invalid artifact name",
+            expected_code=-32602,
         )
         log("  -> -32602 invalid_params with 'invalid artifact name' as expected")
 
