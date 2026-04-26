@@ -163,6 +163,22 @@ once the first `v0.x` is cut on the `v-submit` tag.
   the build-swarm-plan's `services.swarm.*` import paths (~50
   references in the historical TDD plan, code shipped under
   `findevil_swarm.*` for naming consistency).
+- **Cryptographic-attestation third-party verification recipe**
+  (commit `43cdbdd`). `docs/cryptographic-attestation.md` "How a
+  third party verifies offline" said `uv run --directory
+  services/agent_mcp python -m findevil_agent_mcp.server &` followed
+  by "then over MCP stdio, call manifest_verify" — backgrounding a
+  stdio server with `&` disconnects it from the launching shell, so
+  there's nothing to call from. Replaced with a working two-path
+  recipe: (1) direct Python library call —
+  `from findevil_agent.crypto.manifest import verify_manifest` —
+  smoke-tested against a real case dir (overall=True, all four
+  sub-checks True); (2) `scripts/agent-mcp-smoke.py --real-evidence`
+  as the fuller alternative that exercises audit_verify +
+  detect_contradictions + judge_findings + correlate_findings through
+  the actual MCP wire. Same prose-vs-code drift shape as the Beat 6
+  + swarm-invocation fixes — this one was a recipe that looked
+  plausible but couldn't be executed.
 
 ### Operator UX
 
