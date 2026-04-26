@@ -123,6 +123,14 @@ MFT records *all* filenames the entry has ever had. A file moved between directo
 
 Type 3 = Network logon (SMB share, IPC$, etc.). Routine in Windows networks. Mitigation: pair with source IP — if internal RFC1918, almost always benign. Type 10 (RemoteInteractive / RDP) is the one to scrutinize.
 
+### Fleet cross-host correlation: enterprise AV looks like lateral movement
+
+When `fleet_correlate.py` runs across a fleet of enterprise hosts, the McAfee/Trellix endpoint stack (`masvc.exe`, `macmnsvc.exe`, `mcshield.exe`, `mfeann.exe`, `FireSvc.exe`, `HipMgmt.exe`, `ManagementAgent.exe`, etc.) appears on *every* host — at first glance a textbook lateral-movement pattern (same uncommon binary, many machines). It is not. It's the EDR product the organization deployed. Same for VMware Tools (`vmtoolsd.exe`, `VGAuthService.exe`, `vmacthlp.exe`) on virtualized fleets, and the long tail of standard Windows infrastructure (`msdtc.exe`, `dwm.exe`, `LogonUI.exe`, `userinit.exe`, `MemCompression`).
+
+Mitigation: `scripts/fleet_correlate.py` ships a `COMMON_WIN_PROCS` set covering the major enterprise endpoint stacks (McAfee/Trellix, Symantec, CrowdStrike, SentinelOne) plus VMware Tools and Microsoft Defender. Volatility-truncated names (the `ImageFileName` field on EPROCESS is 16 bytes, so `VGAuthService.exe` surfaces as `VGAuthService.`) are matched via a 14-char-truncation normalizer so the filter actually catches them. **What is deliberately NOT filtered:** Sysinternals tools (`Autorunsc.exe`, `psexec.exe`, `procdump.exe`) — cross-host runs of those *are* suspicious, even though the IR team's own forensic sweeps look identical to attacker tooling. The list is in `scripts/fleet_correlate.py` and is the single source of truth that the per-host orchestrator (`scripts/find_evil_auto.py`) imports at runtime to keep the two filters from drifting.
+
+If your fleet ships a different enterprise stack (e.g. CrowdStrike + Microsoft Defender for Endpoint), expect to see those binaries surface as cross-host correlations until you add them to `COMMON_WIN_PROCS`. Don't dismiss them — confirm they're the products you deployed, *then* add them. Adding a binary to the FP list is itself an investigative claim ("we know what this is"); make the claim deliberately.
+
 ---
 
 ## What to do when you suspect a false positive
