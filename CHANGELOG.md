@@ -191,6 +191,26 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **`scripts/path-existence-smoke.py` graduates the path-audit
+  shape** (commit `e90b4f9`). Third CI smoke graduated from the
+  audit-pattern arc (after launcher-smoke + divergence-smoke).
+  Walks 22 operator-facing docs, extracts every backtick-quoted
+  path-shaped token, asserts each resolves to a real file/dir
+  via 3 resolution attempts (doc-relative, repo-relative,
+  package-relative for service READMEs). 192 paths checked, 0
+  missing on first run; negative-tested with synthetic doc
+  containing one good + one allow-listed + one bad path — all
+  three classified correctly. ALLOW_PATTERNS captures the 43-of-
+  47 false-positive shapes from the two manual audit iterations:
+  URLs, MCP wire identifiers, runtime user dirs, install paths,
+  deferred-per-A2 surfaces, dropped-per-A2 modules deliberately
+  quoted to document removal, future-tense fixture files, OTRF
+  external dataset paths, documented-removed-pre-A1 modules,
+  Windows event-log channels, GitHub Actions references, state
+  files, conventional shorthand. Wired into docker/l1-compose.yml
+  + scripts/run-all-smokes.sh as the 8th L1 smoke; QUICKSTART
+  row updated 9 → 10 entries. The discover → systematize → lock
+  arc has now run three times for three distinct drift shapes.
 - **4 broken paths from extended path-existence audit**
   (commit `385c867`). Second pass of the path-existence audit
   shape, this time across agent-config/*.md + services/*/README.md
