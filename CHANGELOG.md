@@ -191,6 +191,26 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **`find-evil verify` / `find-evil run` downstream sweep**
+  (commit `782f364`). Last iteration's lesson said "when a
+  divergence is documented, sweep for downstream usages." Applied
+  to the A2/cli.py drop in §3, found 5 more broken references:
+  scripts/l3-run-goldens.sh:153 SSH'd `find-evil run` into the
+  SIFT VM (replaced with `bash scripts/find-evil-auto` — the
+  surviving A2 orchestrator); services/agent/findevil_agent/crypto/
+  audit_log.py + merkle.py + __init__.py docstrings all referenced
+  `find-evil verify` as the offline-verification path (replaced
+  with pointers to `verify_manifest` + the `manifest_verify` MCP
+  tool); docs/DATASET.md:177 used `find-evil verify <manifest>` as
+  the reproducibility recipe (replaced with a pointer to
+  docs/cryptographic-attestation.md). Also extended CLAUDE.md
+  "Spec/code divergences" §3 to flag a sixth broken reference:
+  `scripts/build-deb.sh:57` inlines the same dropped
+  `findevil_agent.cli` wrapper into the .deb postinst, and line 96
+  tells the user to run `find-evil run` — both broken under A2.
+  Did NOT unilaterally fix build-deb.sh; same hard-blocker class as
+  the Dockerfile (architectural decision pending). Verified:
+  6/6 smokes pass; 156/156 agent tests pass.
 - **CLAUDE.md "Python agent + swarm" Commands section drift**
   (commit `93a9def`). Five drifts caught by attempting the
   documented commands literally: `uv sync` from repo root claimed
