@@ -191,6 +191,19 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **smoke-regex-tests now covers autonomous-loop + rate-limit fix**
+  (commit `7d31e07`). Extended `smoke-regex-tests.py` with 12 new
+  cases for the new harness (5 queue-parser + 7 rate-limit
+  detector). The new tests immediately caught a real bug in the
+  harness: `RATE_LIMIT_PATTERNS` had `"usage limit reached"` but
+  Anthropic also emits `"You have reached your usage limit"`
+  (different word order) — if rate-limit fired with the second
+  phrasing the harness would have kept burning subprocess spawns
+  instead of halting. Added the second pattern. The
+  protect-the-protectors arc paying off in real time: a regex
+  bug in production-bound code caught less than one iteration
+  after the code shipped, not a hypothetical save. 42/42 regex
+  tests pass; 14/14 full smokes green.
 - **`scripts/autonomous-loop.py` replaces `/loop` with a real harness**
   (commit `150a8a0`). Per two user redirects in this session
   ("Why can't u just use the Claude code sdk to run this continuously"
