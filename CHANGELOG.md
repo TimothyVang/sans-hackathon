@@ -191,6 +191,21 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **`scripts/smoke-regex-tests.py` protects the audit-smoke regexes**
+  (commit `0de00b2`). The 3 audit smokes (divergence + launcher +
+  path-existence) catch drift in the rest of the codebase, but the
+  smokes themselves had no automated regression coverage — a future
+  contributor breaking a regex (typo / over-broadening / over-
+  narrowing) would silently let bugs through. New smoke imports
+  each smoke module and runs 30 synthetic test cases (11 + 9 + 10)
+  against the key regexes / classifiers. Fixtures derived from the
+  manual negative tests run when each smoke first shipped (0155503
+  + c5bfa1b + e90b4f9). Tamper-tested by deliberately breaking
+  one divergence regex; tester returned the expected failure with
+  a precise diagnostic. Wired into docker/l1-compose.yml + run-
+  all-smokes.sh as the 9th smoke (then the 2 lint gates → 11
+  entries total). The audit-pattern arc has now run four times,
+  the fourth being a meta-application protecting the protectors.
 - **`launcher-smoke` shebang-based extension-less launcher discovery**
   (commit `3dc51b1`). Same anti-drift refactor as `5c1f324`
   (path-existence) applied to launcher-smoke. Replaced the explicit
