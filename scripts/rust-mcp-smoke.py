@@ -141,6 +141,16 @@ class StdioClient:
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--release", action="store_true")
+    p.add_argument(
+        "--real-evidence",
+        action="store_true",
+        help=(
+            "After the standard error-path tests, drive evtx_query against "
+            "fixtures/single-evtx/Security.evtx (run scripts/fetch-nist-fixture.sh "
+            "to populate). Skipped silently when the fixture is absent so the "
+            "smoke harness keeps working offline."
+        ),
+    )
     args = p.parse_args()
 
     bin_dir = "release" if args.release else "debug"
@@ -423,7 +433,41 @@ def main() -> int:
         )
         log("  -> -32602 invalid_params with 'invalid artifact name' as expected")
 
-        # ---- 15. unknown tool dispatch is rejected ----------------------
+        # ---- 15. real-evidence smoke (opt-in via --real-evidence) -------
+        if args.real_evidence:
+            log("real-evidence: looking for fixtures/single-evtx/Security.evtx...")
+            fixture = REPO / "fixtures" / "single-evtx" / "Security.evtx"
+            if not fixture.is_file():
+                log(
+                    f"  -> fixture absent at {fixture} — skipping. "
+                    "Run scripts/fetch-nist-fixture.sh to populate."
+                )
+            else:
+                size_kb = fixture.stat().st_size / 1024
+                log(f"  -> fixture present ({size_kb:.1f} KiB); driving evtx_query...")
+                body = client.call_tool(
+                    "evtx_query",
+                    {
+                        "case_id": handle["id"],
+                        "evtx_path": str(fixture),
+                        "limit": 25,
+                    },
+                )
+                rows = body.get("rows") or []
+                seen = body.get("records_seen", 0)
+                if not isinstance(rows, list):
+                    fatal(f"evtx_query rows not a list: {body!r}")
+                if seen <= 0:
+                    fatal(
+                        f"evtx_query saw no records on a real fixture — "
+                        f"the file is probably empty or not a real EVTX: {body!r}"
+                    )
+                log(
+                    f"  -> evtx_query returned {len(rows)} rows "
+                    f"(of {seen} seen); parse_errors={body.get('parse_errors', 0)}"
+                )
+
+        # ---- 16. unknown tool dispatch is rejected ----------------------
         log("unknown tool: expect JSON-RPC error...")
         client.send(
             {
