@@ -191,6 +191,23 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **DKOM finding is INFERRED, not CONFIRMED — SOUL.md alignment**
+  (commit `6dcc1fc`). Caught by extending last iteration's
+  narrative-consistency audit to demo-script-a2.md Beat 3:
+  voice-over says "agent labels finding INFERRED because two
+  tool outputs corroborate", but find_evil_auto.py line 433
+  was labeling the textbook DKOM case (pslist=0/psscan>0) as
+  `confidence="CONFIRMED"`. SOUL.md "Epistemic hierarchy" §2
+  says ≥2 confirmed facts → INFERRED; the rootkit-attribution
+  is INFERRED from confirmed observations. In practice this
+  branch never fires (real fleet hosts all hit line-450's
+  INFERRED branch since they always have pslist > 0; verified
+  by sampling 25 case dirs — 0 CONFIRMED / 15 INFERRED / 33
+  HYPOTHESIS). The CONFIRMED label was a latent SOUL.md
+  violation that a fully-rootkitted future host would have
+  surfaced. 1-line change CONFIRMED → INFERRED + comment
+  block explaining the SOUL.md mapping. Existing case dirs
+  not retroactively re-tiered (change is prospective).
 - **README example terminal output internal-consistency fix**
   (commit `47b41fd`). The "What it is" block mixed three
   illustrative values (pslist=0/psscan=124/verdict=SUSPICIOUS)
