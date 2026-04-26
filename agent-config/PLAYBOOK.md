@@ -11,7 +11,7 @@ When the analyst says **"investigate &lt;path&gt;"**, **"find evil in &lt;path&g
 1. Call `case_open` with the path. Read the returned `image_hash`, `image_size_bytes`, and `id` (the case_id you'll use everywhere).
 2. Inspect the path's extension and the case-open size to pick a playbook below.
 3. Fork **two subagents** with `CLAUDE_CODE_FORK_SUBAGENT=1` — one with the Pool A persistence prompt, one with Pool B exfil prompt (see `AGENTS.md`). Each pool reads this file and runs its biased-but-still-overlapping tool sequence.
-4. After both pools return Findings, run `detect_contradictions` → resolve (or auto-pass under `--unattended`) → `judge_findings` → `verify_finding` per Finding → `correlate_findings` → `manifest_finalize` → `ots_stamp`.
+4. After both pools return Findings, run `detect_contradictions` → resolve (or auto-pass under `--unattended`) → `judge_findings` → `verify_finding` per Finding → `correlate_findings` → **emit 6 `kind=judge_selfscore` audit records** (one per SANS rubric criterion per `agent-config/JUDGING.md`) → `manifest_finalize` → `ots_stamp`. The selfscore lands in the audit chain BEFORE finalize so it's part of the cryptographic attestation — the agent doesn't get to revise it after seeing the score it actually got.
 5. Render the verdict + manifest path.
 
 ---
@@ -43,9 +43,12 @@ Memory tells you what was *running*, not just what was *installed*.
 | Order | Tool | Purpose | Pool |
 |---|---|---|---|
 | 1 | `case_open` | SHA-256 + case_id | both |
-| 2 | `vol_pslist` | Process list from `PsActiveProcessHead` | both |
-| 3 | `vol_malfind` | RWX VADs + MZ headers in unexpected places (code injection) | both |
-| 4 | `yara_scan` | YARA over the raw memory image — catches in-memory-only payloads | B |
+| 2 | `vol_pslist` | Process list from `PsActiveProcessHead` (active-list walk) | both |
+| 3 | `vol_psscan` | EPROCESS pool-memory signature scan — finds blocks unlinked from the active list | both |
+| 4 | `vol_malfind` | RWX VADs + MZ headers in unexpected places (code injection) | both |
+| 5 | `yara_scan` | YARA over the raw memory image — catches in-memory-only payloads | B |
+
+**The `vol_pslist` + `vol_psscan` pair is mandatory, not optional.** pslist walks the kernel's active list; psscan signature-scans EPROCESS pool memory for blocks unlinked from that list. **Divergence between the two outputs IS the forensic finding** — `pslist=0` + `psscan>0` is the textbook MITRE ATT&CK T1014 (Rootkit) DKOM signature. Always emit a `vol_psscan` call after `vol_pslist`, even if pslist returned a healthy count, so the audit chain has both for cross-validation.
 
 After memory: if a disk image for the same host is available, **cross-reference** PIDs from `vol_pslist` against `prefetch_parse` run lists. A process running in memory with no Prefetch entry is a strong signal of an unprefetched (likely manual or scripted) execution — surface as a Finding.
 
