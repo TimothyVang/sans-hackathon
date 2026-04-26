@@ -107,7 +107,9 @@ ok "uv: $(uv --version)"
 # ---------------------------------------------------------------------------
 
 info "Building findevil-mcp (Rust, release mode — first build can take 5-10 min)..."
-cargo build --workspace --release --locked -p findevil-mcp -q
+# `-p findevil-mcp` selects the single package to build; we don't need
+# `--workspace` (cargo silently ignores it when -p is also passed).
+cargo build --release --locked -p findevil-mcp -q
 if [ ! -x "target/release/findevil-mcp" ] && [ ! -x "target/release/findevil-mcp.exe" ]; then
     fail "target/release/findevil-mcp not found after cargo build."
     exit 1
