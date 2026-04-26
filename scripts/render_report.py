@@ -491,6 +491,11 @@ def render_html_pdf(md_path: Path) -> tuple[Path, Path | None]:
 
     pdf_out: Path | None = None
     if Path(CHROME).exists():
+        # Chrome can't overwrite a PDF that's open in a viewer (Windows
+        # locks the file). Render to a sibling .new.pdf first; if the
+        # final rename fails, the rendered output still survives and
+        # the user gets a clear message naming both paths.
+        pdf_tmp = pdf.with_suffix(".new.pdf")
         try:
             html_url = "file:///" + str(html).replace("\\", "/").replace("C:/", "C:/")
             subprocess.run(
@@ -499,7 +504,7 @@ def render_html_pdf(md_path: Path) -> tuple[Path, Path | None]:
                     "--headless",
                     "--disable-gpu",
                     "--no-sandbox",
-                    "--print-to-pdf=" + str(pdf),
+                    "--print-to-pdf=" + str(pdf_tmp),
                     "--print-to-pdf-no-header",
                     "--virtual-time-budget=10000",
                     html_url,
@@ -507,8 +512,18 @@ def render_html_pdf(md_path: Path) -> tuple[Path, Path | None]:
                 capture_output=True,
                 timeout=120,
             )
-            if pdf.exists() and pdf.stat().st_size > 1000:
-                pdf_out = pdf
+            if pdf_tmp.exists() and pdf_tmp.stat().st_size > 1000:
+                try:
+                    pdf_tmp.replace(pdf)
+                    pdf_out = pdf
+                except OSError:
+                    # Target locked (likely open in a viewer). Keep the
+                    # rendered .new.pdf so the operator can see it.
+                    print(
+                        f"  WARN: could not overwrite {pdf} (likely open "
+                        f"in a viewer); rendered output left at {pdf_tmp}"
+                    )
+                    pdf_out = pdf_tmp
         except Exception:
             pass
     return html, pdf_out
