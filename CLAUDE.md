@@ -180,6 +180,10 @@ None of these succeed today — the code they target doesn't exist yet. They are
 
   Note: the swarm package is `findevil_swarm` (matches the `findevil_*` naming convention shared with `findevil_agent` + `findevil_agent_mcp`). The original Spec #1 / build-swarm-plan TDD doc imports from `services.swarm.*` — that's a known **plan-vs-code divergence** (the plan was written with the `services.swarm.*` namespace; the code shipped under `findevil_swarm.*` for consistency with the other Python packages). When in doubt, match `scripts/swarm-start.sh` line 105 — that's the canonical invocation.
 
+**Autonomous-loop harness (lightweight alternative to the swarm):**
+- Driver: `python scripts/autonomous-loop.py [--max-hours N] [--dry-run]` reads the user-level `memory/project_autonomous_queue.md`, picks the highest-priority unblocked item (skipping the `### Hard blockers (require user)` section), and spawns `claude -p --permission-mode acceptEdits` headless per item until the queue is exhausted, the wall-clock cap is hit, or a 429 / `usage limit reached` / `reached your usage limit` is detected. Auth inherits from the `claude` CLI subprocess (Amendment A1 subscription path; no API key).
+- When to use which: the swarm is the heavyweight nightly-cron PR-generator (Postgres-checkpointed, per-PR worktrees, critic gate, draft PRs for morning triage); `autonomous-loop.py` is the lightweight queue-driven sequential runner (one Python process, no Postgres, no worktrees, just claude-per-item until the queue is empty). Both inherit subscription auth via the `claude` CLI; pick by whether you want PRs (swarm) or commits-on-current-branch (autonomous-loop).
+
 **Sandbox layers (Spec #3):**
 - L1 locally: `docker compose -f docker/l1-compose.yml up --build --exit-code-from l1` (base image is `docker/l1-devbase.Dockerfile`)
 - L2 locally (requires Sysbox installed): `bash scripts/l2-dfir-smoke.sh` (or the raw `docker run --runtime=sysbox-runc …` it wraps; base image is `docker/l2-siftlite.Dockerfile`)
