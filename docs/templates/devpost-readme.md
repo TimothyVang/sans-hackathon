@@ -68,7 +68,7 @@ curl -fsSL https://raw.githubusercontent.com/<OWNER>/<REPO>/main/scripts/install
 Under Amendment A2, Claude Code IS the primary interface — the entry point is the repo itself.
 
 ```bash
-# Open an investigation session. .mcp.json auto-spawns both MCP servers
+# Open an investigation. .mcp.json auto-spawns both MCP servers
 # (findevil-mcp + findevil-agent-mcp) over stdio.
 scripts/find-evil
 # … or equivalently from this repo's root:

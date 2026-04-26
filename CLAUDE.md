@@ -151,7 +151,7 @@ None of these succeed today — the code they target doesn't exist yet. They are
 - Test one file (web): `pnpm --filter @findevil/web test -- components/narrative/StreamingSpanTree.test.tsx`
 
 **Launchers under Amendment A2 (Claude Code as primary interface):**
-- Open an investigation session (the demo entry point): `scripts/find-evil` or `claude-code .` from the repo root. `.mcp.json` auto-spawns both MCP servers.
+- Open an investigation (the demo entry point): `scripts/find-evil` or `claude-code .` from the repo root. `.mcp.json` auto-spawns both MCP servers.
 - Verify a submitted manifest cryptographically (offline): the agent calls the `manifest_verify` MCP tool from `findevil-agent-mcp`. CLI fallback: `uv run --directory services/agent_mcp python -m findevil_agent_mcp.server` then drive over stdio.
 - Verify the Bitcoin anchor: `ots verify run.manifest.ots` (the third-party `opentimestamps-client` CLI; the agent uses the same logic via `ots_verify` MCP tool).
 - Pre-A2 launchers (`./find-evil serve|run|verify`, `find-evil` console script, `openclaw run`) are deprecated and not on the critical path.
@@ -195,7 +195,7 @@ These principles are *working* when: diffs are small and focused, fewer rewrites
 - **Conventional Commits:** `feat(scope):`, `test(scope):`, `chore(scope):`, `fix(scope):`, `docs(scope):`. Scope examples from existing commits: `mcp`, `swarm`, `sandbox`, `ci`, `plan`, `amendment A1`.
 - **Never use `--no-verify`, `--no-gpg-sign`, or `git commit --amend`** in plan execution. If a hook fails, fix the root cause and make a new commit.
 - **Pinned dependency versions.** Specs pin exact versions (e.g. `rmcp = "=0.16.0"`, `evtx = "=0.11.2"`). Upgrading without updating the spec is a silent contract break — but when the code already ships a different pin (see "Spec/code divergences"), the shipped pin wins and the spec text is the thing to update.
-- **DFIR vocabulary, not software vocabulary.** In UI copy and docs use: **Case** (not session/run/job), **Observable** (not artifact/file), **Task** (not step/action), **Finding** (not result/hit), **Verdict** (not conclusion/summary), **Confidence** (not score/certainty). A vocab-audit sprint is budgeted for week 7.
+- **DFIR vocabulary, not software vocabulary.** In UI copy and docs use: **Case** (not session/run/job), **Observable** (not file/path/blob — the *generic* container), **Task** (not step/action), **Finding** (not result/hit-as-software-result), **Verdict** (not conclusion/summary), **Confidence** (not score/certainty). Two specific carve-outs: (1) **"artifact" is correct** in the DFIR-canonical sense — "artifact class" (Prefetch/MFT/EVTX/Amcache as evidence types) is the SOUL.md ≥2-corroboration vocabulary and must NOT be massaged into "Observable class"; (2) **"hit"** is correct for rule-engine matches (YARA hit, Sigma rule hit) since that's the industry term in those contexts. The forbidden usages are the *software* meanings: a build "session", a CI "job", a search "hit". A vocab-audit sprint is budgeted for week 7 (and partially executed in commit history — grep `vocab-audit`).
 - **Python tooling:** `uv` for envs and lockfile; `pytest` for tests; `ruff` for lint/format. Python 3.11.
 - **Rust tooling:** `cargo test --workspace --locked`, `cargo clippy --deny warnings`. Rust 1.83.
 - **Node tooling:** `pnpm` with `--frozen-lockfile`; `tsc --noEmit` in L0; `pnpm test` in L1. Node 20.
