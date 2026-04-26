@@ -133,6 +133,63 @@ LAUNCHER_BAD_INVOCATION_CASES = [
     ),
 ]
 
+AUTONOMOUS_LOOP_UNBLOCKED_CASES = [
+    # (label, queue_text, expected_title-or-None)
+    (
+        "Single unblocked item is found",
+        "- [ ] **First item** description here\n- [ ] **Second item** description\n",
+        "First item",
+    ),
+    (
+        "Done item is skipped, next unblocked picked",
+        "- [x] **Done item** completed\n- [ ] **Next item** description\n",
+        "Next item",
+    ),
+    (
+        "Items below 'Hard blockers' heading are NOT picked",
+        "### Some section\n- [x] **Done** completed\n\n### Hard blockers (require user)\n- [ ] **GitHub remote** user-required\n",
+        None,
+    ),
+    (
+        "Empty queue returns None",
+        "## Notes\n\nNo items here.\n",
+        None,
+    ),
+    (
+        "Whitespace before list bullet still matches",
+        "  - [ ] **Indented item** description\n",
+        "Indented item",
+    ),
+]
+
+AUTONOMOUS_LOOP_RATE_LIMIT_CASES = [
+    # (label, stderr_text, expected_is_rate_limited)
+    ("HTTP 429 in stderr is rate-limited", "Error: HTTP 429 Too Many Requests", True),
+    (
+        "Phrase 'rate limit exceeded' is rate-limited",
+        "claude: rate limit exceeded",
+        True,
+    ),
+    (
+        "Phrase 'usage limit reached' is rate-limited",
+        "You have reached your usage limit",
+        True,
+    ),
+    (
+        "Phrase 'out of extra usage' is rate-limited (real Anthropic message)",
+        "You're out of extra usage.",
+        True,
+    ),
+    ("Empty stderr is not rate-limited", "", False),
+    ("Compilation message is not rate-limited", "compiled successfully", False),
+    (
+        "Generic 4xx with different code is not rate-limited",
+        "HTTP 400 Bad Request",
+        False,
+    ),
+]
+
+
 PATH_EXISTENCE_ALLOW_CASES = [
     # (label, candidate, expected_allowed)
     ("URL is allowed", "https://example.com/x/y", True),
@@ -203,6 +260,29 @@ def _run_launcher_cases(launch_smoke) -> list[tuple[str, str]]:
     return failures
 
 
+def _run_autonomous_loop_cases(auto_loop) -> list[tuple[str, str]]:
+    """Returns list of (label, error) for failing autonomous-loop
+    queue-parser + rate-limit-detector cases."""
+    failures = []
+    for label, queue_text, expected_title in AUTONOMOUS_LOOP_UNBLOCKED_CASES:
+        result = auto_loop._next_unblocked(queue_text)
+        actual = result[0] if result else None
+        if actual != expected_title:
+            failures.append(
+                (label, f"_next_unblocked: expected {expected_title!r}, got {actual!r}")
+            )
+    for label, stderr, expected in AUTONOMOUS_LOOP_RATE_LIMIT_CASES:
+        actual = auto_loop._is_rate_limited(stderr)
+        if actual != expected:
+            failures.append(
+                (
+                    label,
+                    f"_is_rate_limited({stderr!r}): expected {expected}, got {actual}",
+                )
+            )
+    return failures
+
+
 def _run_path_existence_cases(pes_smoke) -> list[tuple[str, str]]:
     failures = []
     for label, candidate, expected_allowed in PATH_EXISTENCE_ALLOW_CASES:
@@ -225,6 +305,7 @@ def main() -> int:
     div_smoke = _load("div_smoke", "scripts/divergence-smoke.py")
     launch_smoke = _load("launch_smoke", "scripts/launcher-smoke.py")
     pes_smoke = _load("pes_smoke", "scripts/path-existence-smoke.py")
+    auto_loop = _load("auto_loop", "scripts/autonomous-loop.py")
 
     all_failures: list[tuple[str, str, str]] = []
 
@@ -254,6 +335,17 @@ def main() -> int:
     for label, err in pes_failures:
         all_failures.append(("path-existence-smoke", label, err))
 
+    auto_loop_failures = _run_autonomous_loop_cases(auto_loop)
+    n_auto_loop = len(AUTONOMOUS_LOOP_UNBLOCKED_CASES) + len(
+        AUTONOMOUS_LOOP_RATE_LIMIT_CASES
+    )
+    print(
+        f"autonomous-loop regexes:  {n_auto_loop - len(auto_loop_failures)}"
+        f" / {n_auto_loop} passed"
+    )
+    for label, err in auto_loop_failures:
+        all_failures.append(("autonomous-loop", label, err))
+
     print()
     if all_failures:
         print(f"FAIL - {len(all_failures)} regex test case(s) failed:")
@@ -266,7 +358,12 @@ def main() -> int:
         print("=" * 60)
         return 1
 
-    total = len(DIVERGENCE_CASES) + n_launcher + len(PATH_EXISTENCE_ALLOW_CASES)
+    total = (
+        len(DIVERGENCE_CASES)
+        + n_launcher
+        + len(PATH_EXISTENCE_ALLOW_CASES)
+        + n_auto_loop
+    )
     print("=" * 60)
     print(f"OK - all {total} regex test cases pass.")
     print("=" * 60)

@@ -59,11 +59,16 @@ HARD_BLOCKERS_RE = re.compile(
     r"^###\s+Hard\s+blockers\s*\(require\s+user\)", re.MULTILINE
 )
 
-# Rate-limit signals from claude / Anthropic API stderr.
+# Rate-limit signals from claude / Anthropic API stderr.  Anthropic
+# emits two phrasings of the same condition: "usage limit reached"
+# (system-side framing) and "You have reached your usage limit"
+# (user-facing framing).  Catch both - smoke-regex-tests covers the
+# distinction.
 RATE_LIMIT_PATTERNS = (
     re.compile(r"\b429\b"),
     re.compile(r"rate.limit.exceeded", re.IGNORECASE),
     re.compile(r"usage limit reached", re.IGNORECASE),
+    re.compile(r"reached your usage limit", re.IGNORECASE),
     re.compile(r"out of extra usage", re.IGNORECASE),
 )
 
