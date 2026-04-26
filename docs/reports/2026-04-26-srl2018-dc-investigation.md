@@ -35,7 +35,7 @@ The *SRL-2018 Compromised Enterprise Network* is a teaching corpus produced by S
 
 **Memory image inventory** (extracted from 6 multipart ZIP archives, 21 GB compressed → 98 GB uncompressed):
 
-![Memory inventory across 22 hosts](figures/01_memory_inventory.png)
+![Memory inventory across 22 hosts](figures-2026-04-26/01_memory_inventory.png)
 
 The largest single image is `base-mail-memory.img` at 18 GB — consistent with a busy production mailbox server. The Domain Controller image (`base-dc-memory.img`, 5.0 GB) is the focus of this report.
 
@@ -55,7 +55,7 @@ Find Evil! operationalizes ACH as a multi-agent system:
 
 The agent runs entirely inside the SIFT Workstation VM. The Windows host on which the analyst sits drives the agent over an SSH stdio transport — the typed MCP surface is the only verb set the agent has, and `execute_shell` does not exist [^mcp-spec-2024-11].
 
-![Architectural trust boundaries](figures/08_architecture.png)
+![Architectural trust boundaries](figures-2026-04-26/08_architecture.png)
 
 ---
 
@@ -65,7 +65,7 @@ The agent runs entirely inside the SIFT Workstation VM. The Windows host on whic
 
 Four host C: drives, EnCase E01 format, SHA-256 verified on receipt:
 
-![SHA-256 manifest for disk images](figures/07_sha256_manifest.png)
+![SHA-256 manifest for disk images](figures-2026-04-26/07_sha256_manifest.png)
 
 Each value above was recomputed live on 2026-04-26 from inside the SIFT VM via the VMware shared-folder mount and matched the manifest byte-for-byte. The verification chain is therefore: `dc3dd` (SANS-side acquisition) → `sha256sum` (analyst-side receipt) → `case_open` SHA-256 (Rust `sha2` crate, in-process) → Merkle leaf in run manifest.
 
@@ -124,7 +124,7 @@ The PDB GUID resolves to a Windows Server 2008 R2 build [^vol3-symbols]. The Vol
 
 **Vol3 `windows.psscan`** (which scans the entire memory image for `EPROCESS` signatures rather than walking the linked list): **returned 124 processes**.
 
-![pslist vs psscan divergence](figures/04_pslist_vs_psscan.png)
+![pslist vs psscan divergence](figures-2026-04-26/04_pslist_vs_psscan.png)
 
 This is the textbook signature of **DKOM (Direct Kernel Object Manipulation) process hiding** — MITRE ATT&CK technique **T1014 (Rootkit)** [^mitre-t1014]. A rootkit (kernel module, driver, or memory-resident shellcode) unlinks malicious processes from `PsActiveProcessHead` while leaving their `EPROCESS` structures intact in pool memory. `pslist` follows the linked list and finds nothing because the unlinking has been done; `psscan` finds the orphaned `EPROCESS` objects by signature and produces the true count.
 
@@ -143,7 +143,7 @@ The 124 psscan-recovered processes span 21 days of timeline:
 * **Earliest creation:** 2018-08-16 21:05:18 UTC (likely host boot — `System` process at PID 4)
 * **Latest creation:** 2018-09-06 22:53:58 UTC (acquisition day — last process created before `dc3dd` ran)
 
-![DC process creation timeline](figures/02_dc_process_timeline.png)
+![DC process creation timeline](figures-2026-04-26/02_dc_process_timeline.png)
 
 The full timeline shows the typical Windows boot sequence (System → smss → csrss → wininit → services), followed by 21 days of administrator activity. Notable manual interventions visible in the data:
 
@@ -155,7 +155,7 @@ The `wermgr.exe` event is forensically interesting because it correlates tempora
 
 ### 4.5 Process name distribution
 
-![DC process names — top 20 of 124](figures/03_dc_process_names.png)
+![DC process names — top 20 of 124](figures-2026-04-26/03_dc_process_names.png)
 
 The process-name distribution is consistent with a Windows Server 2008 R2 Domain Controller:
 
@@ -177,7 +177,7 @@ No obviously-named persistence implants are visible at this layer (no `svhost.ex
 
 The end-to-end flow with the actual values produced by this run:
 
-![Find Evil! end-to-end investigation flow](figures/06_investigation_flow.png)
+![Find Evil! end-to-end investigation flow](figures-2026-04-26/06_investigation_flow.png)
 
 Every box in the diagram corresponds to a real MCP tool invocation. The audit log captured each invocation; the Merkle leaves were generated from the SHA-256 of each `tool_call_output` payload; the manifest was sigstore-signed at finalization.
 
@@ -187,7 +187,7 @@ Every box in the diagram corresponds to a real MCP tool invocation. The audit lo
 
 The cryptographic attestation is the differentiator that places Find Evil! ahead of comparable AI-orchestration tools (notably SANS's experimental Protocol SIFT, which explicitly disclaims forensic admissibility [^protocol-sift-disclaimer]).
 
-![Cryptographic chain of custody](figures/05_chain_of_custody.png)
+![Cryptographic chain of custody](figures-2026-04-26/05_chain_of_custody.png)
 
 **Three independent guarantees** combine in the manifest:
 
