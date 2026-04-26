@@ -259,9 +259,15 @@ def main() -> int:
         )
 
         def expect_error_response(
-            method: str, params: dict[str, Any], substr: str
+            method: str,
+            params: dict[str, Any],
+            substr: str,
+            expected_code: int = -32603,
         ) -> None:
-            """Call the server raw and assert the response is a JSON-RPC error."""
+            """Call the server raw and assert the response is a JSON-RPC error
+            with the expected code (default -32603 internal). Pass
+            expected_code=-32602 for user-input (invalid_params) errors.
+            """
             msg_id = client._next_id  # noqa: SLF001 — test-only access
             client._next_id += 1  # noqa: SLF001
             client.send(
@@ -272,11 +278,14 @@ def main() -> int:
                 fatal(f"id mismatch: {resp}")
             if "error" not in resp:
                 fatal(f"expected error, got success: {resp}")
+            actual_code = resp["error"].get("code")
+            if actual_code != expected_code:
+                fatal(f"expected error code {expected_code}, got {actual_code}: {resp}")
             if substr not in resp["error"].get("message", ""):
                 fatal(f"error message missing {substr!r}: {resp}")
 
         # ---- 4. evtx_query (error path) ---------------------------------
-        log("evtx_query: missing-file error path...")
+        log("evtx_query: missing-file error path (-32602)...")
         expect_error_response(
             "tools/call",
             {
@@ -287,11 +296,12 @@ def main() -> int:
                 },
             },
             "evtx file not found",
+            expected_code=-32602,
         )
-        log("  -> -32603 with 'evtx file not found' as expected")
+        log("  -> -32602 invalid_params with 'evtx file not found' as expected")
 
         # ---- 5. prefetch_parse (error path) -----------------------------
-        log("prefetch_parse: missing-file error path...")
+        log("prefetch_parse: missing-file error path (-32602)...")
         expect_error_response(
             "tools/call",
             {
@@ -302,11 +312,12 @@ def main() -> int:
                 },
             },
             "prefetch file not found",
+            expected_code=-32602,
         )
-        log("  -> -32603 with 'prefetch file not found' as expected")
+        log("  -> -32602 invalid_params with 'prefetch file not found' as expected")
 
         # ---- 6. mft_timeline (error path) -------------------------------
-        log("mft_timeline: missing-file error path...")
+        log("mft_timeline: missing-file error path (-32602)...")
         expect_error_response(
             "tools/call",
             {
@@ -317,8 +328,9 @@ def main() -> int:
                 },
             },
             "MFT file not found",
+            expected_code=-32602,
         )
-        log("  -> -32603 with 'MFT file not found' as expected")
+        log("  -> -32602 invalid_params with 'MFT file not found' as expected")
 
         # ---- 7. mft_timeline invalid-time-filter (-32602) ---------------
         log("mft_timeline: invalid time filter (-32602)...")
@@ -336,11 +348,12 @@ def main() -> int:
                 },
             },
             "invalid time filter",
+            expected_code=-32602,
         )
         log("  -> -32602 invalid_params with 'invalid time filter' as expected")
 
         # ---- 8. registry_query (error path) -----------------------------
-        log("registry_query: missing-file error path...")
+        log("registry_query: missing-file error path (-32602)...")
         expect_error_response(
             "tools/call",
             {
@@ -352,11 +365,12 @@ def main() -> int:
                 },
             },
             "registry hive not found",
+            expected_code=-32602,
         )
-        log("  -> -32603 with 'registry hive not found' as expected")
+        log("  -> -32602 invalid_params with 'registry hive not found' as expected")
 
         # ---- 9. yara_scan (error path) ----------------------------------
-        log("yara_scan: missing-target error path...")
+        log("yara_scan: missing-target error path (-32602)...")
         expect_error_response(
             "tools/call",
             {
@@ -368,11 +382,12 @@ def main() -> int:
                 },
             },
             "YARA target not found",
+            expected_code=-32602,
         )
-        log("  -> -32603 with 'YARA target not found' as expected")
+        log("  -> -32602 invalid_params with 'YARA target not found' as expected")
 
         # ---- 10. usnjrnl_query (error path) -----------------------------
-        log("usnjrnl_query: missing-file error path...")
+        log("usnjrnl_query: missing-file error path (-32602)...")
         expect_error_response(
             "tools/call",
             {
@@ -383,11 +398,12 @@ def main() -> int:
                 },
             },
             "UsnJrnl file not found",
+            expected_code=-32602,
         )
-        log("  -> -32603 with 'UsnJrnl file not found' as expected")
+        log("  -> -32602 invalid_params with 'UsnJrnl file not found' as expected")
 
         # ---- 11. hayabusa_scan (error path) -----------------------------
-        log("hayabusa_scan: missing-evtx-dir error path...")
+        log("hayabusa_scan: missing-evtx-dir error path (-32602)...")
         expect_error_response(
             "tools/call",
             {
@@ -398,11 +414,12 @@ def main() -> int:
                 },
             },
             "evtx_dir not found",
+            expected_code=-32602,
         )
-        log("  -> -32603 with 'evtx_dir not found' as expected")
+        log("  -> -32602 invalid_params with 'evtx_dir not found' as expected")
 
         # ---- 12. vol_pslist (error path) --------------------------------
-        log("vol_pslist: missing-image error path...")
+        log("vol_pslist: missing-image error path (-32602)...")
         expect_error_response(
             "tools/call",
             {
@@ -413,11 +430,12 @@ def main() -> int:
                 },
             },
             "memory image not found",
+            expected_code=-32602,
         )
-        log("  -> -32603 with 'memory image not found' as expected")
+        log("  -> -32602 invalid_params with 'memory image not found' as expected")
 
         # ---- 13. vol_malfind (error path) -------------------------------
-        log("vol_malfind: missing-image error path...")
+        log("vol_malfind: missing-image error path (-32602)...")
         expect_error_response(
             "tools/call",
             {
@@ -428,8 +446,9 @@ def main() -> int:
                 },
             },
             "memory image not found",
+            expected_code=-32602,
         )
-        log("  -> -32603 with 'memory image not found' as expected")
+        log("  -> -32602 invalid_params with 'memory image not found' as expected")
 
         # ---- 14. vel_collect invalid-artifact-name (-32602) -------------
         log("vel_collect: invalid artifact name (-32602)...")
