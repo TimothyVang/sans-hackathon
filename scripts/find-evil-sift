@@ -1,34 +1,31 @@
 #!/usr/bin/env bash
-# find-evil-sift — Windows-host launcher that points Claude Code at the
-# SIFT-VM-hosted MCP servers (instead of the local ones).
+# find-evil-sift — daily launcher: ensures the SIFT VM is running and
+# Claude Code talks stdio to its MCP servers over SSH.
 #
-# Pre-flight:
-#   1. SIFT VM imported in VirtualBox with port-forwarding 2222 → 22.
-#   2. ~/.ssh/sift_key keypair exists; pubkey installed in the VM's
-#      ~sansforensics/.ssh/authorized_keys.
-#   3. The repo is rsync'd or git-cloned inside the VM at
-#      /home/sansforensics/find-evil and `bash scripts/sift-vm-setup.sh`
-#      has been run there once.
+# First run: defer to scripts/sift-vm-bootstrap.sh (one-time, ~15 min).
+# Subsequent runs: detect VM state, boot if stopped, get fresh IP from
+# VMware Tools, sync .mcp.json.sift to that IP, swap configs, launch
+# Claude Code.
 #
-# What this launcher does:
-#   1. Checks the VM is reachable over SSH (else prints actionable hint).
-#   2. Backs up the existing .mcp.json (local-mode) → .mcp.json.local.
-#   3. Activates the SIFT-mode config: cp .mcp.json.sift .mcp.json.
-#   4. Spawns `claude-code .` in the repo so the SIFT-mode MCP servers
-#      are picked up by the new session.
-#   5. On exit, restores .mcp.json.local so subsequent regular runs
-#      see the local config again. (Use --no-restore to leave SIFT
-#      mode active.)
+# Hypervisor preference: VMware Workstation (vmrun) → VirtualBox
+# (VBoxManage). The bootstrap is VMware-only today; VirtualBox path
+# is a stub for future extension.
+#
+# Knobs (env): VM_NAME, SSH_KEY, GUEST_USER, GUEST_REPO_PATH.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 
-VM_HOST="${SIFT_HOST:-localhost}"
-VM_PORT="${SIFT_PORT:-2222}"
-VM_USER="${SIFT_USER:-sansforensics}"
+VM_NAME="${VM_NAME:-Find-Evil-SIFT}"
+VM_DIR="${VM_DIR:-$HOME/Documents/Virtual Machines/${VM_NAME}}"
+VM_VMX="${VM_DIR}/${VM_NAME}.vmx"
 SSH_KEY="${SIFT_SSH_KEY:-$HOME/.ssh/sift_key}"
+GUEST_USER="${GUEST_USER:-sansforensics}"
+GUEST_REPO_PATH="${GUEST_REPO_PATH:-/home/sansforensics/find-evil}"
+
+VMRUN="/c/Program Files (x86)/VMware/VMware Workstation/vmrun.exe"
 
 RESTORE_ON_EXIT=1
 for arg in "$@"; do
@@ -37,70 +34,129 @@ for arg in "$@"; do
   esac
 done
 
-log() { printf '[find-evil-sift] %s\n' "$*" >&2; }
+log()  { printf '[find-evil-sift] %s\n' "$*" >&2; }
+warn() { printf '[find-evil-sift] WARN: %s\n' "$*" >&2; }
 fail() { printf '[find-evil-sift] FAIL: %s\n' "$*" >&2; exit 1; }
 
-# ---------------------------------------------------------------------
-# 1. Pre-flight checks.
-# ---------------------------------------------------------------------
-[[ -f "${REPO_ROOT}/.mcp.json.sift" ]] || fail ".mcp.json.sift missing — run from a checkout that has it."
-[[ -f "${SSH_KEY}" ]] || fail "SSH key ${SSH_KEY} missing — generate with:
-    ssh-keygen -t ed25519 -f ${SSH_KEY}
-  then copy the .pub into the VM's ~sansforensics/.ssh/authorized_keys."
-
-log "ssh ${VM_USER}@${VM_HOST}:${VM_PORT} reachability check..."
-if ! ssh -i "${SSH_KEY}" \
-    -p "${VM_PORT}" \
-    -o BatchMode=yes \
-    -o ConnectTimeout=5 \
-    -o StrictHostKeyChecking=accept-new \
-    "${VM_USER}@${VM_HOST}" \
-    'echo SIFT_VM_REACHABLE && command -v cargo && command -v uv' >/dev/null 2>&1; then
-  fail "VM unreachable. Start it in VirtualBox, ensure port-forwarding 2222 → 22 is set,
-  and confirm: ssh -p ${VM_PORT} ${VM_USER}@${VM_HOST}
-  If you haven't run scripts/sift-vm-setup.sh inside the VM yet, do that first."
-fi
-log "  VM reachable; cargo + uv on PATH inside the VM."
-
-# ---------------------------------------------------------------------
-# 2. Pre-flight: confirm the Rust binary is built inside the VM.
-# ---------------------------------------------------------------------
-if ! ssh -i "${SSH_KEY}" -p "${VM_PORT}" -o BatchMode=yes \
-    "${VM_USER}@${VM_HOST}" \
-    'test -x /home/sansforensics/find-evil/target/release/findevil-mcp' >/dev/null 2>&1; then
-  log "VM has no built findevil-mcp binary; building (may take ~3 min cold)..."
-  ssh -i "${SSH_KEY}" -p "${VM_PORT}" -o BatchMode=yes \
-    "${VM_USER}@${VM_HOST}" \
-    'cd /home/sansforensics/find-evil && cargo build --release -p findevil-mcp --locked' \
-    || fail "remote build failed; check the VM's logs."
-  log "  build complete."
-fi
-
-# ---------------------------------------------------------------------
-# 3. Swap .mcp.json: back up local; activate SIFT.
-# ---------------------------------------------------------------------
-if [[ -f .mcp.json ]]; then
-  if ! diff -q .mcp.json .mcp.json.sift >/dev/null 2>&1; then
-    log "backing up local .mcp.json → .mcp.json.local"
-    cp -f .mcp.json .mcp.json.local
+to_winpath() {
+  local p="$1"
+  if [[ "$p" == /c/* ]]; then
+    echo "C:\\${p#/c/}" | sed 's|/|\\|g'
+  elif [[ "$p" == /[a-z]/* ]]; then
+    local drive="${p:1:1}"
+    echo "${drive^^}:\\${p#/?/}" | sed 's|/|\\|g'
+  else
+    cygpath -w "$p" 2>/dev/null || echo "$p"
   fi
+}
+
+# ---------------------------------------------------------------------
+# 1. Pre-flight: VM exists?
+# ---------------------------------------------------------------------
+[[ -f "$VM_VMX" ]] || fail "VM not converted yet at: $VM_VMX
+  Run: bash scripts/sift-vm-bootstrap.sh"
+[[ -f "$VMRUN" ]] || fail "VMware Workstation vmrun.exe not found at $VMRUN"
+[[ -f "$SSH_KEY" ]] || fail "SSH key missing at $SSH_KEY — run sift-vm-bootstrap.sh"
+
+# ---------------------------------------------------------------------
+# 2. Boot if not running
+# ---------------------------------------------------------------------
+VMX_WIN=$(to_winpath "$VM_VMX")
+if "$VMRUN" -T ws list | grep -qF "$VMX_WIN"; then
+  log "VM already running"
+else
+  log "VM not running; starting headless..."
+  "$VMRUN" -T ws start "$VMX_WIN" nogui
 fi
-log "activating SIFT-mode .mcp.json..."
+
+# ---------------------------------------------------------------------
+# 3. Discover guest IP from VMware Tools
+# ---------------------------------------------------------------------
+log "waiting for VMware Tools to report guest IP (up to 90s)..."
+GUEST_IP=""
+for i in $(seq 1 45); do
+  if GUEST_IP=$("$VMRUN" -T ws getGuestIPAddress "$VMX_WIN" 2>/dev/null); then
+    if [[ -n "$GUEST_IP" && "$GUEST_IP" != "unknown" && "$GUEST_IP" != *error* ]]; then
+      log "  guest IP: $GUEST_IP"
+      break
+    fi
+  fi
+  sleep 2
+done
+[[ -n "$GUEST_IP" && "$GUEST_IP" != "unknown" ]] || fail "VM didn't report a usable IP within 90s"
+
+# ---------------------------------------------------------------------
+# 4. Verify SSH actually reaches the VM
+# ---------------------------------------------------------------------
+log "verifying SSH ${GUEST_USER}@${GUEST_IP}..."
+if ! ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=5 \
+    -o StrictHostKeyChecking=accept-new \
+    "${GUEST_USER}@${GUEST_IP}" \
+    "test -x ${GUEST_REPO_PATH}/target/release/findevil-mcp" >/dev/null 2>&1; then
+  warn "SSH or remote binary missing. Re-run scripts/sift-vm-bootstrap.sh."
+  fail "cannot proceed without a built findevil-mcp inside the VM"
+fi
+log "  SSH ok; remote binary present."
+
+# ---------------------------------------------------------------------
+# 5. Re-sync .mcp.json.sift with current IP (in case DHCP changed)
+# ---------------------------------------------------------------------
+log "syncing .mcp.json.sift with current IP..."
+python3 - "$GUEST_IP" "$SSH_KEY" "$GUEST_USER" "$GUEST_REPO_PATH" <<'PY' || warn "could not refresh .mcp.json.sift (continuing)"
+import json, sys, pathlib
+ip, key, user, repo = sys.argv[1:]
+p = pathlib.Path(".mcp.json.sift")
+data = json.loads(p.read_text(encoding="utf-8"))
+for name, server in data["mcpServers"].items():
+    args = []
+    skip = 0
+    seen_user_at = False
+    for a in server["args"]:
+        if skip:
+            skip -= 1
+            continue
+        if a in ("-p",):
+            skip = 1
+            continue
+        if a == "-i":
+            args.extend(["-i", key])
+            skip = 1
+            continue
+        if "@" in a and not seen_user_at and (a.endswith("@localhost") or "@" in a):
+            args.append(f"{user}@{ip}")
+            seen_user_at = True
+            continue
+        if "/home/sansforensics/find-evil" in a:
+            args.append(a.replace("/home/sansforensics/find-evil", repo))
+            continue
+        args.append(a)
+    server["args"] = args
+p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+PY
+
+# ---------------------------------------------------------------------
+# 6. Activate SIFT-mode .mcp.json
+# ---------------------------------------------------------------------
+if [[ -f .mcp.json ]] && ! diff -q .mcp.json .mcp.json.sift >/dev/null 2>&1; then
+  log "backing up local .mcp.json → .mcp.json.local"
+  cp -f .mcp.json .mcp.json.local
+fi
+log "activating SIFT-mode .mcp.json"
 cp -f .mcp.json.sift .mcp.json
 
 restore_local() {
   if [[ "${RESTORE_ON_EXIT}" == "1" && -f .mcp.json.local ]]; then
-    log "restoring local .mcp.json from .mcp.json.local"
+    log "restoring local .mcp.json"
     mv -f .mcp.json.local .mcp.json
   fi
 }
 trap restore_local EXIT
 
 # ---------------------------------------------------------------------
-# 4. Hand off to Claude Code.
+# 7. Hand off to Claude Code
 # ---------------------------------------------------------------------
-log "starting Claude Code with SIFT-mode MCP servers."
-log "  When prompted, try: investigate /home/sansforensics/find-evil/fixtures/single-evtx/Security.evtx"
+log "launching Claude Code (SIFT-mode); guest at ${GUEST_USER}@${GUEST_IP}"
+log "  prompt suggestion: investigate ${GUEST_REPO_PATH}/fixtures/single-evtx/Security.evtx"
 
 if command -v claude-code >/dev/null 2>&1; then
   claude-code .
