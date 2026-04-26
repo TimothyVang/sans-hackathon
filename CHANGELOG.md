@@ -191,6 +191,20 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **`path-existence-smoke` glob-based doc discovery** (commit
+  `5c1f324`). Replaced the explicit 22-entry `SCAN_LIST` tuple
+  with `EXPLICIT_DOCS` (3 root-level entries) + 4 `GLOB_PATTERNS`
+  (`docs/*.md`, `docs/runbooks/*.md`, `agent-config/*.md`,
+  `services/*/README.md`) + 1 `GLOB_EXCLUDES` (devpost README
+  template with envsubst placeholders). Discovery now auto-gates
+  any new doc dropped under those directories — the previous
+  explicit list silently un-gated new files until a contributor
+  remembered to add them (the github-remote-bootstrap runbook in
+  41594d0 needed a manual update for that exact reason). Same 23
+  docs / 193 paths resolve. Negative-tested with a synthetic
+  doc/runbook bad-path; smoke FAILs correctly. Structural fix —
+  no new bugs caught — but the gate is now resistant to
+  drop-in-and-forget drift.
 - **`docs/runbooks/github-remote-bootstrap.md`** (commit `41594d0`).
   Second decision-helper runbook (first was the Dockerfile A2 one
   in `ea14aeb`). The "GitHub remote + push" hard blocker has been
