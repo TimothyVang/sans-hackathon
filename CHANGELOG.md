@@ -191,6 +191,24 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **README example terminal output internal-consistency fix**
+  (commit `47b41fd`). The "What it is" block mixed three
+  illustrative values (pslist=0/psscan=124/verdict=SUSPICIOUS)
+  with one real merkle (`21a2859b...` from base-admin) — but
+  base-admin's actual values are pslist=232/psscan=244/verdict=
+  INDETERMINATE per the queue's re-investigation record. Three
+  illustrative numbers + one real merkle glued together as if
+  one run. A reader trying to verify by running the agent
+  would see different values; a reader cross-referencing
+  tmp/auto-runs/ for the cited merkle would find different
+  pslist/psscan. Reframed as obviously-stylized: placeholder
+  names (`<host>`, `<uuid4>`, `<hex digest>`) + dynamic-count
+  symbols (N1, N2, K, F, F') + explicit "Stylized" footnote
+  pointing at the actual artifact set in docs/reports/...
+  Caught by a new audit shape — "narrative consistency" (does
+  the prose tell a story whose pieces fit together when cross-
+  referenced?). Harder to lock in CI than the existing audit
+  shapes; stays one-shot for now.
 - **`run-all-smokes.sh` adds `cargo clippy` + `cargo test`**
   (commit `e021c46`). Closes the last 2 gaps with the autonomous-
   loop directive's verification spec ("cargo test + cargo clippy
