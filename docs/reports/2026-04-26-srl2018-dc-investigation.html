@@ -430,10 +430,12 @@ signed payload.</p>
 <h2 id="limitations-and-caveats">8. Limitations and caveats</h2>
 <p>In the spirit of Heuer’s emphasis on epistemic honesty <a href="#fn14" class="footnote-ref" id="fnref14" role="doc-noteref"><sup>14</sup></a>, the limitations of this
 investigation are documented explicitly:</p>
-<p><strong>8.1 Tool surface coverage.</strong> Find Evil! wraps 11 typed
-Rust MCP tools and 10 typed Python MCP tools. SIFT Workstation ships
-hundreds of DFIR tools. The following SIFT capabilities are <em>not</em>
-in the agent’s tool surface today:</p>
+<p><strong>8.1 Tool surface coverage.</strong> Find Evil! wraps 12 typed
+Rust MCP tools (<code>vol_psscan</code> was added after
+<code>vol_pslist</code> for DKOM cross-validation) and 10 typed Python
+MCP tools. SIFT Workstation ships hundreds of DFIR tools. The following
+SIFT capabilities are <em>not</em> in the agent’s tool surface
+today:</p>
 <ul>
 <li>Plaso / <code>log2timeline</code> — full filesystem super-timeline
 (a major gap)</li>

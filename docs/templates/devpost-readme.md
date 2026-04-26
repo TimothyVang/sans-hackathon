@@ -32,7 +32,7 @@ Five trust boundaries (see `docs/architecture.md` for Mermaid diagrams):
 Evidence vault (read-only .e01)
   → SIFT tool subprocesses (unprivileged, sandboxed)
   → Two typed MCP servers
-      • findevil-mcp (Rust)        — 11 DFIR tools, no execute_shell
+      • findevil-mcp (Rust)        — 12 DFIR tools, no execute_shell
       • findevil-agent-mcp (Python) — 10 crypto/ACH tools
   → Claude Code agent loop (supervisor + forked Pool A/B subagents
     + verifier + judge + correlator + contradiction surface)

@@ -260,7 +260,7 @@ All three modes are **judge-valid**. Judges pick whichever they already have —
 
 | Dimension | Valhuntir (reference) | Us |
 |---|---|---|
-| MCP server | Python, 8 servers via sift-gateway, 100+ tools | **Two** typed MCP servers — Rust `findevil-mcp` (11 DFIR tools) + Python `findevil-agent-mcp` (10 crypto/ACH tools); no execute_shell |
+| MCP server | Python, 8 servers via sift-gateway, 100+ tools | **Two** typed MCP servers — Rust `findevil-mcp` (12 DFIR tools, including the deliberately-redundant `vol_pslist` + `vol_psscan` pair for DKOM cross-validation) + Python `findevil-agent-mcp` (10 crypto/ACH tools); no execute_shell |
 | Agent runtime | Custom Python harness | **Claude Code** itself (SANS rules §1 "Direct Agent Extension") — no custom orchestrator to maintain |
 | Chain-of-custody | Password-gated HMAC (PBKDF2 2M iter) | sigstore + Merkle + OpenTimestamps Bitcoin anchor (FRE 902(14) self-authenticating) |
 | Agent pattern | Single agent + human approval | ACH dual-agent (persistence vs exfil) via Claude Code forked subagents + judge + contradiction surface |
