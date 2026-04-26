@@ -36,7 +36,7 @@ Use when: filesystem creation/modification ordering, especially for "what change
 ### registry_query
 Args: `{case_id, hive_path, key_path, value_name?, recursive?, depth?, limit?}`
 Returns: `{entries[]}` with `{key, name, type, data}` formatted by RegValue type (REG_SZ→text, REG_MULTI_SZ→pipe-joined, REG_DWORD→decimal, REG_BINARY→hex truncated at 4096B)
-Use when: persistence questions (Run/RunOnce, Services, IFEO, AppInit_DLLs), user-context (NTUSER.DAT shellbags, MRUs), ShimCache, BAM. Pass the primary hive only; transaction logs (`.LOG1/2`) are not auto-merged. `recursive=true` walks depth-first capped at 16 by default.
+Use when: persistence questions (Run/RunOnce, Services, IFEO, AppInit_DLLs), user-context (NTUSER.DAT shellbags, MRUs), ShimCache, BAM. Pass the primary hive only; transaction logs (`.LOG1` / `.LOG2`) are not auto-merged. `recursive=true` walks depth-first capped at 16 by default.
 
 ### yara_scan
 Args: `{case_id, target_path, rules_paths[], recursive?, max_matches_per_rule?, max_total_matches?, limit?}`
