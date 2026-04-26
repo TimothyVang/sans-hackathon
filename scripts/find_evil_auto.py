@@ -1031,21 +1031,31 @@ def preflight_check() -> None:
             file=sys.stderr,
         )
         sys.exit(2)
+    # One SSH round-trip checking both MCP server prerequisites:
+    # the Rust DFIR binary AND the Python agent_mcp directory + uv
+    # binary it needs to spawn. Both must be present or the
+    # investigation will fail downstream with a less-helpful error.
+    probe = (
+        f"test -x {RUST_BIN} && "
+        f"test -d {GUEST_REPO}/services/agent_mcp && "
+        f"test -x /home/sansforensics/.local/bin/uv && "
+        f"echo ok"
+    )
     try:
-        code, _, stderr = ssh_run(
-            f"test -x {RUST_BIN} && echo ok",
-            timeout=10,
-        )
+        code, _, stderr = ssh_run(probe, timeout=10)
     except subprocess.TimeoutExpired:
         code, stderr = 124, "ssh connect timed out after 10s"
     if code != 0:
         print(
-            f"ERROR: cannot reach SIFT VM at {GUEST_USER}@{GUEST_IP} or "
-            f"the findevil-mcp binary is missing.\n\n"
-            f"Pre-flight tried: ssh {GUEST_USER}@{GUEST_IP} "
-            f"'test -x {RUST_BIN}'\n"
+            f"ERROR: cannot reach SIFT VM at {GUEST_USER}@{GUEST_IP} or one "
+            f"of the MCP server prerequisites is missing.\n\n"
+            f"Pre-flight tried: ssh {GUEST_USER}@{GUEST_IP} '<probe>'\n"
             f"  exit code: {code}\n"
             f"  stderr   : {stderr.strip()[:200]}\n\n"
+            f"Required on the SIFT VM (any one missing -> this error):\n"
+            f"  1. {RUST_BIN}                                  (Rust MCP binary)\n"
+            f"  2. {GUEST_REPO}/services/agent_mcp/             (Python MCP dir)\n"
+            f"  3. /home/sansforensics/.local/bin/uv            (uv binary)\n\n"
             "Fix:\n"
             "  - first time: run scripts/sift-vm-bootstrap.sh (one-shot ~15min)\n"
             "  - VM down  : run scripts/find-evil-sift (auto-boots)\n"
