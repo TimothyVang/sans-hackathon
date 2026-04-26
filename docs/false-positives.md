@@ -1,0 +1,143 @@
+# False-Positive Prevention — Operator's Guide
+
+Find Evil! has **three architectural layers** that filter false positives before findings reach the analyst, plus **four operational habits** the analyst applies on top. This document explains both.
+
+---
+
+## The three architectural layers (built in)
+
+### Layer 1 — Tool selection
+
+Some DFIR tools are intrinsically more FP-prone than others. The agent's tool surface is curated to favor low-FP tools, and the playbook (`agent-config/PLAYBOOK.md`) names which tool to reach for in which situation.
+
+| Tool | FP risk | Mitigation in the agent |
+|---|---|---|
+| `evtx_query` | Very low — exact byte-level Event Log records | None needed |
+| `mft_timeline` | Low — `$SI` vs `$FN` MAC-time comparison detects timestomping; agent surfaces both | Built in |
+| `prefetch_parse` | Low for *presence*; medium for *absence* — Prefetch can be disabled (`EnablePrefetcher=0`) | Caveat surfaced in tool description per `MEMORY.md` |
+| `registry_query` | Low for raw values; medium for *interpretation* (Run keys can be benign software) | Pool A reads and Pool B re-reads with different bias |
+| `usnjrnl_query` | Low for events; medium for *gaps* — USN journal is **circular**; gaps are normal | `MEMORY.md` caveat surfaces this |
+| `yara_scan` | **High** if community rules used unfiltered; low if YARA-Forge "core" tier only | Agent prefers `core` tier; `extended` tier requires corroboration |
+| `hayabusa_scan` | Medium — Sigma rules are tuned conservatively but still flag legit admin activity | Multi-level filter (`min_level: medium` cuts most FPs) |
+| `vol_pslist` | Medium — *fooled by* DKOM, paging artifacts, kernel build mismatch | Cross-reference with `vol_psscan`; divergence is itself the finding |
+| `vol_malfind` | Medium — *misses* hidden injections in DKOM-affected memory | Same — cross-reference with raw YARA scan over `.img` |
+| `vel_collect` | Varies by artifact | Velociraptor's per-artifact tuning |
+
+**Rule of thumb:** treat `pslist`/`malfind`/`yara` results as **leads** unless corroborated. Treat `evtx`/`mft`/`registry` as **facts**.
+
+### Layer 2 — Agent-level filtering (ACH dual-pool + correlator)
+
+Three steps remove FPs before the analyst sees the verdict:
+
+1. **`detect_contradictions`** fires when Pool A and Pool B disagree on a finding citing the same `tool_call_id`. The analyst sees the disagreement *before* the judge merges. A finding that BOTH pools agree on is much stronger than one only Pool A claims.
+2. **`judge_findings`** applies credibility-weighted merging. A pool that has produced corroborating CONFIRMED findings earlier in the run gains credibility weight; a pool that produced only HYPOTHESIS-tier output gets downweighted.
+3. **`correlate_findings`** enforces the SOUL.md ≥2-artifact-class rule: any "this binary RAN" claim must be supported by ≥2 distinct evidence types (Prefetch + Amcache, EDR + memory, EVTX 4688 + MFT, etc.). Single-source claims auto-downgrade `CONFIRMED → INFERRED → HYPOTHESIS`.
+
+### Layer 3 — Confidence taxonomy (epistemic hierarchy)
+
+Every finding carries one of three confidence levels, defined in `agent-config/SOUL.md`:
+
+| Level | Meaning | Action |
+|---|---|---|
+| `CONFIRMED` | Direct tool output, verified, and corroborated by ≥2 artifact classes if it's an execution claim | Trust; report as fact |
+| `INFERRED` | ≥2 confirmed facts logically combined, but no direct tool output asserts the conclusion | Trust with caveat; flag in report |
+| `HYPOTHESIS` | Single-source or speculative; the agent prefixes the description with the literal word "hypothesis:" | **Do not act on this without further investigation** |
+
+The agent's `verifier` re-runs the cited tool calls on every finding before merge. A finding whose tool-call output disagrees with the original gets downgraded one tier. Findings without a `tool_call_id` are vetoed entirely.
+
+---
+
+## The four operational habits (analyst applies on top)
+
+### 1. Filter to CONFIRMED-only when triaging
+
+The other tiers are *leads*, not *facts*. When you first read the verdict, look only at CONFIRMED findings. Come back to INFERRED/HYPOTHESIS when you have time to verify them individually.
+
+In the manifest, this is one line:
+```bash
+jq '.merged[] | select(.finding.confidence == "CONFIRMED") | .finding.description' run.manifest.json
+```
+
+### 2. Read the contradiction surface before the verdict
+
+The judge's `merged` output is a *resolution* of disagreements, not the underlying truth. If `detect_contradictions` returned ≥1, look at the raw Pool A vs Pool B findings before trusting the merged result.
+
+Pattern in the audit log: search for `kind: "ContradictionFound"` and read the `pool_a` vs `pool_b` description for each.
+
+### 3. Cross-corroborate execution claims by hand
+
+If the agent says "STAGER.EXE ran" based on Prefetch alone, that's INFERRED-tier. Before treating it as fact, run yourself:
+
+* `mft_timeline` on `$MFT` — does the file *exist* on disk? When was it created/modified per `$SI` vs `$FN`?
+* `evtx_query` on `Security.evtx` — is there a 4688 (process create) or 4624 (logon) for the time the Prefetch claims it ran?
+* `yara_scan` on the binary — does it match a known-bad rule?
+
+If yes to ≥2 of those, upgrade your confidence. If no, leave it as INFERRED.
+
+### 4. Run against the synthetic-benign baseline first
+
+Before running the agent against real evidence, run it against `goldens/synthetic-benign/` (a clean Windows install with no tradecraft). The expected output is **zero findings, verdict NO_EVIL**. If the agent produces any findings against the benign baseline, those represent your environment's *false-positive floor* — file the rule that fired as a known FP and either tune it out or flag any matches against real evidence as suspect.
+
+The benign baseline is the single highest-leverage thing you can do to calibrate the agent. Don't skip it.
+
+---
+
+## Specific FP traps and how to avoid them
+
+### vol_pslist returns 0 → "rootkit!"
+
+**Don't jump.** pslist=0 has at least four benign causes:
+
+1. The memory dump is truncated/corrupt (only first N pages captured)
+2. The kernel build doesn't match Vol3's symbol pack (e.g., custom Windows Server build)
+3. Paging tables are inconsistent (host was suspended, not powered down before capture)
+4. Vol3 version mismatch (a Vol3 minor-version bump can break the `_KPCR` schema lookup)
+
+The DKOM hypothesis is the *fifth* possibility. Before claiming DKOM in your report:
+
+* Run `vol_psscan` — if it also returns 0, the dump is corrupt, not DKOM.
+* Run `vol windows.info` — if symbols load and DTB is reasonable, the kernel is intact.
+* Run `vol windows.psxview` (not currently in our MCP surface — invoke directly) — cross-references 7 process-listing methods. DKOM shows as inconsistency between `pslist` and `psscan` columns; corruption shows as inconsistency across all 7.
+
+The `2026-04-26-srl2018-dc-investigation.md` report uses this exact escalation — psscan recovered 124 processes including expected Windows kernel processes, so pslist=0 is genuinely a DKOM signal there, not a corrupt dump.
+
+### Hayabusa flags legitimate admin activity
+
+Default Sigma rules flag PowerShell `Invoke-Expression`, `runas` elevation, and other admin tools. These are rare on workstations but routine on RD servers and admin workstations. Mitigation:
+
+* Run with `min_level: high` for noisy Sigma rules.
+* Pair every Hayabusa finding with `evtx_query` on the same time window — if Hayabusa flags PowerShell at T0, run `evtx_query` for `Microsoft-Windows-PowerShell/Operational` at T0 and read the actual command. Legitimate admin commands usually don't include obfuscation, b64-encoded payloads, or download cradles.
+
+### YARA matches a common byte pattern
+
+YARA rules for "any binary calling `WinExec`" or "binary contains string 'cmd.exe'" will match legitimate Windows binaries. Mitigation:
+
+* Use only `core` tier rules (curated low-FP). Avoid `extended`/`community` tiers without corroboration.
+* If a YARA hit is on a Microsoft-signed binary, **the hit is almost certainly a FP** — the rule wasn't tuned to require non-Microsoft signing. Pair with `mft_timeline` for the file: if it's in `\Windows\System32\` and unmodified since OS install, it's legitimate.
+
+### MFT shows files in odd paths
+
+MFT records *all* filenames the entry has ever had. A file moved between directories has multiple `$FN` records. This is normal — not a sign of evasion. Mitigation: read the `is_allocated` field; deleted files have it false.
+
+### EVTX Logon Type 3 looks like remote attacker
+
+Type 3 = Network logon (SMB share, IPC$, etc.). Routine in Windows networks. Mitigation: pair with source IP — if internal RFC1918, almost always benign. Type 10 (RemoteInteractive / RDP) is the one to scrutinize.
+
+---
+
+## What to do when you suspect a false positive
+
+1. **Tag the finding** in your notes as "FP-suspected".
+2. **Re-run the cited tool call** with `verify_finding` MCP tool — does the original tool output match what the finding claims?
+3. **Cross-corroborate** with one or two artifacts the SOUL.md ≥2 rule would require for upgrade. If they don't show up, the FP suspicion is justified — leave it as HYPOTHESIS in your report.
+4. **File a rule note** in `agent-config/MEMORY.md` if the FP is reproducible — future runs benefit from your finding.
+
+---
+
+## What this document is NOT
+
+* Not a substitute for analyst judgment. The agent reduces friction; it doesn't replace expertise.
+* Not a complete list of FPs. Every DFIR investigation surfaces new edge cases.
+* Not a guarantee. The architecture *reduces* FP rates; it doesn't drive them to zero.
+
+The agent is honest about its limitations (see `docs/reports/2026-04-26-srl2018-dc-investigation.md` §8). When in doubt, downgrade and document.

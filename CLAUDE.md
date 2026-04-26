@@ -12,6 +12,7 @@ When a session opens in this repo and the user asks you to **"investigate \<case
 4. **`agent-config/TOOLS.md`** — the typed tool surface (Rust `findevil-mcp` + Python `findevil-agent-mcp`).
 5. **`agent-config/MEMORY.md`** — Tier-1 DFIR caveats (Amcache LastModified ≠ execution, ShimCache order changed at Win8.1, EVTX Logon Type 3 vs 10, etc.).
 6. **`agent-config/HEARTBEAT.md`** — the per-iteration self-check loop.
+7. **`agent-config/JUDGING.md`** — the SANS Find Evil! 2026 rubric (6 criteria, verbatim) plus the end-of-investigation self-score checklist that appends to the audit JSONL as `kind="judge_selfscore"` before `manifest_finalize`. The agent is graded against this, so it must self-check against this.
 
 Two MCP servers are registered in `.mcp.json` and auto-spawned by Claude Code on session start:
 
@@ -38,6 +39,14 @@ Four top-level directories are external research clones that live in-repo for re
 - **`.playwright-mcp/`** — scratch data from a competitor-recon session.
 
 Our code imports none of these directly. When a judge runs the Product, only the contents of this repo's **non-vendored** tree ship (plus the `.deb` and Docker image produced by `release.yml`). A future session that edits files inside a vendored directory is almost certainly making a mistake — check `.gitignore` first.
+
+## Quickstart for the impatient
+
+If you want to run the agent against evidence right now, see **`QUICKSTART.md`** at the repo root. Three steps: pick environment (SIFT VM or local), open Claude Code, prompt `investigate <path>`. Everything else in this file is reference material.
+
+For false-positive prevention strategy and analyst checklists, see **`docs/false-positives.md`** — three architectural layers, four operational habits, plus specific FP traps and how to avoid them.
+
+For an example end-to-end investigation report (real evidence, real findings), see **`docs/reports/2026-04-26-srl2018-dc-investigation.md`** — covers the SRL-2018 SANS HACKATHON-2026 dataset, includes a CONFIRMED DKOM finding (MITRE T1014).
 
 ## Document hierarchy (authoritative order)
 
