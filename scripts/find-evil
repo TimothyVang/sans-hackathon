@@ -4,11 +4,12 @@
 # Per Amendment A2 the Product is Claude Code invoked in this repo,
 # with two MCP servers registered via .mcp.json (findevil-mcp Rust +
 # findevil-agent-mcp Python). The judge can run this script OR
-# `claude .` directly — the two are equivalent. The CLI binary is
-# `claude` (Anthropic's official Claude Code CLI, installed via
+# `claude` directly (in cwd) — the two are equivalent. The CLI binary
+# is `claude` (Anthropic's official Claude Code CLI, installed via
 # https://docs.anthropic.com/en/docs/claude-code/install). It used
 # to be aliased `claude-code` in some environments; the current and
-# canonical binary name is `claude`.
+# canonical binary name is `claude`. Per `claude --help`, the CLI
+# does not take a positional path arg — it uses cwd for the project.
 #
 # This wrapper exists only to give the SANS judge a memorable command
 # matching the project name and to ensure the cwd is right.
