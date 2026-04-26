@@ -112,6 +112,38 @@ once the first `v0.x` is cut on the `v-submit` tag.
   copies. Replaced the orchestrator's class attribute with a
   runtime import of `fleet_correlate.COMMON_WIN_PROCS` via
   `importlib.util` — single source of truth, no manual sync.
+- **PDF render survives viewer-locked target** (commit `3170202`).
+  Both render_report.py and render_fleet_report.py now Chrome-print
+  to a sibling `<name>.new.pdf` and atomic-rename to the target.
+  Previously, if the operator had REPORT.pdf open in Acrobat
+  during a re-render, Chrome failed with "Access is denied" and the
+  PDF render silently dropped. New flow leaves the .new.pdf in
+  place and prints a clear warning naming both paths if the rename
+  fails.
+
+### Operator UX
+
+- **find_evil_auto pre-flight SSH/VM check** (commit `9816585`).
+  A judge running `bash scripts/find-evil-auto <path>` without a
+  configured SIFT VM previously got a Python stack trace deep in
+  the SSH stdio reader thread. Now `preflight_check()` runs at the
+  top of `main()`: verifies SSH key exists, SSHes into the VM with
+  a 10s ConnectTimeout, runs `test -x $RUST_BIN`. Failure → exit 2
+  with the exact ssh command attempted, exit code, stderr tail, and
+  a three-line remediation playbook (first time / VM down / alt
+  host) pointing at scripts/sift-vm-bootstrap.sh and the
+  FIND_EVIL_GUEST_IP/USER/REPO env vars. `--skip-preflight` flag
+  added so fleet_investigate.py doesn't re-check the same VM 22
+  times per fleet run.
+
+### Documentation
+
+- **Rust toolchain pin alignment** (commit `f61860d`). Cargo.toml
+  line-13 comment said "Pinned toolchain is Rust 1.83" right next
+  to a [workspace.package] block correctly stating "Rust 1.88 —
+  bumped from the 1.83 spec pin..." Both references now read 1.88
+  with pointers to CLAUDE.md "Spec/code divergences" §1. CLAUDE.md
+  "Conventions" caught the matching staleness.
 
 ### CI
 
