@@ -373,6 +373,23 @@ once the first `v0.x` is cut on the `v-submit` tag.
   spawn smokes). Closes the local-iteration friction gap for a
   developer changing `compute_verdict`, fleet_correlate logic,
   or the demo script.
+- **`scripts/launcher-smoke.py` locks the 6-iteration prose-vs-code
+  audit findings** (commit `0155503`). Six bugs across three shapes
+  were caught by ad-hoc audit (102c59e Beat 6, ec85639 swarm
+  invocations, 43cdbdd crypto recipe, c167aec claude-code → claude
+  the catastrophic one, 6f22382 argparse prog, cc4e93e extension-
+  less remnant). The smoke now locks all three shapes: bash -n on
+  every shell launcher in scripts/ (extension-less + *.sh — the
+  find-evil family deliberately drops .sh, so the glob is explicit);
+  no bare or `command -v` `claude-code` invocations (catches the
+  c167aec class); no `claude .` positional-arg invocations (catches
+  the cc4e93e class). 22 launchers x 3 checks = 66 assertions;
+  ~50ms. Negative-tested with synthetic fixtures - both bad-binary
+  and bad-invocation patterns fire. Wired into docker/l1-compose.yml
+  as the 6th L1 smoke and scripts/run-all-smokes.sh as the 6th
+  run-all entry. QUICKSTART table updated 5 → 6 smokes. First lock
+  protecting against doc/code drift in shell scripts (the prior
+  five locks all protected Python data-shape policy).
 
 ### Real-evidence runs
 
