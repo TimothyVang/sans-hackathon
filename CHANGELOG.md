@@ -191,6 +191,23 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **`scripts/autonomous-loop.py` replaces `/loop` with a real harness**
+  (commit `150a8a0`). Per two user redirects in this session
+  ("Why can't u just use the Claude code sdk to run this continuously"
+  + "Why are you using loop research a better autonomous method
+  like harnessing"), this is the harness the /loop session should
+  have used from the start. Reads the queue, picks the highest-
+  priority unblocked item, spawns `claude -p --permission-mode
+  acceptEdits` headless per item, loops until queue exhausted /
+  --max-hours cap / 429 detected. Key behavioral difference from
+  /loop: exits cleanly when the queue is exhausted (verified via
+  dry-run on current state — "queue exhausted (only Hard blockers
+  remain). Stopping cleanly."). /loop kept cycling forever, padding
+  ~30 iterations of this session with diminishing-returns audit
+  polish. Auth inherits from the `claude` CLI subprocess (Amendment
+  A1 subscription path; no API key). No new pip dep. ~219 lines.
+  Saved feedback `feedback_use_harness_not_loop.md` carries the
+  preference forward across sessions.
 - **DKOM finding is INFERRED, not CONFIRMED — SOUL.md alignment**
   (commit `6dcc1fc`). Caught by extending last iteration's
   narrative-consistency audit to demo-script-a2.md Beat 3:
