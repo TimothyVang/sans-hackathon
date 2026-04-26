@@ -170,8 +170,10 @@ def main() -> int:
         print("exec claude with no positional args).")
         return 1
     total_assertions = len(launchers) * 3
-    print(f"OK - all {total_assertions} launcher assertions pass "
-          f"({len(launchers)} launchers x 3 checks).")
+    print(
+        f"OK - all {total_assertions} launcher assertions pass "
+        f"({len(launchers)} launchers x 3 checks)."
+    )
     print("=" * 60)
     return 0
 

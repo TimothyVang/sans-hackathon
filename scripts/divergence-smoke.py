@@ -214,8 +214,15 @@ def _is_excluded(path: Path) -> bool:
 def _list_active_files() -> list[Path]:
     """All text files we should scan (markdown + Python + Rust + sh + toml + yml)."""
     suffixes = (
-        "*.md", "*.py", "*.rs", "*.sh", "*.toml", "*.yml",
-        "*.yaml", "*.json", "*.bash",
+        "*.md",
+        "*.py",
+        "*.rs",
+        "*.sh",
+        "*.toml",
+        "*.yml",
+        "*.yaml",
+        "*.json",
+        "*.bash",
     )
     out: list[Path] = []
     for pat in suffixes:
@@ -244,8 +251,10 @@ def main() -> int:
     print("=" * 60)
 
     files = _list_active_files()
-    print(f"scanning {len(files)} active text files for stale "
-          f"references to {len(DIVERGENCES)} documented divergences...")
+    print(
+        f"scanning {len(files)} active text files for stale "
+        f"references to {len(DIVERGENCES)} documented divergences..."
+    )
     print()
 
     failed = 0
@@ -285,11 +294,9 @@ def main() -> int:
     print()
     print("=" * 60)
     if failed:
-        print(f"FAIL - {failed} of {total_checks} divergences have "
-              f"active drift.")
+        print(f"FAIL - {failed} of {total_checks} divergences have " f"active drift.")
         return 1
-    print(f"OK - all {total_checks} active divergences are "
-          f"downstream-clean.")
+    print(f"OK - all {total_checks} active divergences are " f"downstream-clean.")
     print("=" * 60)
     return 0
 
