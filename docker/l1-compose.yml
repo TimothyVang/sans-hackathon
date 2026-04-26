@@ -146,6 +146,17 @@ services:
           python3 scripts/launcher-smoke.py
         fi
 
+        # Lock in the documented Spec/code divergences from CLAUDE.md.
+        # Three iterations of the divergence-sweep procedure (commits
+        # 782f364, e6ddc2d, fb319dd) cleaned active drift; this smoke
+        # asserts none of the bad-half patterns has been re-introduced.
+        # Covers 5 of the 6 documented divergences (the 6th is
+        # declarative — Cargo.lock-committed — and has nothing to scan).
+        if [ -f scripts/divergence-smoke.py ]; then
+          echo "== scripts/divergence-smoke.py (Spec/code divergence locks) =="
+          python3 scripts/divergence-smoke.py
+        fi
+
         echo "L1 complete."
 
 volumes:
