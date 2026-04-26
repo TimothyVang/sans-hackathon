@@ -86,3 +86,19 @@ Thumbs.db
 # Smoke test working dir (Amendment A2) — produces audit logs +
 # manifests under tmp/smoke/ that should never be committed.
 /tmp/
+
+# Local DFIR test corpus (SANS HACKATHON-2026 starter data + 4 host
+# disk images, ~84 GB). The .E01 files are already excluded by the
+# *.E01 rule above, but the multipart .zip fragments aren't — and we
+# never want any of test-forensics/ in submission anyway. The
+# directory stays on disk for the agent to investigate; it just
+# never enters the git tree. SHA-256 manifest lives at
+# test-forensics/sha256.manifest (also ignored by this rule).
+/test-forensics/
+
+# Per-session lock file written by the autonomous /loop scheduler in
+# the local Claude Code install. Contains a session UUID + PID +
+# acquired-at timestamp; pure ephemeral runtime state. The
+# .claude/settings.json beside it IS committed (it's the
+# project-scoped permissions config referenced by CLAUDE.md / Spec #4).
+/.claude/scheduled_tasks.lock
