@@ -225,23 +225,39 @@ table; highlight `rubyw.exe` on 4 hosts.
 
 ## Beat 8 — Tiebreaker self-score (4:30–4:50)
 
-**On-screen:** Terminal showing `tail audit.jsonl | grep
-judge_selfscore` — the agent's own self-grade against the SANS
-6-criterion rubric, written into the audit chain *before*
-`manifest_finalize` so the score is itself signed.
+**On-screen:** Split-screen. Left: terminal running
+
+```bash
+grep '"kind":"judge_selfscore"' tmp/auto-runs/auto-<uuid>/audit.jsonl | jq .payload
+```
+
+— six lines emit, one per criterion, with the agent's grade. Right:
+the rendered `REPORT.pdf` open at the "Judge self-score (agent's
+own assessment)" table, scrolled into view. The cursor on the
+right-hand pane highlights the line in the report header that
+says "the score below is itself part of the cryptographic
+attestation."
 
 **Voice-over:**
 
 > One last thing. The agent self-scores against the SANS rubric
-> and writes that grade into the audit chain — before signing.
-> Judges can `grep` for the agent's own assessment of how it
-> did, against the same rubric they're using. That self-score
-> is part of the cryptographic attestation. We don't get to
-> revise it after seeing the score we got.
+> and writes that grade into the audit chain — before
+> manifest_finalize. So the score itself is signed by the same
+> sigstore signature, anchored by the same Merkle root, attested
+> by the same OpenTimestamps proof. Judges grep one line, see
+> the agent's own assessment of how it did against the same
+> rubric they're using, and know we couldn't have revised it
+> after the fact.
 
 **Notes:**
 - This is a tiebreaker move — most submissions won't include it.
   Don't oversell; deliver as a closing flourish.
+- The actual implementation lives at
+  `scripts/find_evil_auto.py::_emit_judge_selfscore` (commit
+  94c08dd) and the report-rendering at
+  `scripts/render_report.py::write_markdown` (commit 7729cfc).
+  If you need to re-record this beat, point at any case dir
+  produced after those two commits — they all carry the records.
 
 ---
 
