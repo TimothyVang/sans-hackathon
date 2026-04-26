@@ -191,6 +191,21 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **CLAUDE.md "Vendored reference clones" section drift**
+  (commit `861d1ed`). The section claimed 4 directories
+  (`openclaw/`, `hermes-agent/`, `Linear-Coding-Agent-Harness/`,
+  `.playwright-mcp/`) "live in-repo for reference reading only" —
+  but `ls` shows none of them exist locally and none have ever
+  been committed to git. Plus the section described `openclaw run
+  --case X.e01` as a Product entry point (A2 dropped this) and
+  Hermes as part of Spec #2 §4 Layer 4 (deferred to bonus under
+  A2). Plus the cited `.gitignore` line range (72-76) was off by
+  4 (actual: 76-80). Reframed as "directory names *reserved* for
+  contributor-local research clones" — the .gitignore safety net
+  is the load-bearing part. Renamed section heading "Vendored"
+  → "External" since vendored implies in-tree checked-in code
+  (which these aren't). The inverse of the deletion-rot audit
+  pattern: docs claimed something existed when it didn't.
 - **L0 docs-consistency catches deletion of all load-bearing docs**
   (commit `bd06995`). The L0 GHA job verified existence of 4
   per-subsystem specs + 4 plans + 3 root docs, but CLAUDE.md
