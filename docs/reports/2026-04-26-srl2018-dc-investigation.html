@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <title>Find Evil! — Forensic Investigation Report</title>
+  <title>2026-04-26-srl2018-dc-investigation</title>
   <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -21,47 +21,9 @@ vertical-align: middle;
 }
 .display.math{display: block; text-align: center; margin: 0.5rem auto;}
 </style>
-  <style type="text/css">body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-max-width: 980px; margin: 2em auto; padding: 0 2.5em; line-height: 1.65; color: #222; background: #fafafa; }
-h1 { color: #1565c0; border-bottom: 3px solid #1565c0; padding-bottom: 0.4em; font-size: 2em; }
-h2 { color: #1565c0; border-bottom: 1px solid #ccc; padding-bottom: 0.25em; margin-top: 2.5em; font-size: 1.4em; }
-h3 { color: #6a1b9a; margin-top: 1.6em; font-size: 1.15em; }
-h4 { color: #6a1b9a; }
-p { margin: 0.8em 0; }
-img { max-width: 100%; height: auto; display: block; margin: 2em auto;
-border: 1px solid #ddd; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-radius: 4px;
-background: white; padding: 8px; }
-code { background: #eef2f5; padding: 0.1em 0.4em; border-radius: 3px;
-font-family: "Consolas", "Monaco", monospace; font-size: 0.92em; color: #c62828; }
-pre { background: #2c3e50; color: #ecf0f1; padding: 1em 1.4em; border-radius: 4px; overflow-x: auto;
-font-size: 0.88em; line-height: 1.5; }
-pre code { background: none; padding: 0; color: inherit; }
-blockquote { border-left: 4px solid #1565c0; padding: 0.7em 1.2em; margin: 1.2em 0;
-background: #e3f2fd; border-radius: 0 4px 4px 0; }
-table { border-collapse: collapse; margin: 1.2em 0; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-th, td { padding: 0.55em 0.9em; border: 1px solid #ddd; text-align: left; }
-th { background: #1565c0; color: white; font-weight: 600; }
-tr:nth-child(even) td { background: #f5f7fa; }
-hr { border: none; border-top: 2px solid #1565c0; margin: 2em 0; }
-.footnotes { font-size: 0.88em; color: #444; border-top: 2px solid #ccc; padding-top: 1em; margin-top: 3em; }
-.footnotes hr { display: none; }
-.footnotes ol { padding-left: 1.5em; }
-.footnotes li { margin-bottom: 0.6em; }
-a { color: #1565c0; text-decoration: none; }
-a:hover { text-decoration: underline; }
-strong { color: #1565c0; }
-@media print {
-body { background: white; padding: 0; max-width: 100%; }
-img { box-shadow: none; }
-h1, h2 { page-break-after: avoid; }
-img, table { page-break-inside: avoid; }
-}
-</style>
+  <style type="text/css">body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;max-width: 980px; margin: 2em auto; padding: 0 2.5em; line-height: 1.65;color: #222; background: #fafafa; }h1 { color: #1565c0; border-bottom: 3px solid #1565c0; padding-bottom: 0.4em; font-size: 2em; }h2 { color: #1565c0; border-bottom: 1px solid #ccc; padding-bottom: 0.25em; margin-top: 2.5em; font-size: 1.4em; }h3 { color: #6a1b9a; margin-top: 1.6em; font-size: 1.15em; }img { max-width: 100%; display: block; margin: 2em auto; border: 1px solid #ddd;box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-radius: 4px;background: white; padding: 8px; }code { background: #eef2f5; padding: 0.1em 0.4em; border-radius: 3px;font-family: "Consolas", monospace; font-size: 0.92em; color: #c62828; }pre { background: #2c3e50; color: #ecf0f1; padding: 1em 1.4em; border-radius: 4px; overflow-x: auto; }pre code { background: none; padding: 0; color: inherit; }blockquote { border-left: 4px solid #1565c0; padding: 0.7em 1.2em; margin: 1.2em 0;background: #e3f2fd; border-radius: 0 4px 4px 0; }table { border-collapse: collapse; margin: 1.2em 0; width: 100%; }th, td { padding: 0.55em 0.9em; border: 1px solid #ddd; text-align: left; }th { background: #1565c0; color: white; font-weight: 600; }tr:nth-child(even) td { background: #f5f7fa; }strong { color: #1565c0; }</style>
 </head>
 <body>
-<header id="title-block-header">
-<h1 class="title">Find Evil! — Forensic Investigation Report</h1>
-</header>
 <h1 id="find-evil-forensic-investigation-report">Find Evil! — Forensic
 Investigation Report</h1>
 <p><strong>Case ID:</strong>
@@ -204,9 +166,14 @@ in-process) → Merkle leaf in run manifest.</p>
 <p>Raw memory dumps acquired with <code>dc3dd</code> from
 <code>/mnt/&lt;host&gt;/&lt;host&gt;/pmem/pmem</code> on 2018-09-06 (per
 the embedded <code>dc3dd</code> provenance log in each <code>.md5</code>
-companion file). Total 22 images, 98 GB. Distribution shown in §1. Only
-the Domain Controller image is analyzed in this report; the remaining 21
-are catalogued but not yet examined.</p>
+companion file). Total 22 images, 98 GB. Distribution shown in §1. This
+report drills into the Domain Controller image as the primary subject.
+The remaining 21 hosts have since been investigated as a fleet (see
+<code>tmp/fleet-runs/fleet-20260426T055440Z/FLEET_REPORT.pdf</code>);
+aggregate findings are summarized in §9, and any per-host claim made
+there is independently verifiable against that host’s
+<code>run.manifest.json</code> in its case directory under
+<code>tmp/auto-runs/</code>.</p>
 <h3 id="hash-chained-audit-log">3.3 Hash-chained audit log</h3>
 <p>Every tool call writes a record to <code>audit.jsonl</code>
 containing <code>prev_hash</code> (SHA-256 of the previous record’s
@@ -608,6 +575,77 @@ in the dataset for lateral-movement evidence</li>
 <p>These follow-up actions are within Find Evil!’s tool surface
 (in-process YARA, registry_query, mft_timeline) but were not run in this
 investigation.</p>
+<h3 id="fleet-roll-up-added-2026-04-26-after-the-dc-investigation">9.1
+Fleet roll-up (added 2026-04-26 after the DC investigation)</h3>
+<p>The full 22-host corpus has since been investigated end-to-end via
+<code>find-evil-auto</code> (Tesla mode) and rolled up by
+<code>fleet_correlate.py</code> + <code>render_fleet_report.py</code>.
+The fleet artifact set sits at
+<code>tmp/fleet-runs/fleet-20260426T055440Z/</code>. Headline
+numbers:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hosts investigated</td>
+<td><strong>22</strong> (12 SUSPICIOUS, 10 INDETERMINATE, 0
+NO_EVIL)</td>
+</tr>
+<tr>
+<td>Cryptographic integrity</td>
+<td>22/22 unique Merkle roots — chain integrity intact</td>
+</tr>
+<tr>
+<td>Hosts showing T1014 (Rootkit / DKOM)</td>
+<td><strong>11/22</strong> (52%) — fleet-level rootkit signal</td>
+</tr>
+<tr>
+<td>Hosts showing T1055 (Process Injection)</td>
+<td><strong>9/22</strong> (41%)</td>
+</tr>
+<tr>
+<td>Cross-host process correlations (≥2 hosts, after FP filter)</td>
+<td>73 image names</td>
+</tr>
+<tr>
+<td>Multi-host temporal clusters (≥2 hosts within 60s)</td>
+<td>31 clusters</td>
+</tr>
+</tbody>
+</table>
+<p>The most striking single pattern: <strong>6 hosts ran
+<code>Autorunsc.exe</code> at the exact same second</strong> (cluster 1
+in <code>figures/temporal_clusters.png</code> of the fleet report) —
+this is not natural system behavior; it’s the temporal fingerprint of an
+automated sweep (PsExec push, SCCM, WMI execution chain, or
+scheduled-task pivot). On its own, the simultaneity tells you only that
+<em>something</em> coordinated the execution; whether the coordinator
+was the IR team running forensic recon or an attacker living off
+Sysinternals tooling is the analyst’s call (see
+<code>docs/false-positives.md</code> “Sysinternals tools deliberately
+not filtered”).</p>
+<p>Other strong cross-host signals: <code>rubyw.exe</code> on 13 hosts
+and <code>ruby.exe</code> on 12 (Ruby for Windows is not standard
+enterprise tooling on a Server 2008 R2 fleet);
+<code>msadvapi2_32.e</code> and <code>msadvapi2_64.e</code> on 8 hosts
+each (non-native, name-spoofing the legitimate
+<code>advapi32.dll</code>); <code>subject_srv.ex</code> on 19 hosts
+(investigate which McAfee/Trellix component this maps to before
+dismissing). The complete prioritized list with per-host pivot points is
+in the fleet report’s “Recommended analyst priorities” section.</p>
+<p>The DC analyzed in this document is one of the 11 T1014 hosts; the
+other 10 should be triaged with the same
+<code>\Windows\System32\drivers\</code> search the §9 callout above
+prescribes.</p>
 <hr />
 <h2 id="references">References</h2>
 <hr />
