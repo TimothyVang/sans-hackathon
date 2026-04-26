@@ -104,6 +104,16 @@ services:
           echo "-- skipping agent-mcp-smoke (services/agent_mcp or script absent) --"
         fi
 
+        # Lock in the compute_verdict policy. The verdict semantics
+        # (SUSPICIOUS / INDETERMINATE / NO_EVIL triggers) are
+        # documented in docs/verdict-semantics.md and implemented in
+        # find_evil_auto.py; this smoke ensures they don't drift
+        # apart silently. ~50ms wall-clock.
+        if [ -f scripts/verdict-policy-smoke.py ]; then
+          echo "== scripts/verdict-policy-smoke.py (compute_verdict policy lock) =="
+          python3 scripts/verdict-policy-smoke.py
+        fi
+
         echo "L1 complete."
 
 volumes:
