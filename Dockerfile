@@ -7,7 +7,13 @@
 # Stage 1 — Rust build.
 # ============================================================
 # hadolint ignore=DL3007
-FROM rust:1.83-bookworm AS rust-build
+# Pinned to 1.88 to match rust-toolchain.toml channel = "1.88.0".
+# The workspace's rust-version (Cargo.toml [workspace.package])
+# also requires 1.88 because transitive deps (clap_builder 4.6
+# and friends) need edition-2024 stabilization (Rust ≥1.85).
+# A 1.83 base would either fail at cargo build or trigger a
+# rustup pull at build time.
+FROM rust:1.88-bookworm AS rust-build
 WORKDIR /build
 
 # Install libs needed for the MCP server's C deps (libewf, yara).
