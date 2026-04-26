@@ -46,40 +46,40 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-# Operator-facing docs to scan. Defined list rather than a glob
-# because the false-positive surface area is highly file-specific
-# - we want a contributor adding a new doc to think about whether
-# its claims need this gate.
-SCAN_LIST: tuple[str, ...] = (
-    # Front-page + canonical entry points.
+# Operator-facing docs to scan.  Discovery is glob-based for the
+# canonical doc directories so new files dropped under docs/,
+# docs/runbooks/, agent-config/, and services/*/README.md are
+# auto-gated without a manual SCAN_LIST update.  Plus three
+# explicit root-level entries (CLAUDE.md, README.md, QUICKSTART.md)
+# that aren't under any of those dirs.  EXPLICIT_DOCS captures the
+# load-bearing root docs; GLOB_PATTERNS captures the dir-scoped
+# auto-discovery.
+EXPLICIT_DOCS: tuple[str, ...] = (
     "CLAUDE.md",
     "README.md",
     "QUICKSTART.md",
-    # Canonical analyst-facing deep-dives.
-    "docs/architecture.md",
-    "docs/cryptographic-attestation.md",
-    "docs/verdict-semantics.md",
-    "docs/false-positives.md",
-    "docs/demo-script-a2.md",
-    "docs/DATASET.md",
-    # Runtime DFIR agent identity (loaded by Claude Code at
-    # session start per CLAUDE.md "Agent investigation prompt").
-    "agent-config/SOUL.md",
-    "agent-config/AGENTS.md",
-    "agent-config/PLAYBOOK.md",
-    "agent-config/TOOLS.md",
-    "agent-config/MEMORY.md",
-    "agent-config/HEARTBEAT.md",
-    "agent-config/JUDGING.md",
-    # Service READMEs (per-package contracts).
-    "services/agent/README.md",
-    "services/agent_mcp/README.md",
-    "services/mcp/README.md",
-    "services/swarm/README.md",
-    # Decision runbooks.
-    "docs/runbooks/dockerfile-a2-decision.md",
-    "docs/runbooks/github-remote-bootstrap.md",
-    "docs/runbooks/ci-smoke-checklist.md",
+)
+
+GLOB_PATTERNS: tuple[str, ...] = (
+    # Canonical analyst-facing deep-dives + DATASET.md.
+    "docs/*.md",
+    # Decision runbooks + ci-smoke-checklist.
+    "docs/runbooks/*.md",
+    # Runtime DFIR agent identity (loaded by Claude Code at session
+    # start per CLAUDE.md "Agent investigation prompt").
+    "agent-config/*.md",
+    # Per-service READMEs (one per service/* subdir).
+    "services/*/README.md",
+)
+
+# Specific files that match a GLOB but should be excluded - e.g.
+# templates that envsubst-substitute placeholders at v-submit time
+# and therefore have unresolved ${VAR} tokens that look path-shaped
+# but aren't real broken refs.
+GLOB_EXCLUDES: frozenset[str] = frozenset(
+    {
+        "docs/templates/devpost-readme.md",
+    }
 )
 
 # Service README -> the package directory under it.  Used for the
@@ -220,19 +220,38 @@ def _resolve(doc: str, target: str) -> Path | None:
     return None
 
 
+def _discover_docs() -> list[str]:
+    """Return the sorted list of repo-relative doc paths to scan.
+    Combines EXPLICIT_DOCS with GLOB_PATTERNS, minus GLOB_EXCLUDES.
+    Glob-based so a new doc dropped under docs/, docs/runbooks/,
+    agent-config/, or services/*/ is auto-gated next CI run."""
+    seen: set[str] = set()
+    for d in EXPLICIT_DOCS:
+        if (REPO / d).exists():
+            seen.add(d)
+    for pat in GLOB_PATTERNS:
+        for p in REPO.glob(pat):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(REPO).as_posix()
+            if rel in GLOB_EXCLUDES:
+                continue
+            seen.add(rel)
+    return sorted(seen)
+
+
 def main() -> int:
     print("=" * 60)
     print("Find Evil! - path-existence-smoke")
     print("=" * 60)
 
+    docs = _discover_docs()
     missing = []
     total_paths = 0
-    for doc in SCAN_LIST:
+    for doc in docs:
         p = REPO / doc
-        if not p.exists():
-            print(f"{FAIL} {doc} - source doc itself doesn't exist")
-            missing.append((doc, "[doc missing]"))
-            continue
+        # _discover_docs only yields existing files; no need to
+        # re-check existence here.
 
         text = p.read_text(encoding="utf-8")
         for m in PATH_RE.finditer(text):
@@ -247,9 +266,7 @@ def main() -> int:
                 line_no = text[: m.start()].count("\n") + 1
                 missing.append((f"{doc}:{line_no}", target))
 
-    print(
-        f"checked {total_paths} backtick-quoted paths across " f"{len(SCAN_LIST)} docs"
-    )
+    print(f"checked {total_paths} backtick-quoted paths across {len(docs)} docs")
     print()
 
     if missing:
