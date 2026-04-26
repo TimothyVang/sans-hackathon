@@ -94,17 +94,43 @@ agent can verify a Find Evil! manifest with these tools alone:
 ```bash
 # 1. The sigstore signature, audit chain, and Merkle root.
 #    No network required (the manifest is self-contained).
-uv run --directory services/agent_mcp python -m findevil_agent_mcp.server &
-# Then over MCP stdio, call manifest_verify with the manifest path:
-#   { "manifest_path": "run.manifest.json" }
-# Returns: { overall: bool, audit_chain_ok, merkle_root_ok,
-#            signature_present, ... }
+#    Direct library call — no MCP server, no JSON-RPC plumbing.
+uv run --directory services/agent python -c "
+from pathlib import Path
+from findevil_agent.crypto.manifest import verify_manifest
+case = Path('<absolute-path-to-case-dir>')
+r = verify_manifest(case / 'run.manifest.json',
+                    audit_log_path=case / 'audit.jsonl')
+print(r)
+"
+# Returns: ManifestVerification(audit_chain_ok=True, merkle_root_ok=True,
+#                               leaf_count_ok=True, signature_present=True,
+#                               overall=True)
+# Any field becomes a string instead of True on failure, naming the
+# precise reason (e.g. 'audit chain seq=4 prev_hash mismatch').
 
 # 2. The Bitcoin anchor (mature ~1hr after ots_stamp).
 #    Requires the third-party `opentimestamps-client` CLI.
 ots verify run.manifest.ots
 # Returns: success + Bitcoin block height + UTC timestamp
 ```
+
+For a fuller workout that also exercises `audit_verify`,
+`detect_contradictions`, `judge_findings`, and `correlate_findings`
+through the actual MCP server (matching the live agent's flow),
+run the smoke harness against the same case dir:
+
+```bash
+uv run --directory services/agent_mcp \
+    python ../../scripts/agent-mcp-smoke.py \
+    --real-evidence <absolute-path-to-case-dir>
+```
+
+The smoke spawns the server as a subprocess (matching `.mcp.json`),
+drives it over piped stdio, and reports pass/fail per stage. This is
+heavier than the direct library call but proves the MCP wire format
+also passes — useful when verifying that what the live agent emits
+is what the verifier consumes.
 
 `manifest_verify` rebuilds:
 
