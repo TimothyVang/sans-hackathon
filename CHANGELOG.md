@@ -191,6 +191,21 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **release.yml release-notes pointed at non-existent file**
+  (commit `2bf9bc6`). `gh release create --notes "...See
+  docs/architecture.md + README-submission.md for details."`
+  references README-submission.md, but that file is **generated**
+  by `scripts/package-devpost.sh` into the Devpost zip artifact,
+  NOT into the GH release (the release artifact set is .deb +
+  report.html). A user clicking through release notes would have
+  hit a 404 trying to find README-submission.md in the GH web
+  UI. Replaced with `README.md` (which does exist in the repo
+  root). Caught by extending the path-existence audit shape to
+  workflow YAML (the existing path-existence-smoke covers
+  operator-facing markdown only). Whether to extend the smoke
+  to YAML is a separate decision — false-positive surface in
+  workflow YAML is wider (env vars, action refs, secret names
+  all look path-shaped).
 - **`scripts/path-existence-smoke.py` graduates the path-audit
   shape** (commit `e90b4f9`). Third CI smoke graduated from the
   audit-pattern arc (after launcher-smoke + divergence-smoke).
