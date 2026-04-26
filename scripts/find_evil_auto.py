@@ -418,6 +418,16 @@ class Investigation:
 
         # Synthesize findings
         # Finding 1 — pslist=0 + psscan>0 = DKOM signal
+        # Per agent-config/SOUL.md "Epistemic hierarchy": even the
+        # textbook-clear DKOM case is INFERRED, not CONFIRMED, because
+        # the *conclusion* T1014/DKOM is derived from two confirmed
+        # observations (pslist returned 0 + psscan returned N>0).  The
+        # underlying tool outputs are CONFIRMED individually; the
+        # rootkit-conclusion drawn from their disagreement is INFERRED.
+        # This branch is theoretical — real fleets show pslist > 0 in
+        # practice — but keeping the tier consistent with SOUL.md
+        # avoids a latent epistemic-hierarchy violation if a fully-
+        # rootkitted host ever hits this code path.
         if ps_seen == 0 and psscan_count > 0:
             self.findings_pool_a.append(
                 {
@@ -430,7 +440,7 @@ class Investigation:
                         f"but vol_psscan recovers {psscan_count} EPROCESS objects — "
                         f"classic DKOM unlinking signature (T1014 Rootkit)."
                     ),
-                    "confidence": "CONFIRMED",
+                    "confidence": "INFERRED",
                     "pool_origin": "A",
                     "mitre_technique": "T1014",
                 }
