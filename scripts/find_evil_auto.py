@@ -662,16 +662,29 @@ class Investigation:
         return mf
 
     def compute_verdict(self, merged: list[dict[str, Any]]) -> str:
-        confirmed = sum(1 for m in merged if m.get("confidence") == "CONFIRMED")
-        if any(
-            m.get("mitre_technique") == "T1014" and m.get("confidence") == "CONFIRMED"
-            for m in merged
-        ):
-            return "SUSPICIOUS"
-        if confirmed >= 1:
-            return "SUSPICIOUS"
+        """Verdict policy:
+
+        SUSPICIOUS — at least one of:
+          (a) any CONFIRMED-tier finding;
+          (b) DKOM/T1014 at INFERRED-tier or higher (the rootkit-unlinking
+              evidence is objectively visible in tool divergence even if
+              the judge conservatively downgrades the merged confidence);
+          (c) any T1055 (code injection) at INFERRED-tier or higher.
+        NO_EVIL — no findings at all (clean baseline).
+        INDETERMINATE — findings exist but at HYPOTHESIS-only tier or
+          covering low-severity techniques.
+        """
         if not merged:
             return "NO_EVIL"
+
+        SEVERE_INFERRED_OK = {"T1014", "T1055"}
+        non_hyp = [
+            m for m in merged if m.get("confidence") in ("CONFIRMED", "INFERRED")
+        ]
+        if any(m.get("confidence") == "CONFIRMED" for m in non_hyp):
+            return "SUSPICIOUS"
+        if any(m.get("mitre_technique") in SEVERE_INFERRED_OK for m in non_hyp):
+            return "SUSPICIOUS"
         return "INDETERMINATE"
 
     def write_verdict(

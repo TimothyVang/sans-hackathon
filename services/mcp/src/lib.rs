@@ -55,6 +55,9 @@ pub use crate::tools::vol_malfind::{
 pub use crate::tools::vol_pslist::{
     path_looks_like_memory_image, vol_pslist, VolError, VolProcess, VolPslistInput, VolPslistOutput,
 };
+pub use crate::tools::vol_psscan::{
+    vol_psscan, VolPsscanError, VolPsscanInput, VolPsscanOutput, VolPsscanProcess,
+};
 pub use crate::tools::yara_scan::{
     path_looks_like_yara_rules, yara_scan, YaraError, YaraInput, YaraMatch, YaraOutput,
     YaraPatternMatch,

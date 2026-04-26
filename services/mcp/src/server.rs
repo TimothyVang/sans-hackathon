@@ -43,8 +43,9 @@ use crate::tools::{
     case_open, evtx_query::evtx_query, hayabusa_scan::hayabusa_scan, mft_timeline::mft_timeline,
     prefetch_parse::prefetch_parse, registry_query::registry_query, usnjrnl_query::usnjrnl_query,
     vel_collect::vel_collect, vol_malfind::vol_malfind, vol_pslist::vol_pslist,
-    yara_scan::yara_scan, CaseOpenInput, EvtxQueryInput, HayabusaInput, MftInput, PrefetchInput,
-    RegistryInput, UsnJrnlInput, VelCollectInput, VolMalfindInput, VolPslistInput, YaraInput,
+    vol_psscan::vol_psscan, yara_scan::yara_scan, CaseOpenInput, EvtxQueryInput, HayabusaInput,
+    MftInput, PrefetchInput, RegistryInput, UsnJrnlInput, VelCollectInput, VolMalfindInput,
+    VolPslistInput, VolPsscanInput, YaraInput,
 };
 use crate::CRATE_VERSION;
 
@@ -466,6 +467,41 @@ fn build_registry() -> Vec<ToolEntry> {
             handler: |args| dispatch_vol_malfind(args),
         },
         ToolEntry {
+            name: "vol_psscan",
+            description: "Run Volatility 3's `windows.psscan` plugin against a memory image \
+                 — the cross-validation companion to vol_pslist. Where pslist walks \
+                 the kernel's PsActiveProcessHead linked list, psscan scans the \
+                 entire memory image for _EPROCESS signatures (much slower but \
+                 catches DKOM-unlinked processes). \
+                 PAIR WITH vol_pslist: divergence between the two outputs is \
+                 itself the forensic finding. pslist=0 + psscan>0 is the textbook \
+                 MITRE ATT&CK T1014 (Rootkit) signature — a kernel rootkit has \
+                 unlinked malicious processes from the active list while leaving \
+                 their _EPROCESS structures in pool memory. \
+                 Use AFTER case_open. memory_path is the image. pid_filter narrows \
+                 to specific PIDs. Default limit 10000. \
+                 Returns processes[] (pid, ppid, image_name, create_time_iso, \
+                 exit_time_iso?, threads, offset_v, session_id, wow64) + \
+                 processes_seen + stderr_tail. The offset_v field is the \
+                 _EPROCESS virtual offset where psscan recovered each object — \
+                 useful for cross-referencing with manual analysis or psxview. \
+                 Same Volatility binary discovery as vol_pslist ($VOLATILITY_BIN \
+                 env var first, then PATH lookup). \
+                 ERRORS: MemoryNotFound / MemoryNotRegular (verify path), \
+                 BinaryNotFound (install via `pip install volatility3`), \
+                 SubprocessFailed (check stderr_tail), OutputParse (rare; \
+                 indicates a Vol3 version mismatch).",
+            annotations: ToolAnnotations {
+                title: "Cross-validate Memory Process List (Volatility psscan)",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
+            schema: || schema_for::<VolPsscanInput>(),
+            handler: |args| dispatch_vol_psscan(args),
+        },
+        ToolEntry {
             name: "vel_collect",
             description: "Run a Velociraptor artifact via `velociraptor artifacts collect` and \
                  stream the resulting rows. Generic trampoline over Velociraptor's 200+ \
@@ -775,6 +811,20 @@ fn dispatch_vol_pslist(args: Value) -> Result<Value, ToolError> {
     }
 }
 
+fn dispatch_vol_psscan(args: Value) -> Result<Value, ToolError> {
+    let input: VolPsscanInput = parse_args(args)?;
+    match vol_psscan(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(
+            e @ (crate::tools::VolPsscanError::MemoryNotFound(_)
+            | crate::tools::VolPsscanError::MemoryNotRegular(_)),
+        ) => Err(ToolError::InvalidParams(format!("{e}"))),
+        Err(e) => Err(ToolError::Internal(format!("vol_psscan: {e}"))),
+    }
+}
+
 fn dispatch_vol_malfind(args: Value) -> Result<Value, ToolError> {
     let input: VolMalfindInput = parse_args(args)?;
     // Same: MemoryNotFound / MemoryNotRegular are user-input.
@@ -901,6 +951,7 @@ mod tests {
             "hayabusa_scan",
             "vol_pslist",
             "vol_malfind",
+            "vol_psscan",
             "vel_collect",
         ];
         assert_eq!(names.len(), expected.len());
