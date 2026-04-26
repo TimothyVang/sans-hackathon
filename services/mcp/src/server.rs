@@ -42,8 +42,9 @@ use sha2::{Digest, Sha256};
 use crate::tools::{
     case_open, evtx_query::evtx_query, hayabusa_scan::hayabusa_scan, mft_timeline::mft_timeline,
     prefetch_parse::prefetch_parse, registry_query::registry_query, usnjrnl_query::usnjrnl_query,
-    vol_pslist::vol_pslist, yara_scan::yara_scan, CaseOpenInput, EvtxQueryInput, HayabusaInput,
-    MftInput, PrefetchInput, RegistryInput, UsnJrnlInput, VolPslistInput, YaraInput,
+    vol_malfind::vol_malfind, vol_pslist::vol_pslist, yara_scan::yara_scan, CaseOpenInput,
+    EvtxQueryInput, HayabusaInput, MftInput, PrefetchInput, RegistryInput, UsnJrnlInput,
+    VolMalfindInput, VolPslistInput, YaraInput,
 };
 use crate::CRATE_VERSION;
 
@@ -320,6 +321,30 @@ fn build_registry() -> Vec<ToolEntry> {
             schema: || schema_for::<VolPslistInput>(),
             handler: |args| dispatch_vol_pslist(args),
         },
+        ToolEntry {
+            name: "vol_malfind",
+            description: "Run Volatility 3's `windows.malfind` plugin against a memory image \
+                 and return code-injection candidates. THE canonical code-injection detector: \
+                 walks every process's VAD tree looking for memory regions that are RWX \
+                 (read-write-execute, the classic injection footprint) AND/OR contain an MZ \
+                 header in unexpected places — both strong indicators that something has \
+                 been injected into a legitimate process. \
+                 PAIR WITH vol_pslist for cross-artifact corroboration within memory: \
+                 pslist tells you WHAT processes exist, malfind tells you WHICH are \
+                 suspicious. Together they satisfy the SOUL.md ≥2 artifact-class rule. \
+                 Use AFTER case_open. memory_path is the image. pid_filter narrows to \
+                 specific PIDs (typically PIDs that vol_pslist flagged as suspicious — \
+                 abnormal parent, unusual session, etc.). Default limit 10000 (a \
+                 compromised host can have dozens of suspicious VADs per process). \
+                 Returns injections[] (pid, image_name, vad_start_hex, vad_end_hex, \
+                 protection, mz_match: bool, sample_hex of first 64 bytes) + \
+                 injections_seen + stderr_tail. \
+                 ERRORS: same as vol_pslist (MemoryNotFound, BinaryNotFound, \
+                 SubprocessFailed, OutputParse). Same Volatility binary discovery \
+                 ($VOLATILITY_BIN env var first, then PATH lookup).",
+            schema: || schema_for::<VolMalfindInput>(),
+            handler: |args| dispatch_vol_malfind(args),
+        },
     ]
 }
 
@@ -539,6 +564,13 @@ fn dispatch_vol_pslist(args: Value) -> Result<Value, ToolError> {
     serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
 }
 
+fn dispatch_vol_malfind(args: Value) -> Result<Value, ToolError> {
+    let input: VolMalfindInput = parse_args(args)?;
+    let output =
+        vol_malfind(&input).map_err(|e| ToolError::Internal(format!("vol_malfind: {e}")))?;
+    serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+}
+
 fn parse_args<T: DeserializeOwned>(args: Value) -> Result<T, ToolError> {
     serde_json::from_value(args).map_err(|e| ToolError::InvalidParams(format!("invalid args: {e}")))
 }
@@ -634,6 +666,7 @@ mod tests {
             "usnjrnl_query",
             "hayabusa_scan",
             "vol_pslist",
+            "vol_malfind",
         ];
         assert_eq!(names.len(), expected.len());
         for want in expected {

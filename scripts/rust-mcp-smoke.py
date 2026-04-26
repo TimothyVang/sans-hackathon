@@ -194,6 +194,7 @@ def main() -> int:
                 "usnjrnl_query",
                 "hayabusa_scan",
                 "vol_pslist",
+                "vol_malfind",
             ]
         )
         if names != expected:
@@ -391,7 +392,22 @@ def main() -> int:
         )
         log("  -> -32603 with 'memory image not found' as expected")
 
-        # ---- 13. unknown tool dispatch is rejected ----------------------
+        # ---- 13. vol_malfind (error path) -------------------------------
+        log("vol_malfind: missing-image error path...")
+        expect_error_response(
+            "tools/call",
+            {
+                "name": "vol_malfind",
+                "arguments": {
+                    "case_id": handle["id"],
+                    "memory_path": str(workdir / "nope.mem"),
+                },
+            },
+            "memory image not found",
+        )
+        log("  -> -32603 with 'memory image not found' as expected")
+
+        # ---- 14. unknown tool dispatch is rejected ----------------------
         log("unknown tool: expect JSON-RPC error...")
         client.send(
             {
@@ -409,7 +425,7 @@ def main() -> int:
         print()
         print("=" * 60)
         print("OK — Rust MCP server speaks 2024-11-05 over stdio.")
-        print("  All 9 tools dispatchable, error paths well-formed.")
+        print("  All 10 tools dispatchable, error paths well-formed.")
         print("=" * 60)
         return 0
     finally:
