@@ -191,21 +191,26 @@ once the first `v0.x` is cut on the `v-submit` tag.
   case-insensitivity and .001 split-image, and 3 unknown
   including the deliberate non-routing of .zip Velociraptor
   bundles).
-  `scripts/fleet-policy-smoke.py` (35 cases, commit `925725e`
-  added 7 cross_host_processes end-to-end cases on top of the
-  original 28) asserts `normalize_image_name` 14-char Volatility-
-  truncation behavior, `COMMON_WIN_PROCS` filter coverage of the
-  McAfee/Trellix + VMware Tools + Windows infrastructure stack,
-  deliberate Sysinternals/analyst-flag exclusions per
-  `docs/false-positives.md`, `cross_host_processes` end-to-end
-  filter+threshold behavior against a synthetic 3-host fleet
-  (canonical and Volatility-truncated forms both filter; rubyw.exe
-  surfaces with 2 distinct hosts; single-host names excluded by
-  the ≥2 threshold), and `selfscore_aggregate` modal-answer +
-  distinct-answers logic. Both smokes load the target functions
-  via `importlib` so they assert against shipped logic — no
-  copy-paste of policy. ~100ms wall-clock combined; wired into
-  `docker/l1-compose.yml` after the agent-mcp-smoke step.
+  `scripts/fleet-policy-smoke.py` (46 cases — commits `925725e` +
+  `31a03f3` + `682a5bd` + this iteration each added 4-7 cases on
+  top of the original 28) asserts: `normalize_image_name` 14-char
+  Volatility-truncation behavior; `COMMON_WIN_PROCS` filter
+  coverage of the McAfee/Trellix + VMware Tools + Windows
+  infrastructure stack with deliberate Sysinternals exclusions
+  per `docs/false-positives.md`; `cross_host_processes` end-to-end
+  filter+threshold behavior; `temporal_clusters` 60s-window
+  multi-host detection (anchored against the SRL-2018 Autorunsc-
+  on-multiple-hosts pattern that headlines `FLEET_REPORT.pdf`);
+  `mitre_density` distinct-host counting (regression anchor for
+  bug fix in commit `bf11c4d` that prevented counting Pool A +
+  Pool B as 2 hosts); `merkle_uniqueness` duplicate-root detection
+  (anchor for the fleet.json patch mistake earlier this session
+  that pointed two hosts at the same case_dir); `selfscore_aggregate`
+  modal-answer + distinct-answers logic. Both smokes load the
+  target functions via `importlib` so they assert against shipped
+  logic — no copy-paste of policy. ~150ms wall-clock combined;
+  wired into `docker/l1-compose.yml` after the agent-mcp-smoke
+  step.
 
 ### Real-evidence runs
 

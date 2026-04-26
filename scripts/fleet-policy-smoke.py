@@ -11,7 +11,7 @@ match the canonical "VGAuthService.exe" entry. Same hazard as the
 verdict policy: a future contributor could change either piece
 and the docs would silently disagree.
 
-This smoke locks in six behaviors:
+This smoke locks in seven behaviors:
 
   1. `normalize_image_name` does the right thing (lowercase + trim +
      14-char truncation).
@@ -29,7 +29,12 @@ This smoke locks in six behaviors:
      findings. Regression anchor for the bug fix in commit `bf11c4d`
      (the original code counted Pool A + Pool B as 2 hosts when they
      were one host emitting twice).
-  6. `selfscore_aggregate` produces a stable shape against a
+  6. `merkle_uniqueness` returns (unique_count, total_count) and
+     filters out missing/empty roots. Anchor for the
+     "21/22 unique Merkle roots (WARN — duplicate roots)" mistake
+     caught earlier this session when a fleet.json patch
+     accidentally pointed two hosts at the same case_dir.
+  7. `selfscore_aggregate` produces a stable shape against a
      small synthetic fleet of 3 hosts × 6 selfscore records.
 
 Loaded via importlib like verdict-policy-smoke.py, so the test
@@ -375,6 +380,50 @@ def main() -> int:
             print(f"         actual  : {actual!r}")
             failures += 1
 
+    # ---- merkle_uniqueness: detect duplicate manifest roots --------------
+    # Returns (unique_count, total_count). All-unique is the healthy
+    # case; duplicate roots mean either a tampering attempt or a
+    # tool bug. The earlier session caught a real instance of this
+    # when a fleet.json patch accidentally pointed two hosts at the
+    # same case_dir — this assertion would have caught it.
+    mu_synthetic_unique = [
+        {"cryptographic_attestation": {"merkle_root_hex": "aa" * 32}},
+        {"cryptographic_attestation": {"merkle_root_hex": "bb" * 32}},
+        {"cryptographic_attestation": {"merkle_root_hex": "cc" * 32}},
+    ]
+    mu_synthetic_dup = [
+        {"cryptographic_attestation": {"merkle_root_hex": "aa" * 32}},
+        {"cryptographic_attestation": {"merkle_root_hex": "aa" * 32}},  # dup
+        {"cryptographic_attestation": {"merkle_root_hex": "bb" * 32}},
+    ]
+    mu_synthetic_missing = [
+        {"cryptographic_attestation": {"merkle_root_hex": "aa" * 32}},
+        {"cryptographic_attestation": {}},  # no root key
+        {},  # no attestation at all
+    ]
+    mu_checks: list[tuple[str, Any, Any]] = [
+        ("3 unique roots -> (3, 3)", fc.merkle_uniqueness(mu_synthetic_unique), (3, 3)),
+        (
+            "2 unique among 3 (one duplicate) -> (2, 3)",
+            fc.merkle_uniqueness(mu_synthetic_dup),
+            (2, 3),
+        ),
+        (
+            "missing roots filtered out (1 of 3 has root) -> (1, 1)",
+            fc.merkle_uniqueness(mu_synthetic_missing),
+            (1, 1),
+        ),
+        ("empty fleet -> (0, 0)", fc.merkle_uniqueness([]), (0, 0)),
+    ]
+    for label, actual, expected in mu_checks:
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] merkle_uniqueness: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
     sa_checks: list[tuple[str, Any, Any]] = [
         ("hosts_total counts everything", agg["hosts_total"], 3),
         ("hosts_with_selfscore counts non-empty", agg["hosts_with_selfscore"], 2),
@@ -417,6 +466,7 @@ def main() -> int:
         + len(chp_checks)
         + len(tc_checks)
         + len(md_checks)
+        + len(mu_checks)
         + len(sa_checks)
     )
     if failures == 0:
