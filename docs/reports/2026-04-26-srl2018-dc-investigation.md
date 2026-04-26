@@ -71,7 +71,7 @@ Each value above was recomputed live on 2026-04-26 from inside the SIFT VM via t
 
 ### 3.2 Memory captures
 
-Raw memory dumps acquired with `dc3dd` from `/mnt/<host>/<host>/pmem/pmem` on 2018-09-06 (per the embedded `dc3dd` provenance log in each `.md5` companion file). Total 22 images, 98 GB. Distribution shown in §1. Only the Domain Controller image is analyzed in this report; the remaining 21 are catalogued but not yet examined.
+Raw memory dumps acquired with `dc3dd` from `/mnt/<host>/<host>/pmem/pmem` on 2018-09-06 (per the embedded `dc3dd` provenance log in each `.md5` companion file). Total 22 images, 98 GB. Distribution shown in §1. This report drills into the Domain Controller image as the primary subject. The remaining 21 hosts have since been investigated as a fleet (see `tmp/fleet-runs/fleet-20260426T055440Z/FLEET_REPORT.pdf`); aggregate findings are summarized in §9, and any per-host claim made there is independently verifiable against that host's `run.manifest.json` in its case directory under `tmp/auto-runs/`.
 
 ### 3.3 Hash-chained audit log
 
@@ -271,6 +271,25 @@ The narrow tool surface is **architecturally deliberate** [§2] — the typed MC
 * Cross-referencing this DC's memory artifacts with the other 21 hosts in the dataset for lateral-movement evidence
 
 These follow-up actions are within Find Evil!'s tool surface (in-process YARA, registry_query, mft_timeline) but were not run in this investigation.
+
+### 9.1 Fleet roll-up (added 2026-04-26 after the DC investigation)
+
+The full 22-host corpus has since been investigated end-to-end via `find-evil-auto` (Tesla mode) and rolled up by `fleet_correlate.py` + `render_fleet_report.py`. The fleet artifact set sits at `tmp/fleet-runs/fleet-20260426T055440Z/`. Headline numbers:
+
+| Metric | Value |
+|---|---|
+| Hosts investigated | **22** (12 SUSPICIOUS, 10 INDETERMINATE, 0 NO_EVIL) |
+| Cryptographic integrity | 22/22 unique Merkle roots — chain integrity intact |
+| Hosts showing T1014 (Rootkit / DKOM) | **11/22** (52%) — fleet-level rootkit signal |
+| Hosts showing T1055 (Process Injection) | **9/22** (41%) |
+| Cross-host process correlations (≥2 hosts, after FP filter) | 73 image names |
+| Multi-host temporal clusters (≥2 hosts within 60s) | 31 clusters |
+
+The most striking single pattern: **6 hosts ran `Autorunsc.exe` at the exact same second** (cluster 1 in `figures/temporal_clusters.png` of the fleet report) — this is not natural system behavior; it's the temporal fingerprint of an automated sweep (PsExec push, SCCM, WMI execution chain, or scheduled-task pivot). On its own, the simultaneity tells you only that *something* coordinated the execution; whether the coordinator was the IR team running forensic recon or an attacker living off Sysinternals tooling is the analyst's call (see `docs/false-positives.md` "Sysinternals tools deliberately not filtered").
+
+Other strong cross-host signals: `rubyw.exe` on 13 hosts and `ruby.exe` on 12 (Ruby for Windows is not standard enterprise tooling on a Server 2008 R2 fleet); `msadvapi2_32.e` and `msadvapi2_64.e` on 8 hosts each (non-native, name-spoofing the legitimate `advapi32.dll`); `subject_srv.ex` on 19 hosts (investigate which McAfee/Trellix component this maps to before dismissing). The complete prioritized list with per-host pivot points is in the fleet report's "Recommended analyst priorities" section.
+
+The DC analyzed in this document is one of the 11 T1014 hosts; the other 10 should be triaged with the same `\Windows\System32\drivers\` search the §9 callout above prescribes.
 
 ---
 
