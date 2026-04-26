@@ -69,6 +69,12 @@ once the first `v0.x` is cut on the `v-submit` tag.
   sigstore → OpenTimestamps Bitcoin) collected in one canonical
   doc, with FRE 902(14) prong-by-prong analysis and the negative
   test (tamper detection) live demonstration.
+- **`docs/verdict-semantics.md`** (commit `16616a9`) — analyst
+  triage flow for SUSPICIOUS / INDETERMINATE / NO_EVIL. Per-verdict
+  triggers (verbatim from `compute_verdict`), per-verdict "what to
+  do" guidance, "what the verdict does NOT mean" honesty block,
+  triage flow diagram, and "when to override" pointer to the
+  25-line policy in `find_evil_auto.py`.
 - **`docs/demo-script-a2.md`** (commit `edf56f4`) — 5-minute
   Devpost video script with per-beat seconds, on-screen content,
   spoken narration, rubric-criterion mapping, recording mechanics.
