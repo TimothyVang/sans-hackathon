@@ -120,7 +120,7 @@ These show up across multiple specs and the agent-config files. Violating any of
 - **Epistemic hierarchy is strict.** `CONFIRMED` (backed by tool output) > `INFERRED` (≥2 confirmed facts, labeled) > `HYPOTHESIS` (prefixed "hypothesis:"). Nothing else is legal.
 - **AGPL/GPL tools (Hayabusa, Chainsaw, Volatility3, Velociraptor, YARA) are subprocess-only — never linked.** Violating this contaminates the submission license (must be MIT or Apache-2.0 per SANS rules).
 - **Evidence is read-only.** Original `.e01` opened via libewf; write-only working dir elsewhere. No tool mutates evidence. SHA-256 of image verified at `case_open`.
-- **Hash-chained audit JSONL is append-only.** Each line has a `prev_hash` field linking to the previous line. Rewriting history breaks the M2 crypto chain-of-custody pitch ("FRE 902(14) self-authenticating").
+- **Hash-chained audit JSONL is append-only.** Each line has a `prev_hash` field linking to the previous line. Rewriting history breaks the M2 crypto chain-of-custody pitch ("FRE 902(14) self-authenticating"). The full five-link chain (audit prev_hash → rs_merkle → sigstore → OpenTimestamps → Bitcoin) is documented in `docs/cryptographic-attestation.md`; rubric criterion #5 ("Audit Trail Quality") points there.
 - **Draft PRs only.** The build swarm never auto-merges or force-pushes `main`. Human merges every PR after morning triage.
 - **Execution claims need ≥2 artifact classes** (Prefetch + Amcache+ShimCache, or EDR telemetry). Amcache alone is insufficient — it's catalog-registration time, not execution.
 - **All timestamps UTC, ISO-8601, trailing `Z`.** SHA-256 preferred over MD5. Never assert attribution.

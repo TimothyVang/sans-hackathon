@@ -108,6 +108,7 @@ See [QUICKSTART.md](QUICKSTART.md) for the full per-mode walkthrough and [docs/a
 ├── docker/                   — L1/L2 sandbox: docker compose specs + Dockerfiles
 ├── docs/
 │   ├── architecture.md       — five trust boundaries + Mermaid diagrams
+│   ├── cryptographic-attestation.md — the five-link chain (audit → Merkle → sigstore → OTS → FRE 902(14))
 │   ├── false-positives.md    — three architectural FP layers + four operational habits
 │   ├── demo-script-a2.md     — 5-minute Devpost video script (per-beat narration)
 │   ├── reports/              — analyst-facing investigation reports (real evidence)
