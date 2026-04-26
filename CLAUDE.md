@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. Under **Amendment A2** (2026-04-25, active) Claude Code IS the Product's primary interface — when a SANS judge runs `scripts/find-evil` or `claude-code .` from this repo, the session you are reading is what executes the investigation.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. Under **Amendment A2** (2026-04-25, active) Claude Code IS the Product's primary interface — when a SANS judge runs `scripts/find-evil` or `claude` from this repo, the session you are reading is what executes the investigation. (The CLI binary is `claude`, per the official Anthropic install at `https://docs.anthropic.com/en/docs/claude-code/install`. Some older docs use `claude-code` as an alias; that's not the canonical name.)
 
 ## Agent investigation prompt (read first when invoked in this repo)
 
@@ -108,7 +108,7 @@ The Python CLI inside the shipped Docker image is invoked as `find-evil` (see `D
 
 - **#3 Sandbox** blocks everything else. L0 lint, L1 unit/build (Docker Ubuntu 22.04), L2 SIFT-lite (Sysbox runtime, advisory), L3 full SIFT VM parity (QEMU microvm + qcow2 snapshot-restore, Packer-built from `sift-2026.03.24.ova`, on GHA KVM larger runners).
 - **#1 Build Swarm** is invisible to judges — writes code overnight into draft PRs. LangGraph supervisor + Claude CLI subagents + one git worktree per PR + critic subagent gate. **Option B (A1):** runs on user's Claude Code subscription, not a metered API key.
-- **#2 Product** is the submission. Under **A2** the layers collapse to: evidence vault → SIFT tool subprocesses → two MCP servers (Rust DFIR tools + Python crypto/ACH wrappers) → Claude Code (acts as supervisor + ACH pool subagents + audit-log driver). Primary entry point: **`scripts/find-evil`** (or `claude-code .` directly). The Next.js SPA / `find-evil serve` / `find-evil run` / `find-evil verify` are not on the critical path; the equivalent verification is `manifest_verify` + `ots_verify` MCP tools.
+- **#2 Product** is the submission. Under **A2** the layers collapse to: evidence vault → SIFT tool subprocesses → two MCP servers (Rust DFIR tools + Python crypto/ACH wrappers) → Claude Code (acts as supervisor + ACH pool subagents + audit-log driver). Primary entry point: **`scripts/find-evil`** (or `claude` directly — the canonical Claude Code CLI binary name). The Next.js SPA / `find-evil serve` / `find-evil run` / `find-evil verify` are not on the critical path; the equivalent verification is `manifest_verify` + `ots_verify` MCP tools.
 - **#4 Orchestration Glue** is thin CI: 9 GHA workflows, branch protection, release pipeline, Devpost submission zip on `v-submit` tag.
 
 ## Non-negotiable invariants
@@ -164,7 +164,7 @@ None of these succeed today — the code they target doesn't exist yet. They are
 - Test one file (web): `pnpm --filter @findevil/web test -- components/narrative/StreamingSpanTree.test.tsx`
 
 **Launchers under Amendment A2 (Claude Code as primary interface):**
-- Open an investigation, **local mode** (the demo entry point): `scripts/find-evil` or `claude-code .` from the repo root. `.mcp.json` auto-spawns both MCP servers locally. Use this when the DFIR tool binaries (Hayabusa, Volatility3, Velociraptor) are installed on the host machine.
+- Open an investigation, **local mode** (the demo entry point): `scripts/find-evil` or `claude` from the repo root. `.mcp.json` auto-spawns both MCP servers locally. Use this when the DFIR tool binaries (Hayabusa, Volatility3, Velociraptor) are installed on the host machine.
 - Open an investigation, **SIFT-VM mode** (Tesla-mode automation against the SANS-blessed environment): `bash scripts/find-evil-sift` from the repo root. Pre-flight: import `sift-2026.03.24.ova` in VirtualBox, port-forward 2222 → 22, run `bash scripts/sift-vm-setup.sh` once inside the VM, install an SSH key. The launcher swaps `.mcp.json` → `.mcp.json.sift` so the MCP servers spawn over SSH inside SIFT (where Volatility/Hayabusa/Velociraptor/YARA are natively present); restores `.mcp.json` on exit.
 - Verify a submitted manifest cryptographically (offline): the agent calls the `manifest_verify` MCP tool from `findevil-agent-mcp`. CLI fallback: `uv run --directory services/agent_mcp python -m findevil_agent_mcp.server` then drive over stdio.
 - Verify the Bitcoin anchor: `ots verify run.manifest.ots` (the third-party `opentimestamps-client` CLI; the agent uses the same logic via `ots_verify` MCP tool).

@@ -23,8 +23,9 @@ Before recording:
    end-to-end (`bash scripts/find-evil-auto <small-mem-image>
    --unattended`). First-run vol3 takes 2-3 minutes for symbol download;
    subsequent runs are <30s. Don't make a judge wait for symbol downloads.
-3. **Open three terminal tabs** in advance: one with `claude-code .`
-   running, one with `bash scripts/find-evil-auto <evidence>`, one with
+3. **Open three terminal tabs** in advance: one with `claude`
+   running (the official Claude Code CLI; opens in cwd), one with
+   `bash scripts/find-evil-auto <evidence>`, one with
    `ots verify run.manifest.ots`. Tab-switching mid-take wastes seconds.
 4. **Pre-render `FLEET_REPORT.pdf`** from a recent fleet run and have
    it open in a PDF viewer offscreen. The video shows it; we don't

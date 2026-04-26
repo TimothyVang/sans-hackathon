@@ -61,9 +61,9 @@ bash scripts/install.sh
 
 # Open Claude Code in the repo. .mcp.json auto-spawns both MCP servers
 # (Rust + Python) on session start.
-claude-code .
+claude
 # (or, equivalently, bash scripts/find-evil — same thing with a friendlier
-# error message if claude-code isn't on PATH.)
+# error message if claude isn't on PATH.)
 
 # Then prompt the agent: "investigate <case path>"
 ```

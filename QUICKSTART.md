@@ -40,7 +40,7 @@ winget install Velociraptor  # or github.com/Velocidex/velociraptor/releases
 # Local mode:
 scripts/find-evil
 # or:
-claude-code .
+claude
 
 # SIFT-VM mode:
 bash scripts/find-evil-sift
