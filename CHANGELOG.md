@@ -129,15 +129,18 @@ once the first `v0.x` is cut on the `v-submit` tag.
 
 ### Operator UX
 
-- **find_evil_auto pre-flight SSH/VM check** (commit `9816585`).
-  A judge running `bash scripts/find-evil-auto <path>` without a
-  configured SIFT VM previously got a Python stack trace deep in
-  the SSH stdio reader thread. Now `preflight_check()` runs at the
-  top of `main()`: verifies SSH key exists, SSHes into the VM with
-  a 10s ConnectTimeout, runs `test -x $RUST_BIN`. Failure → exit 2
-  with the exact ssh command attempted, exit code, stderr tail, and
-  a three-line remediation playbook (first time / VM down / alt
-  host) pointing at scripts/sift-vm-bootstrap.sh and the
+- **find_evil_auto pre-flight SSH/VM check** (commits `9816585` +
+  `244f5e7`). A judge running `bash scripts/find-evil-auto <path>`
+  without a configured SIFT VM previously got a Python stack trace
+  deep in the SSH stdio reader thread. Now `preflight_check()` runs
+  at the top of `main()`: verifies SSH key exists, SSHes into the
+  VM with a 10s ConnectTimeout, and probes all three MCP server
+  prerequisites in one round-trip — Rust binary + agent_mcp dir +
+  uv binary. Failure → exit 2 with the exact ssh command attempted,
+  exit code, stderr tail, an enumeration of the three required
+  paths so the operator spots which one is wrong, and a three-line
+  remediation playbook (first time / VM down / alt host) pointing
+  at scripts/sift-vm-bootstrap.sh and the
   FIND_EVIL_GUEST_IP/USER/REPO env vars. `--skip-preflight` flag
   added so fleet_investigate.py doesn't re-check the same VM 22
   times per fleet run.
@@ -150,6 +153,15 @@ once the first `v0.x` is cut on the `v-submit` tag.
   bumped from the 1.83 spec pin..." Both references now read 1.88
   with pointers to CLAUDE.md "Spec/code divergences" §1. CLAUDE.md
   "Conventions" caught the matching staleness.
+- **QUICKSTART.md inbound links** (commit `e3677c4`) to the two
+  analyst-facing canonical docs (`verdict-semantics.md` +
+  `cryptographic-attestation.md`). Step 5/6 of the find-evil-auto
+  walkthrough now point at the verdict triage flow and the
+  offline-verification recipe; the "Recommended reading order"
+  table gains two new rows for "what do the verdicts mean?" and
+  "how does the chain-of-custody work?". Both docs now reachable
+  from all three top-level entry points (README + QUICKSTART +
+  CLAUDE.md).
 
 ### CI
 
