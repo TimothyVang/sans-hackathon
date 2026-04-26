@@ -120,10 +120,11 @@ run_smoke \
     "smoke-regex-tests (synthetic +/- cases against the 3 audit-smoke regex tables)" \
     "python3 scripts/smoke-regex-tests.py"
 
-# 10 + 11. Lint / format gate.  L0 GHA workflow runs these; mirror
-# locally so a contributor running this script before commit
-# catches a missing `ruff format` before the push.  Skipped if
-# ruff isn't on PATH (unusual on a dev host).
+# 10 + 11 + 12. Lint / format gate.  L0 GHA workflow runs these
+# three; mirror locally so a contributor running this script
+# before commit catches a missing `ruff format` or unformatted
+# Rust before the push.  Each gated on `command -v` so a
+# stripped install SKIPs cleanly.
 run_smoke \
     "ruff check . (lint clean across all Python services)" \
     "ruff check ." \
@@ -132,6 +133,10 @@ run_smoke \
     "ruff format --check . (formatter clean — matches L0 GHA gate)" \
     "ruff format --check ." \
     "command -v ruff"
+run_smoke \
+    "cargo fmt --all --check (Rust formatter clean — matches L0 GHA gate)" \
+    "cargo fmt --all --check" \
+    "command -v cargo && [ -f Cargo.toml ]"
 
 total=$((passed + failed + skipped))
 echo
