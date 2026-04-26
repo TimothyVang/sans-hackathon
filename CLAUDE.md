@@ -29,16 +29,16 @@ This is the SANS **Find Evil!** hackathon submission (deadline **2026-06-15 22:4
 
 Before writing code of your own, **read the relevant spec and plan** for the subsystem you are touching. The specs define exact file paths, pinned dependency versions, and TDD task sequences; diverging from them silently creates integration mismatches with other subsystems. When a spec and the current code disagree, the **code + its committed pin files win** — see "Spec/code divergences" below for known cases.
 
-## Vendored reference clones (never ship, never edit, never import)
+## External reference clones (never ship, never edit, never import)
 
-Four top-level directories are external research clones that live in-repo for reference reading only. All are listed in `.gitignore` (lines 72–76: "External reference clones — research-only, never ship in submission"):
+Four directory names are reserved at the repo root for external research clones the contributor *may* keep locally during research. None of them are committed to git, and as of A2 none of them are required at Product runtime — Claude Code drives the investigation directly via the two MCP servers in `.mcp.json`. The directory names are pre-emptively `.gitignore`'d (lines 76–80: "External reference clones — research-only, never ship in submission") so a stray local clone can't accidentally enter the submission tree:
 
-- **`openclaw/`** — the Openclaw coding-agent harness we invoke via `openclaw run --case X.e01` as one of the Product's entry points. Has its own `CLAUDE.md`, `package.json`, `pyproject.toml`, `src/` tree. **Treat as opaque.**
-- **`hermes-agent/`** — the Hermes MCP sidecar (cross-case L3 memory, per Spec #2 §4 Layer 4). Referenced; not modified.
-- **`Linear-Coding-Agent-Harness/`** — reference harness for the build-swarm worker pattern.
+- **`openclaw/`** — the Openclaw coding-agent harness. Pre-A2 it was a candidate Product entry point (`openclaw run --case X.e01`); under A2 the canonical entry points are `scripts/find-evil` and `bash scripts/find-evil-auto`. Treat any local clone as opaque research material.
+- **`hermes-agent/`** — the Hermes MCP sidecar. Pre-A2 it was envisioned as the cross-case L3 memory layer (Spec #2 §4); under A2 it's deferred to the week-7 polish bonus and not on the critical path.
+- **`Linear-Coding-Agent-Harness/`** — reference harness for the build-swarm worker pattern. Reading-only.
 - **`.playwright-mcp/`** — scratch data from a competitor-recon session.
 
-Our code imports none of these directly. When a judge runs the Product, only the contents of this repo's **non-vendored** tree ship (plus the `.deb` and Docker image produced by `release.yml`). A future session that edits files inside a vendored directory is almost certainly making a mistake — check `.gitignore` first.
+If any of these directories appears in your local checkout, .gitignore prevents commit; our code imports none of them. When a judge runs the Product, only the contents of this repo's **non-vendored** tree ship (plus whatever Devpost-submission zip `scripts/package-devpost.sh` produces). A future session that edits files inside one of these directories is almost certainly making a mistake — check `.gitignore` first.
 
 ## Quickstart for the impatient
 
