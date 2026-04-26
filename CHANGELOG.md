@@ -148,6 +148,21 @@ once the first `v0.x` is cut on the `v-submit` tag.
   fail mid-take. demo-script-smoke (4ddb04a) parses the beat-map
   structure not the prose, so this passed CI before — caught by
   fresh-eyes read of Beat 6.
+- **Swarm invocation strings in CLAUDE.md + services/swarm/README.md**
+  (commit `ec85639`). Both said `uv run python -m services.swarm.main
+  --week 4 --dry-run-gate` (and `--resume` variant), but the shipped
+  package is `findevil_swarm` (matches `findevil_agent` /
+  `findevil_agent_mcp` / `findevil-mcp`), the CLI grew a `run`
+  subcommand so bare `--week 4` no longer parses, and uv needs
+  `--directory services/swarm` (or `cd` first) to find the right
+  pyproject. Fixed both files to match the canonical
+  `scripts/swarm-start.sh:105` invocation
+  (`cd services/swarm && exec uv run python -m findevil_swarm.main
+  run "$@"`); verified with `--help`. Added a 6th entry to CLAUDE.md
+  "Spec/code divergences" so the next session doesn't re-litigate
+  the build-swarm-plan's `services.swarm.*` import paths (~50
+  references in the historical TDD plan, code shipped under
+  `findevil_swarm.*` for naming consistency).
 
 ### Operator UX
 
