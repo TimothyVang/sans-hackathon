@@ -211,6 +211,17 @@ once the first `v0.x` is cut on the `v-submit` tag.
   logic — no copy-paste of policy. ~150ms wall-clock combined;
   wired into `docker/l1-compose.yml` after the agent-mcp-smoke
   step.
+- **`scripts/demo-script-smoke.py` locks the 5:00 demo timing**
+  (commit `4ddb04a`). `docs/demo-script-a2.md` encodes the Devpost
+  video plan as 9 beats with explicit start/end timestamps in a
+  markdown table; a future contributor editing one beat without
+  adjusting adjacent ones could silently break the timing. The
+  smoke parses the `## Beat map` table (handles U+2013 em-dash
+  separator), asserts 9 contiguous beats numbered 1-9 starting at
+  0:00 and ending at 5:00, length-column = end-start, sum of
+  lengths = 300s. ~30ms wall-clock; wired into
+  `docker/l1-compose.yml` after fleet-policy-smoke. CI now runs
+  three policy-lock smokes per L1 build (~180ms total).
 
 ### Real-evidence runs
 
