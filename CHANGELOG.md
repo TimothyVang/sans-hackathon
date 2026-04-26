@@ -191,6 +191,22 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **Smokes weren't ruff-format-clean + run-all-smokes lacked
+  lint gate** (commit `f0dbfb1`). Caught while running the
+  user's green-bar verification command verbatim
+  (`cargo test + cargo clippy -D warnings + ruff check +
+  ruff format check`). The two recent smokes (launcher-smoke.py,
+  divergence-smoke.py) weren't `ruff format --check`-clean - L0
+  GHA would have failed on next push. Reformatted (whitespace
+  + line-wrap only, smokes pass identically). Added
+  `ruff check` + `ruff format --check` as entries 8 + 9 in
+  `scripts/run-all-smokes.sh` so the lint gate runs alongside
+  the test smokes locally - matching what L0 enforces in CI.
+  ~50ms wall-clock added; both gated on `command -v ruff` so
+  a stripped install SKIPs cleanly. The contributor running
+  `bash scripts/run-all-smokes.sh` before commit now hits the
+  same gates the autonomous-loop directive specifies, rather
+  than a subset.
 - **3 broken file-path references in operator docs**
   (commit `5e01954`). New audit shape: extract backtick-quoted
   path-shaped strings from ops-facing docs, verify each exists
