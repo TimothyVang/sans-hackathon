@@ -1068,6 +1068,7 @@ def preflight_check() -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser(
+        prog="find-evil-auto",
         description="Automated Find Evil! investigation orchestrator",
     )
     p.add_argument(
