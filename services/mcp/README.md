@@ -10,9 +10,9 @@ Typed Rust MCP server for Find Evil! per Spec #2 §3 and §6.
 | Component | Status |
 |---|---|
 | Workspace + crate scaffold | ✅ |
-| All 11 typed DFIR tools | ✅ shipped |
+| All 12 typed DFIR tools | ✅ shipped |
 | Hand-rolled JSON-RPC 2.0 stdio server (MCP 2024-11-05) | ✅ in `src/server.rs` |
-| End-to-end stdio smoke (`scripts/rust-mcp-smoke.py`) | ✅ all 11 tools dispatch over the wire |
+| End-to-end stdio smoke (`scripts/rust-mcp-smoke.py`) | ✅ all 12 tools dispatch over the wire |
 | M2 sigstore + rs_merkle integration | partial (rs_merkle live; sigstore lives in `services/agent_mcp/`) |
 
 ## Quick start
@@ -24,9 +24,9 @@ cargo test --workspace --locked
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-## Tool surface (11/11 shipped)
+## Tool surface (12/12 shipped)
 
-Per Spec #2 §6. All tools are registered in `src/tools/mod.rs`, advertised in `tools/list`, and dispatchable via `tools/call`. Each successful response carries `_meta.output_sha256`.
+Per Spec #2 §6 (which enumerates 11) plus `vol_psscan` shipped in commit `0de2e53` for DKOM cross-validation against `vol_pslist` — see CLAUDE.md "Spec/code divergences" for the rationale. All tools are registered in `src/tools/mod.rs`, advertised in `tools/list`, and dispatchable via `tools/call`. Each successful response carries `_meta.output_sha256`.
 
 | Tool | Module | Backing | Pool |
 |---|---|---|---|
@@ -38,9 +38,12 @@ Per Spec #2 §6. All tools are registered in `src/tools/mod.rs`, advertised in `
 | `yara_scan` | `tools/yara_scan.rs` | in-process: `yara-x = 1.12.0` | B (malware/IOC) |
 | `usnjrnl_query` | `tools/usnjrnl_query.rs` | in-process: `usnjrnl-forensic = 0.6.0` | A/B (filesystem changes) |
 | `hayabusa_scan` | `tools/hayabusa_scan.rs` | subprocess: `hayabusa` (AGPL) | A (Sigma rules) |
-| `vol_pslist` | `tools/vol_pslist.rs` | subprocess: `volatility3` (BSD-2) | A (memory processes) |
+| `vol_pslist` | `tools/vol_pslist.rs` | subprocess: `volatility3` (BSD-2) | A (active-list processes) |
+| `vol_psscan` | `tools/vol_psscan.rs` | subprocess: `volatility3` (BSD-2) | A (EPROCESS pool scan) |
 | `vol_malfind` | `tools/vol_malfind.rs` | subprocess: `volatility3` (BSD-2) | A/B (code injection) |
 | `vel_collect` | `tools/vel_collect.rs` | subprocess: `velociraptor` (Apache-2.0) | A/B (live response) |
+
+The `vol_pslist` + `vol_psscan` pair is deliberately redundant — pslist walks the kernel's `PsActiveProcessHead` linked list, psscan signature-scans EPROCESS pool memory. Divergence between the two outputs IS the forensic finding (T1014/Rootkit, DKOM unlink). pslist=0 + psscan>0 is the textbook signature; do not fold the two tools together.
 
 Subprocess tools resolve their binary via a tool-specific env var first (`$HAYABUSA_BIN`, `$VOLATILITY_BIN`, `$VELOCIRAPTOR_BIN`), then PATH lookup. AGPL/GPL backing tools are NEVER linked — see Spec #2 invariant in `CLAUDE.md`.
 
