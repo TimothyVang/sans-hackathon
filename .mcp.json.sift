@@ -16,7 +16,7 @@
         "-o",
         "ServerAliveCountMax=3",
         "sansforensics@192.168.197.143",
-        "/home/sansforensics/find-evil/target/release/findevil-mcp"
+        "VOLATILITY_BIN=/home/sansforensics/.local/bin/vol HAYABUSA_BIN=/home/sansforensics/.local/bin/hayabusa VELOCIRAPTOR_BIN=/home/sansforensics/.local/bin/velociraptor exec /home/sansforensics/find-evil/target/release/findevil-mcp"
       ]
     },
     "findevil-agent-mcp": {
