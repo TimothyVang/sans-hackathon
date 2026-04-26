@@ -219,33 +219,30 @@ def vol_run(image_path: str, plugin: str) -> dict[str, Any] | list[Any] | None:
 # ---------------------------------------------------------------------------
 
 
+def _load_common_procs() -> set[str]:
+    """Pull COMMON_WIN_PROCS from scripts/fleet_correlate.py — single
+    source of truth so the per-host filter (this orchestrator) and
+    the cross-host filter (fleet rollup) cannot drift."""
+    import importlib.util
+
+    scripts_dir = Path(__file__).resolve().parent
+    spec = importlib.util.spec_from_file_location(
+        "_fleet_correlate_for_orchestrator", scripts_dir / "fleet_correlate.py"
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError("could not build spec for fleet_correlate")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return set(mod.COMMON_WIN_PROCS)
+
+
+COMMON_WIN_PROCS: set[str] = _load_common_procs()
+
+
 class Investigation:
     """Orchestrates the full automated investigation flow."""
 
-    COMMON_WIN_PROCS = {
-        n.lower()
-        for n in {
-            "System",
-            "smss.exe",
-            "csrss.exe",
-            "winlogon.exe",
-            "lsass.exe",
-            "services.exe",
-            "svchost.exe",
-            "explorer.exe",
-            "vmtoolsd.exe",
-            "WmiPrvSE.exe",
-            "spoolsv.exe",
-            "lsm.exe",
-            "wininit.exe",
-            "dllhost.exe",
-            "conhost.exe",
-            "wmiprvse.exe",
-            "taskhost.exe",
-            "taskhostw.exe",
-            "RuntimeBroker.exe",
-        }
-    }
+    COMMON_WIN_PROCS: set[str] = COMMON_WIN_PROCS
 
     def __init__(
         self, evidence_path: str, *, unattended: bool = False, with_report: bool = True
