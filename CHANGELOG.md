@@ -177,14 +177,20 @@ once the first `v0.x` is cut on the `v-submit` tag.
   (commit `ad4a36e`). Fails CI if any of the dropped pre-A2
   modules (graph.py / api.py / cli.py / supervisor.py /
   specialists/) reappear under any filename.
-- **Policy-lock smokes for compute_verdict + fleet_correlate**
-  (commits `b0a9a2e` + `395e2b6`). Two CI assertions covering
-  load-bearing policy that was previously documented but
-  unverified. `scripts/verdict-policy-smoke.py` (11 cases)
-  asserts the SUSPICIOUS / INDETERMINATE / NO_EVIL triggers in
-  `compute_verdict` match `docs/verdict-semantics.md`; includes a
-  regression anchor for the real SRL-2018 base-rd-05 finding
-  shape (2 HYPOTHESIS → INDETERMINATE).
+- **Policy-lock smokes for compute_verdict + fleet_correlate +
+  detect_evidence_type** (commits `b0a9a2e` + `395e2b6` +
+  `62b3fdf`). Two CI assertions covering load-bearing policy that
+  was previously documented but unverified.
+  `scripts/verdict-policy-smoke.py` (27 cases) asserts: the
+  SUSPICIOUS / INDETERMINATE / NO_EVIL triggers in
+  `compute_verdict` match `docs/verdict-semantics.md` (11 cases
+  including a regression anchor for the real SRL-2018 base-rd-05
+  finding shape — 2 HYPOTHESIS → INDETERMINATE), AND the
+  `detect_evidence_type` dispatch (16 cases covering all 6
+  memory extensions, evtx, 6 disk variants including .E01
+  case-insensitivity and .001 split-image, and 3 unknown
+  including the deliberate non-routing of .zip Velociraptor
+  bundles).
   `scripts/fleet-policy-smoke.py` (28 cases) asserts
   `normalize_image_name` 14-char Volatility-truncation behavior,
   `COMMON_WIN_PROCS` filter coverage of the McAfee/Trellix +
