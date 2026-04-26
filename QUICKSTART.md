@@ -192,7 +192,7 @@ Output lands at `~/.findevil/cases/<case_id>/` (or inside the VM at `/home/sansf
 | "What if a tool is missing?" | The agent will return `BinaryNotFound -32602`. Install the binary OR set the env var pointing at it (e.g. `VOLATILITY_BIN=/path/to/vol`). |
 | "How do I verify a manifest someone else produced?" | `manifest_verify` MCP tool. Or `ots verify run.manifest.ots` for the Bitcoin anchor. |
 | "How do I extend the tool surface?" | Each new MCP wrapper takes ~30-60 minutes following the pattern at `services/mcp/src/tools/vol_pslist.rs`. See the existing 12 tools for templates. |
-| "I changed something — how do I confirm L1 will be happy without `docker compose up`?" | `bash scripts/run-all-smokes.sh` runs all 9 L1 smokes (rust-mcp + agent-mcp + verdict-policy + fleet-policy + demo-script + launcher + divergence + path-existence + smoke-regex-tests) plus the L0 lint+fmt gates (ruff check + ruff format --check + cargo fmt --check) — 12 entries in ~25s with per-smoke pass/skip/fail status. |
+| "I changed something — how do I confirm L1 will be happy without `docker compose up`?" | `bash scripts/run-all-smokes.sh` runs all 9 L1 smokes (rust-mcp + agent-mcp + verdict-policy + fleet-policy + demo-script + launcher + divergence + path-existence + smoke-regex-tests) plus the autonomous-loop directive's full verification spec (ruff check + ruff format --check + cargo fmt + cargo clippy + cargo test) — 14 entries in ~10s incremental (longer on a cold cargo cache). Set `SKIP_SLOW_RUST=1` to skip cargo test during fast iteration (drops to 13 entries). |
 
 ---
 

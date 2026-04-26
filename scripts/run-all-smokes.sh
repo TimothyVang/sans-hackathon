@@ -138,6 +138,22 @@ run_smoke \
     "cargo fmt --all --check" \
     "command -v cargo && [ -f Cargo.toml ]"
 
+# 13 + 14. The remaining two gates from the autonomous-loop directive's
+# verification spec ("cargo test + cargo clippy -D warnings + ruff check
+# + ruff format check").  ruff pair + cargo fmt are above; clippy + test
+# go here.  cargo test is the slowest entry (~20s cached); set
+# SKIP_SLOW_RUST=1 to skip it during fast iteration.
+run_smoke \
+    "cargo clippy --deny warnings (Rust lint clean — matches L0 GHA gate)" \
+    "cargo clippy --workspace --all-targets --locked -- -D warnings" \
+    "command -v cargo && [ -f Cargo.toml ]"
+if [ "${SKIP_SLOW_RUST:-0}" != "1" ]; then
+    run_smoke \
+        "cargo test --workspace --locked (Rust test suite — matches autonomous-loop verification spec)" \
+        "cargo test --workspace --locked" \
+        "command -v cargo && [ -f Cargo.toml ]"
+fi
+
 total=$((passed + failed + skipped))
 echo
 echo "=========================================="
