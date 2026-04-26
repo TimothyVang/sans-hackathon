@@ -7,7 +7,9 @@ Four tiers, each independently testable and composable:
     forensic audit file Spec #2 §4.2 mandates for every case.
   * ``merkle``   — append-only Merkle tree (SHA-256) that roots all
     tool-call hashes + approved-finding hashes per run. Emits O(log
-    n) inclusion proofs the ``find-evil verify`` binary replays.
+    n) inclusion proofs that ``verify_manifest`` (this module's
+    own ``verify_manifest`` re-export, also exposed via the
+    ``manifest_verify`` MCP tool in ``services/agent_mcp``) replays.
   * ``signer``   — sigstore-python keyless signing over each
     JCS-canonicalized tool-call/finding/manifest. Rekor inclusion
     proof goes in the Sigstore bundle.

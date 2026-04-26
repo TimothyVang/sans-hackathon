@@ -6,7 +6,10 @@ chain; the M2 crypto stack detects the break on verify.
 
 Canonicalization uses RFC 8785 (JSON Canonicalization Scheme) so
 the same record hashes identically across platforms — required for
-``find-evil verify`` to reproduce the chain offline.
+``verify_manifest`` (in ``findevil_agent.crypto.manifest``, also
+exposed via the ``manifest_verify`` MCP tool) to reproduce the
+chain offline. See ``docs/cryptographic-attestation.md`` for the
+third-party verification recipe.
 
 Design goals:
 
