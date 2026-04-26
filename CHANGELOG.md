@@ -177,6 +177,25 @@ once the first `v0.x` is cut on the `v-submit` tag.
   (commit `ad4a36e`). Fails CI if any of the dropped pre-A2
   modules (graph.py / api.py / cli.py / supervisor.py /
   specialists/) reappear under any filename.
+- **Policy-lock smokes for compute_verdict + fleet_correlate**
+  (commits `b0a9a2e` + `395e2b6`). Two CI assertions covering
+  load-bearing policy that was previously documented but
+  unverified. `scripts/verdict-policy-smoke.py` (11 cases)
+  asserts the SUSPICIOUS / INDETERMINATE / NO_EVIL triggers in
+  `compute_verdict` match `docs/verdict-semantics.md`; includes a
+  regression anchor for the real SRL-2018 base-rd-05 finding
+  shape (2 HYPOTHESIS → INDETERMINATE).
+  `scripts/fleet-policy-smoke.py` (28 cases) asserts
+  `normalize_image_name` 14-char Volatility-truncation behavior,
+  `COMMON_WIN_PROCS` filter coverage of the McAfee/Trellix +
+  VMware Tools + Windows infrastructure stack, deliberate
+  Sysinternals/analyst-flag exclusions per
+  `docs/false-positives.md`, and `selfscore_aggregate`
+  modal-answer + distinct-answers logic against a synthetic
+  3-host fleet. Both smokes load the target functions via
+  `importlib` so they assert against shipped logic — no
+  copy-paste of policy. ~100ms wall-clock combined; wired into
+  `docker/l1-compose.yml` after the agent-mcp-smoke step.
 
 ### Real-evidence runs
 
