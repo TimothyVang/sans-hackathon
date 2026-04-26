@@ -10,7 +10,9 @@ members = [
     "services/mcp",
 ]
 
-# Pinned toolchain is Rust 1.83 (see rust-toolchain.toml + docker/l1-devbase.Dockerfile).
+# Pinned toolchain is Rust 1.88 (see rust-toolchain.toml + docker/l1-devbase.Dockerfile).
+# Spec #2 §16 says 1.83; the bump is documented in CLAUDE.md
+# "Spec/code divergences (code wins)" #1.
 
 [workspace.package]
 edition = "2021"
