@@ -191,6 +191,18 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **`docs/runbooks/dockerfile-a2-decision.md`** (commit `ea14aeb`).
+  Decision-helper for the Dockerfile A2 hard blocker that's been
+  open since commit `47f67b0`. Lays out both architectural paths
+  (rewrite to find-evil-auto vs cut wrapper + .deb) side-by-side
+  with concrete diff sketches, pros/cons, and next-step
+  estimates. Recommendation framing names option B as more
+  A2-idiomatic but flags the decision as user's call. Added to
+  `divergence-smoke.py`'s ALLOWED_FILES since the runbook
+  deliberately quotes both halves of the divergence (same
+  situation as CHANGELOG/CLAUDE.md). Stays inside autonomous
+  scope — preparing the decision artifact, not making the
+  decision.
 - **Smokes weren't ruff-format-clean + run-all-smokes lacked
   lint gate** (commit `f0dbfb1`). Caught while running the
   user's green-bar verification command verbatim
