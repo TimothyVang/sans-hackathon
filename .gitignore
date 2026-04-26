@@ -12,6 +12,10 @@
 *.aff4
 *.vhd
 *.vhdx
+# Windows event logs — fixture-only; never commit (real EVTX contains
+# logon history, hostnames, GUIDs and other user-identifying data).
+*.evtx
+*.EVTX
 
 # Rust
 target/

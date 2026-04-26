@@ -37,6 +37,23 @@ This document covers every fixture the Find Evil! submission was tested against.
 
 **Rationale:** NIST's authority makes this a standard reference. Multiple DFIR tools publish accuracy against it, so our DFIR-Metric score is directly comparable to any competitor.
 
+### Lightweight extract — single Security.evtx for fast smoke
+
+For developer-laptop iteration we don't always want the 4.5 GB E01. `scripts/fetch-nist-fixture.sh` pulls **one small Security.evtx** at `fixtures/single-evtx/Security.evtx`, used by `python scripts/rust-mcp-smoke.py --real-evidence`. Source URL is intentionally NOT hardcoded — set via env vars so operators can point at a vetted mirror without an upstream URL change breaking CI:
+
+```sh
+NIST_FIXTURE_URL=https://example.org/path/to/Security.evtx \
+NIST_FIXTURE_SHA256=<64-hex-digits> \
+bash scripts/fetch-nist-fixture.sh
+```
+
+Vetted candidate sources (any one is sufficient):
+- An OTRF Security-Datasets sample with a single standalone `.evtx` payload (the `datasets/atomic/windows/credential_access` and `datasets/atomic/windows/defense_evasion` subtrees ship sub-MB EVTX files).
+- An internal team mirror of CFReDS Hacking Case `Security.evtx` extracted via The Sleuth Kit's `fls`+`icat` from `SCHARDT.001`.
+- A small synthetic EVTX produced by `wevtutil epl` on a clean Win10 host.
+
+The fetch script is deliberately strict: SHA pin enforced when supplied, magic-byte sanity check (`ElfFile\0`) on every download, atomic rename, provenance recorded at `fixtures/single-evtx/PROVENANCE.txt`. The smoke harness skips silently when the fixture is absent so offline runs still pass.
+
 ---
 
 ## Secondary: OTRF Security-Datasets (formerly Mordor)
