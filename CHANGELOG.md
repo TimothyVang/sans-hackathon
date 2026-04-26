@@ -191,6 +191,20 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **`docs/runbooks/github-remote-bootstrap.md`** (commit `41594d0`).
+  Second decision-helper runbook (first was the Dockerfile A2 one
+  in `ea14aeb`). The "GitHub remote + push" hard blocker has been
+  open since 2026-04-25 and requires user input on 3 decisions
+  (owner / name / visibility) plus one-time bootstrap commands.
+  Runbook frames the 3 decisions with recommendations + concrete
+  `gh` command sequences + post-push checklist + pre-v-submit
+  steps + "what can go wrong" debugging guide. Added to
+  path-existence-smoke SCAN_LIST (193 paths / 23 docs all
+  resolve). Deliberately NOT added to L0 docs-consistency:
+  decision-helper runbooks are conditional artifacts — once the
+  hard blocker resolves, the user should be free to delete the
+  runbook. Stays inside autonomous-loop scope (preparing the
+  artifact, not making the decision).
 - **release.yml release-notes pointed at non-existent file**
   (commit `2bf9bc6`). `gh release create --notes "...See
   docs/architecture.md + README-submission.md for details."`
