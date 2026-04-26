@@ -40,32 +40,140 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Same definition as the orchestrator — keep in sync if tuning.
-COMMON_WIN_PROCS = {
-    n.lower()
-    for n in {
-        "System",
-        "smss.exe",
-        "csrss.exe",
-        "winlogon.exe",
-        "lsass.exe",
-        "services.exe",
-        "svchost.exe",
-        "explorer.exe",
-        "vmtoolsd.exe",
-        "WmiPrvSE.exe",
-        "spoolsv.exe",
-        "lsm.exe",
-        "wininit.exe",
-        "dllhost.exe",
-        "conhost.exe",
-        "wmiprvse.exe",
-        "taskhost.exe",
-        "taskhostw.exe",
-        "RuntimeBroker.exe",
-        "MsMpEng.exe",
-        "VGAuthService.exe",
-    }
+#
+# Volatility's `ImageFileName` field on EPROCESS is 16 bytes including
+# null padding, so binaries with names longer than 14 chars get
+# truncated in pslist/psscan output (e.g. "VGAuthService." for
+# VGAuthService.exe, "ManagementAgen" for ManagementAgent.exe). The
+# normalize_image_name() helper below truncates both sides to 14
+# chars before comparison so the truncated-vs-untruncated case
+# matches cleanly.
+_RAW_COMMON_PROCS: set[str] = {
+    # Core Windows
+    "System",
+    "Idle",
+    "smss.exe",
+    "csrss.exe",
+    "winlogon.exe",
+    "lsass.exe",
+    "services.exe",
+    "svchost.exe",
+    "explorer.exe",
+    "spoolsv.exe",
+    "lsm.exe",
+    "wininit.exe",
+    "dllhost.exe",
+    "conhost.exe",
+    "wmiprvse.exe",
+    "WmiPrvSE.exe",
+    "taskhost.exe",
+    "taskhostw.exe",
+    "RuntimeBroker.exe",
+    "MsMpEng.exe",
+    "msdtc.exe",
+    "dwm.exe",
+    "LogonUI.exe",
+    "fontdrvhost.exe",
+    "SearchUI.exe",
+    "SearchIndexer.exe",
+    "SearchProtocolHost.exe",
+    "SearchFilterHost.exe",
+    "ShellExperienceHost.exe",
+    "sihost.exe",
+    "ctfmon.exe",
+    "audiodg.exe",
+    "smartscreen.exe",
+    "SecurityHealthService.exe",
+    "SecurityHealthSystray.exe",
+    "ApplicationFrameHost.exe",
+    "backgroundTaskHost.exe",
+    "TrustedInstaller.exe",
+    "userinit.exe",
+    "MemCompression",
+    "SystemSettings.exe",
+    "Registry",
+    "Memory Compression",
+    "rdpclip.exe",
+    "tabtip.exe",
+    "wermgr.exe",
+    "wsqmcons.exe",
+    "WUDFHost.exe",
+    "spoolsv.exe",
+    "ssh-agent.exe",
+    # VMware Tools (common across the SRL-2018 fleet which is virtualized)
+    "vmtoolsd.exe",
+    "VGAuthService.exe",
+    "vm3dservice.exe",
+    "vmacthlp.exe",
+    # McAfee / Trellix endpoint stack — the SRL-2018 fleet ships this
+    # by default; on 18+/22 hosts otherwise it triggers false-positive
+    # cross-host correlations.
+    "masvc.exe",
+    "macmnsvc.exe",
+    "macompatsvc.exe",
+    "ManagementAgent.exe",
+    "ManagementAgentHost.exe",
+    "mfemactl.exe",
+    "mfemms.exe",
+    "mfevtps.exe",
+    "FireSvc.exe",
+    "FireTray.exe",
+    "ProtectedModuleHost.exe",
+    "DLPAgent.exe",
+    "DLPAgentService.exe",
+    "HipMgmt.exe",
+    "VsTskMgr.exe",
+    "mcshield.exe",
+    "mfeann.exe",
+    "mfefire.exe",
+    "mfehcs.exe",
+    "mfetp.exe",
+    "UpdaterUI.exe",
+    "scriptproxy.exe",
+    "shstat.exe",
+    "naPrdMgr.exe",
+    "FrameworkService.exe",
+    "mctray.exe",
+    "MSASCuiL.exe",
+    "MpCmdRun.exe",
+    "NisSrv.exe",
+    # Symantec / Norton (also seen in some SANS fixtures)
+    "ccSvcHst.exe",
+    "smcgui.exe",
+    "smc.exe",
+    "rtvscan.exe",
+    # Carbon Black, CrowdStrike, SentinelOne (modern EDR — not in this
+    # fleet, but listed for forward-compat with future investigations)
+    "CarbonBlackClientSetup.exe",
+    "csagent.exe",
+    "CSFalconService.exe",
+    "SentinelAgent.exe",
+    "SentinelAgentWorker.exe",
+    "SentinelHelperService.exe",
+    # Microsoft Office (background services common in enterprise builds)
+    "MSOSYNC.EXE",
+    "OfficeClickToRun.exe",
+    "OneDrive.exe",
+    # Sysinternals tools — pre-deployed on SRL-2018 admin/IR machines
+    # and run from default Sysinternals locations. Showing up on
+    # multiple hosts at once is more often "the IR team ran Autoruns
+    # everywhere" than attacker tooling — but flag it so the analyst
+    # double-checks rather than dismissing.
+    # (Intentionally NOT in COMMON_WIN_PROCS so cross-host runs of
+    # Autorunsc, PsExec, etc., still surface as suspicious.)
 }
+
+COMMON_WIN_PROCS: set[str] = {n.lower() for n in _RAW_COMMON_PROCS}
+
+
+def normalize_image_name(name: str) -> str:
+    """Lowercase + truncate to 14 chars (Volatility EPROCESS field
+    width). Used for comparison against COMMON_WIN_PROCS entries that
+    may have been recorded as truncated strings in psscan output."""
+    return name.strip().lower()[:14]
+
+
+_COMMON_TRUNCATED: set[str] = {normalize_image_name(n) for n in _RAW_COMMON_PROCS}
 
 
 def latest_fleet_dir() -> Path | None:
@@ -114,13 +222,20 @@ def load_verdicts(fleet_dir: Path) -> list[dict[str, Any]]:
 
 def cross_host_processes(verdicts: list[dict[str, Any]]) -> dict[str, list[dict]]:
     """Return {process_name: [{host, pid, create_time}, ...]} for any
-    uncommon name that appears on ≥2 hosts."""
+    uncommon name that appears on ≥2 hosts.
+
+    Uses normalize_image_name() (lowercase + 14-char truncation) on
+    both sides so a Volatility-truncated psscan name like
+    "VGAuthService." matches the canonical "VGAuthService.exe" entry
+    in COMMON_WIN_PROCS without manual aliasing."""
     by_name: dict[str, list[dict]] = defaultdict(list)
     for v in verdicts:
         host = v["_host"]
         for p in v.get("_psscan", []):
             name = (p.get("ImageFileName") or "").strip()
-            if not name or name.lower() in COMMON_WIN_PROCS:
+            if not name:
+                continue
+            if normalize_image_name(name) in _COMMON_TRUNCATED:
                 continue
             by_name[name].append(
                 {
