@@ -233,7 +233,15 @@ def real_evidence_flow(client: StdioClient, case_dir: Path) -> int:
     av = client.call_tool("audit_verify", {"path": str(audit_path)})
     if not av["ok"]:
         fatal(f"recorded audit chain did NOT verify: {av}")
-    log(f"  -> chain verifies, {av['record_count']} records")
+    selfscore_count = sum(
+        1
+        for line in audit_path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and '"kind":"judge_selfscore"' in line.replace(" ", "")
+    )
+    log(
+        f"  -> chain verifies, {av['record_count']} records "
+        f"(of which {selfscore_count} kind=judge_selfscore)"
+    )
 
     # ---- 2. manifest_verify on the recorded manifest ------------------
     # The manifest's `audit_log_path` is the path AS SEEN by the agent
@@ -615,9 +623,23 @@ def main() -> int:
                         "run scripts/find-evil-auto first"
                     )
             else:
-                case_dir = Path(args.real_evidence)
+                # `uv run --directory services/agent_mcp` runs the
+                # interpreter with cwd=services/agent_mcp, so a path
+                # like `tmp/auto-runs/auto-<uuid>` is relative to the
+                # repo root the user typed it from, not to the new cwd.
+                # Resolve relative paths against REPO before falling
+                # back to as-given (lets users still pass absolute
+                # paths or paths relative to any cwd that contains the
+                # target).
+                raw = Path(args.real_evidence)
+                case_dir = raw if raw.is_absolute() and raw.is_dir() else (REPO / raw)
                 if not case_dir.is_dir():
-                    fatal(f"--real-evidence path is not a directory: {case_dir}")
+                    case_dir = raw
+                if not case_dir.is_dir():
+                    fatal(
+                        f"--real-evidence path is not a directory: "
+                        f"{args.real_evidence} (also tried {REPO / raw})"
+                    )
             return real_evidence_flow(client, case_dir)
         return synthetic_flow(client)
     finally:
