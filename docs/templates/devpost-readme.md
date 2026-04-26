@@ -72,7 +72,7 @@ Under Amendment A2, Claude Code IS the primary interface — the entry point is 
 # (findevil-mcp + findevil-agent-mcp) over stdio.
 scripts/find-evil
 # … or equivalently from this repo's root:
-claude-code .
+claude
 
 # Then prompt the agent, e.g.:
 #   "investigate fixtures/nist-hacking-case/SCHARDT.001"

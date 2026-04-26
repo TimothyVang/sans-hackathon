@@ -10,7 +10,7 @@ This document is the single-page visual summary judges reach first. Full detail 
 
 Per SANS Find Evil! rules, submissions declare which of four supported patterns they implement. Our submission combines **two** patterns:
 
-1. **Direct Agent Extension** (rules §1) — Claude Code IS the agent. The judge runs `scripts/find-evil` (or `claude-code .`) at the repo root; `.mcp.json` auto-spawns both MCP servers; Claude Code drives the investigation as supervisor + Pool A/B subagents (`CLAUDE_CODE_FORK_SUBAGENT=1`). The SANS rules call this "the fastest path to a working submission."
+1. **Direct Agent Extension** (rules §1) — Claude Code IS the agent. The judge runs `scripts/find-evil` (or `claude`) at the repo root; `.mcp.json` auto-spawns both MCP servers; Claude Code drives the investigation as supervisor + Pool A/B subagents (`CLAUDE_CODE_FORK_SUBAGENT=1`). The SANS rules call this "the fastest path to a working submission."
 2. **Custom MCP Server** (rules §2) — two purpose-built MCP servers expose the typed tool surface:
    - `findevil-mcp` (Rust) — DFIR primitives (case_open, evtx_query, mft_timeline, hayabusa_scan, vol_pslist, vol_malfind, yara_scan, usnjrnl_query, registry_query, prefetch_parse, vel_collect). Read-only on evidence; SHA-256 every output. **NO `execute_shell`.**
    - `findevil-agent-mcp` (Python) — crypto + ACH plumbing (audit_append/verify, manifest_finalize/verify, ots_stamp/verify, verify_finding, detect_contradictions, judge_findings, correlate_findings).
@@ -62,13 +62,13 @@ flowchart TB
 
     subgraph Trust5["**TRUST BOUNDARY 5** — Presentation (DEFERRED to bonus per A2)"]
         Terminal["Claude Code terminal<br/>findings / contradictions /<br/>plans rendered as text<br/>(primary UX under A2)"]
-        FindEvilSh["scripts/find-evil<br/>thin bash wrapper<br/>= claude-code ."]
+        FindEvilSh["scripts/find-evil<br/>thin bash wrapper<br/>= claude (in cwd)"]
         NextJS["Next.js 15 SPA<br/>(deferred — week-7 bonus)"]
         MCPWidgets["MCP App widgets SEP-1865<br/>(deferred — week-7 bonus)"]
     end
 
     Human((Analyst /<br/>Judge)) -->|scripts/find-evil| FindEvilSh
-    Human -->|claude-code .| Terminal
+    Human -->|claude| Terminal
 
     FindEvilSh --> Terminal
     Terminal --> Supervisor
@@ -240,7 +240,7 @@ All three modes are **judge-valid**. Judges pick whichever they already have —
 
 ## Data flow — a single investigation from `.e01` to verdict (under A2)
 
-1. Judge runs `scripts/find-evil` (or `claude-code .`) at the repo root. Claude Code reads `.mcp.json`, spawns both MCP servers, ingests `CLAUDE.md` + `agent-config/*` as system context.
+1. Judge runs `scripts/find-evil` (or `claude`) at the repo root. Claude Code reads `.mcp.json`, spawns both MCP servers, ingests `CLAUDE.md` + `agent-config/*` as system context.
 2. Judge prompts: "investigate fixtures/nist-hacking-case/SCHARDT.001". Claude Code (acting as supervisor) calls `case_open` (Rust MCP) — SHA-256 verifies the image, opens via libewf read-only, initializes DuckDB at `~/.findevil/cases/<id>/evidence.ddb`, calls `audit_append` (Python MCP) for the open event.
 3. Claude Code emits a plan as text (no `PlanProposed` event needed — the terminal IS the channel) and forks two subagents with `CLAUDE_CODE_FORK_SUBAGENT=1`: one with the Pool A persistence prompt, one with Pool B exfil.
 4. Each pool subagent invokes Rust MCP DFIR tools (`evtx_query`, `mft_timeline`, `hayabusa_scan`, etc.); each call's SHA-256 output digest is `audit_append`-ed and contributes a Merkle leaf at `manifest_finalize` time.
