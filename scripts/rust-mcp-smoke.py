@@ -210,12 +210,25 @@ def main() -> int:
         )
         if names != expected:
             fatal(f"tool mismatch: {names} != {expected}")
-        # Each tool must advertise an inputSchema dict.
+        # Each tool must advertise an inputSchema dict and annotations.
         for tool in tools_resp["tools"]:
             schema = tool["inputSchema"]
             if not isinstance(schema, dict) or "type" not in schema:
                 fatal(f"{tool['name']} schema malformed: {schema}")
-        log(f"  -> {len(names)} tools registered with JSON Schema")
+            ann = tool.get("annotations")
+            if not isinstance(ann, dict):
+                fatal(f"{tool['name']} annotations missing or malformed: {ann}")
+            if not isinstance(ann.get("title"), str) or not ann["title"]:
+                fatal(f"{tool['name']} annotations.title missing or empty")
+            for hint in (
+                "readOnlyHint",
+                "destructiveHint",
+                "idempotentHint",
+                "openWorldHint",
+            ):
+                if not isinstance(ann.get(hint), bool):
+                    fatal(f"{tool['name']} annotations.{hint} missing or non-bool")
+        log(f"  -> {len(names)} tools registered with JSON Schema + annotations")
 
         # ---- 3. case_open -----------------------------------------------
         log("case_open: register synthetic evidence...")

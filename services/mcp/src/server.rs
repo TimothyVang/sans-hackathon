@@ -60,10 +60,15 @@ const ERR_INVALID_PARAMS: i64 = -32602;
 const ERR_INTERNAL: i64 = -32603;
 
 /// Tool descriptor — name, human-readable description, schema producer,
-/// and the dispatch closure.
+/// the dispatch closure, plus MCP annotations that agent UIs render
+/// (e.g. a "destructive" badge or a network-icon).
 struct ToolEntry {
     name: &'static str,
     description: &'static str,
+    /// Behavior hints exposed via `annotations` on `tools/list`. Per
+    /// the MCP 2024-11-05 spec these are advisory — clients use them
+    /// to choose whether to auto-approve / surface warnings / batch.
+    annotations: ToolAnnotations,
     /// Returns the JSON Schema for the input type. Computed lazily so
     /// the server only pays the schemars cost on `tools/list`.
     schema: fn() -> Value,
@@ -71,6 +76,51 @@ struct ToolEntry {
     /// On invalid input returns `Err(ToolError::InvalidParams(_))`;
     /// on handler failure returns `Err(ToolError::Internal(_))`.
     handler: fn(Value) -> Result<Value, ToolError>,
+}
+
+/// MCP `tools.annotations` metadata. All four hints are *hints* —
+/// behavior is unchanged whether they are honoured or not. The point
+/// is to give the calling UI (Claude Code, Claude Desktop, `ChatGPT`)
+/// enough metadata to render the right badge / confirmation prompt.
+//
+// clippy::struct_excessive_bools is disabled here because the MCP
+// 2024-11-05 spec enumerates exactly four boolean hints (readOnly,
+// destructive, idempotent, openWorld) and the wire format is bool-
+// per-hint. Refactoring to enums would obscure the 1:1 mapping.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, Copy)]
+struct ToolAnnotations {
+    /// Short human-readable display name (e.g. "Open Evidence Case").
+    title: &'static str,
+    /// True when the tool does not modify the environment (most of
+    /// our DFIR tools are read-only over evidence; only `case_open`
+    /// writes the case directory).
+    read_only: bool,
+    /// True if the tool may make destructive changes that cannot be
+    /// undone. Always false here — Find Evil! never deletes evidence
+    /// or its derivatives.
+    destructive: bool,
+    /// True when calling the tool repeatedly with the same input
+    /// produces the same output. `case_open` mints a fresh UUID4
+    /// per call so it's marked false; everything else is pure.
+    idempotent: bool,
+    /// True if the tool may interact with external systems (network).
+    /// Only `vel_collect` qualifies — Velociraptor's catalog
+    /// includes artifacts that hit the network. Everything else
+    /// runs against on-disk evidence only.
+    open_world: bool,
+}
+
+impl ToolAnnotations {
+    fn to_json(self) -> Value {
+        json!({
+            "title": self.title,
+            "readOnlyHint": self.read_only,
+            "destructiveHint": self.destructive,
+            "idempotentHint": self.idempotent,
+            "openWorldHint": self.open_world,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -137,6 +187,13 @@ fn build_registry() -> Vec<ToolEntry> {
                  ERRORS: ImageNotFound (check the path), ImageNotRegular (path is a directory; \
                  pass the file directly), ImageHashMismatch (only if expected_sha256 supplied — \
                  implies tampering or wrong file).",
+            annotations: ToolAnnotations {
+                title: "Open Evidence Case",
+                read_only: false, // creates case directory + audit log
+                destructive: false,
+                idempotent: false, // mints fresh UUID4 each call
+                open_world: false,
+            },
             schema: || schema_for::<CaseOpenInput>(),
             handler: |args| dispatch_case_open(args),
         },
@@ -153,6 +210,13 @@ fn build_registry() -> Vec<ToolEntry> {
                  the mounted image), EvtxOpen (file is corrupt or not a real EVTX — check \
                  magic bytes 'ElfFile'), EvtxParseAllFailed (every record failed; the file \
                  is structurally broken — try a different copy of the log).",
+            annotations: ToolAnnotations {
+                title: "Query Windows Event Log",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
             schema: || schema_for::<EvtxQueryInput>(),
             handler: |args| dispatch_evtx_query(args),
         },
@@ -171,6 +235,13 @@ fn build_registry() -> Vec<ToolEntry> {
                  that caveat in any finding that relies on prefetch absence. \
                  ERRORS: NotFound (verify the path), Unreadable (permissions / device error), \
                  ParseFailed (corrupt header or unsupported version — try a fresh copy).",
+            annotations: ToolAnnotations {
+                title: "Parse Windows Prefetch",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
             schema: || schema_for::<PrefetchInput>(),
             handler: |args| dispatch_prefetch_parse(args),
         },
@@ -190,6 +261,13 @@ fn build_registry() -> Vec<ToolEntry> {
                  ERRORS: MftNotFound (verify path), MftOpen (wrong magic — check the file is \
                  a real $MFT export, not a copy of the volume root), InvalidTimeFilter \
                  (since_iso/until_iso must be RFC 3339 / ISO-8601, e.g. 2026-04-25T00:00:00Z).",
+            annotations: ToolAnnotations {
+                title: "Build NTFS MFT Timeline",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
             schema: || schema_for::<MftInput>(),
             handler: |args| dispatch_mft_timeline(args),
         },
@@ -214,6 +292,13 @@ fn build_registry() -> Vec<ToolEntry> {
                  version), KeyNotFound (the requested key path doesn't exist in this hive — \
                  check the prefix is right for the hive type, e.g. SOFTWARE keys live under \
                  'Microsoft\\…' not 'HKLM\\SOFTWARE\\Microsoft\\…').",
+            annotations: ToolAnnotations {
+                title: "Read Windows Registry Hive",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
             schema: || schema_for::<RegistryInput>(),
             handler: |args| dispatch_registry_query(args),
         },
@@ -238,6 +323,13 @@ fn build_registry() -> Vec<ToolEntry> {
                  (YARA syntax error or unsupported feature — yara-x is 99% libyara-compatible \
                  but the 1% that diverges shows up here; the error message names the file \
                  and line).",
+            annotations: ToolAnnotations {
+                title: "Scan with YARA Rules",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
             schema: || schema_for::<YaraInput>(),
             handler: |args| dispatch_yara_scan(args),
         },
@@ -265,6 +357,13 @@ fn build_registry() -> Vec<ToolEntry> {
                  a copy of the $UsnJrnl directory), InvalidTimeFilter (since_iso/until_iso \
                  must be RFC 3339), InvalidReason (an entry in reasons[] isn't a known \
                  flag name).",
+            annotations: ToolAnnotations {
+                title: "Stream NTFS USN Journal",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
             schema: || schema_for::<UsnJrnlInput>(),
             handler: |args| dispatch_usnjrnl_query(args),
         },
@@ -293,6 +392,13 @@ fn build_registry() -> Vec<ToolEntry> {
                  non-zero — check stderr_tail), OutputParse (JSON malformed; rare and \
                  indicates a Hayabusa version mismatch — pin a known-good version), \
                  InvalidMinLevel (must be one of the 5 standard levels).",
+            annotations: ToolAnnotations {
+                title: "Run Hayabusa Sigma Detection",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
             schema: || schema_for::<HayabusaInput>(),
             handler: |args| dispatch_hayabusa_scan(args),
         },
@@ -318,6 +424,13 @@ fn build_registry() -> Vec<ToolEntry> {
                  SubprocessFailed (Volatility returned non-zero — check stderr_tail; \
                  common causes: corrupt image, unsupported OS profile), OutputParse \
                  (JSON malformed; rare, indicates a Vol3 version mismatch).",
+            annotations: ToolAnnotations {
+                title: "List Memory Processes (Volatility)",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
             schema: || schema_for::<VolPslistInput>(),
             handler: |args| dispatch_vol_pslist(args),
         },
@@ -342,6 +455,13 @@ fn build_registry() -> Vec<ToolEntry> {
                  ERRORS: same as vol_pslist (MemoryNotFound, BinaryNotFound, \
                  SubprocessFailed, OutputParse). Same Volatility binary discovery \
                  ($VOLATILITY_BIN env var first, then PATH lookup).",
+            annotations: ToolAnnotations {
+                title: "Find Code Injection (Volatility)",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
             schema: || schema_for::<VolMalfindInput>(),
             handler: |args| dispatch_vol_malfind(args),
         },
@@ -375,6 +495,16 @@ fn build_registry() -> Vec<ToolEntry> {
                  key contained shell-meaningful characters), SubprocessFailed (Velociraptor \
                  returned non-zero; check stderr_tail), OutputParse (stdout was neither \
                  JSONL nor a JSON array — usually a Velociraptor version mismatch).",
+            annotations: ToolAnnotations {
+                title: "Collect Velociraptor Artifact",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                // Some Velociraptor artifacts (e.g. uploads, network probes)
+                // do touch external systems. Conservative: mark openWorld
+                // so the agent UI can prompt before auto-approving.
+                open_world: true,
+            },
             schema: || schema_for::<VelCollectInput>(),
             handler: |args| dispatch_vel_collect(args),
         },
@@ -457,6 +587,7 @@ fn handle_tools_list(registry: &[ToolEntry]) -> Value {
                 "name": t.name,
                 "description": t.description,
                 "inputSchema": (t.schema)(),
+                "annotations": t.annotations.to_json(),
             })
         })
         .collect();
@@ -721,10 +852,46 @@ mod tests {
         for want in expected {
             assert!(names.contains(&want), "missing {want}: {names:?}");
         }
-        // Each must have an inputSchema dict.
+        // Each must have an inputSchema dict + annotations object.
         for tool in tools {
             assert!(tool["inputSchema"].is_object(), "schema missing for {tool}");
+            let ann = &tool["annotations"];
+            assert!(ann.is_object(), "annotations missing for {tool}");
+            assert!(ann["title"].is_string(), "title missing on {tool}");
+            for hint in [
+                "readOnlyHint",
+                "destructiveHint",
+                "idempotentHint",
+                "openWorldHint",
+            ] {
+                assert!(ann[hint].is_boolean(), "{hint} missing on {tool}");
+            }
         }
+    }
+
+    #[test]
+    fn case_open_is_marked_non_idempotent() {
+        // case_open mints a fresh UUID4 per call; idempotentHint must be false.
+        let req = r#"{"jsonrpc":"2.0","id":99,"method":"tools/list"}"#;
+        let out = drive(&format!("{req}\n"));
+        let resp: Value = serde_json::from_str(out.trim()).unwrap();
+        let tools = resp["result"]["tools"].as_array().unwrap();
+        let case_open = tools.iter().find(|t| t["name"] == "case_open").unwrap();
+        assert_eq!(case_open["annotations"]["readOnlyHint"], false);
+        assert_eq!(case_open["annotations"]["idempotentHint"], false);
+        assert_eq!(case_open["annotations"]["openWorldHint"], false);
+    }
+
+    #[test]
+    fn vel_collect_is_marked_open_world() {
+        // Velociraptor artifacts can touch external systems — UI should prompt.
+        let req = r#"{"jsonrpc":"2.0","id":100,"method":"tools/list"}"#;
+        let out = drive(&format!("{req}\n"));
+        let resp: Value = serde_json::from_str(out.trim()).unwrap();
+        let tools = resp["result"]["tools"].as_array().unwrap();
+        let vel = tools.iter().find(|t| t["name"] == "vel_collect").unwrap();
+        assert_eq!(vel["annotations"]["openWorldHint"], true);
+        assert_eq!(vel["annotations"]["readOnlyHint"], true);
     }
 
     #[test]
