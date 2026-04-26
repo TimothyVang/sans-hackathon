@@ -150,6 +150,10 @@ ALLOW_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^chore/"),
     # State files written at runtime, not committed.
     re.compile(r"^state/"),
+    # User-level Claude Code auto-memory dir.  CLAUDE.md references
+    # `memory/project_autonomous_queue.md` which actually lives at
+    # `~/.claude/projects/<project>/memory/...`, not at repo root.
+    re.compile(r"^memory/"),
 )
 
 # Compile once.  PATH_RE matches any backtick-quoted token that
