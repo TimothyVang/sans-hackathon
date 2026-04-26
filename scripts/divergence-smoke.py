@@ -85,6 +85,9 @@ ALLOWED_FILES = {
     "Find_Evil_Research_and_Build_Plan.docx",
     # The autonomous-queue file describes the audit history.
     "memory/project_autonomous_queue.md",
+    # Decision-helper runbooks deliberately quote both halves
+    # of a divergence to lay out tradeoffs side by side.
+    "docs/runbooks/dockerfile-a2-decision.md",
 }
 
 
