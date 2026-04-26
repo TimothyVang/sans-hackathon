@@ -126,5 +126,26 @@ Run `/init` in a new case folder to let Claude analyze the evidence structure an
 - The **allowedTools/deny** pattern in §2 is useful conceptually, but our submission uses **architectural** guardrails (typed Rust MCP server with no `execute_shell`) rather than Claude Code permission lists. Denying `curl`/`wget`/`WebFetch` at the Claude Code level would break our competitor-watch script and fixture fetch scripts.
 - The **"Autonomous Operation"** framing in §1 conflicts with Rob Lee's judging preference for "orchestrator, not autonomous responder" (see `project_judging_signals.md`). Our UI default is human-in-the-loop via AI SDK 6 `needsApproval`; `--unattended` mode exists but is secondary.
 - The **Ralph Wiggum self-learning loop** in §4 is Protocol SIFT's approach to iterating until success. Our analogue is the build swarm's critic subagent + dry-run gate + Postgres checkpoint — structurally similar but embedded in CI rather than a Stop hook.
-- The **progressive-disclosure skill pattern** in §3 is interesting for documentation organization. Our equivalent is `agent-config/*.md` (SOUL/AGENTS/TOOLS/MEMORY/HEARTBEAT) loaded by the runtime agent, not Claude Code.
+- The **progressive-disclosure skill pattern** in §3 is interesting for documentation organization. Our equivalent is `agent-config/*.md` (SOUL/AGENTS/TOOLS/MEMORY/HEARTBEAT/JUDGING) loaded by the runtime agent, not Claude Code.
 - The **installation URL** `curl -fsSL https://claude.ai/install.sh | bash` is the Claude Code install, not our Product install. Our one-liner pattern mirrors Protocol SIFT's `curl -fsSL .../install.sh | bash` but points to our own repo.
+
+## Concrete adaptation in this repo (mapping table)
+
+The four Protocol SIFT components above were converted into the
+following concrete files in this tree. This is the operational
+artifact set — the prose above is the rationale for each substitution.
+
+| Protocol SIFT §  | Upstream form                                  | Adapted form in this repo                          | Why it differs                                                                                              |
+|------------------|------------------------------------------------|----------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
+| §1 CLAUDE.md     | Generic SIFT-Workstation orchestrator brief    | `CLAUDE.md` (root) — A2-aware, spec-stack-aware    | Our CLAUDE.md must encode Amendments A1/A2, vocabulary rules, spec/code divergences, and the agent prompt    |
+| §2 settings.json | Allows specific DFIR binaries, denies curl/wget | `.claude/settings.json` — allows our build/MCP surface, no DFIR binaries in Bash, no curl/wget deny | DFIR tools are reached through the typed Rust MCP server (architectural guard); fetch scripts need curl/wget |
+| §3 Skills dir    | `~/.claude/skills/<tool>/SKILL.md` per tool    | `agent-config/{SOUL,AGENTS,PLAYBOOK,TOOLS,MEMORY,HEARTBEAT,JUDGING}.md` | Our DFIR persona is loaded by the agent itself at investigation start, not as Claude Code skills             |
+| §4 /ralph-loop   | Stop-hook self-learning loop                   | `scripts/autonomous-loop.sh` (24h `claude --print` driver) + `services/swarm/session_guard.py` (rate-limit halt) | Subprocess loop is simpler to reason about than a Stop hook and matches the build-swarm worker pattern        |
+| §5 Install + auth | `curl -fsSL https://claude.ai/install.sh \| bash` + `claude` OAuth | `scripts/find-evil` (local) + `scripts/find-evil-sift` (SIFT-VM SSH) + Amendment A1 three-mode credential detection | We launch *into* an investigation; Protocol SIFT launches a generic Claude Code session                       |
+
+If you change any of the adapted files, update the corresponding
+upstream-section reference here so the next session can see the
+mapping intact. If a new Protocol SIFT version ships a new section,
+add a row with "Adapted form in this repo: TBD" until a deliberate
+adoption decision is made — silent adoption breaks the architectural
+guard story.
