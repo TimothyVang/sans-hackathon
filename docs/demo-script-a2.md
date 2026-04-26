@@ -174,7 +174,7 @@ attests data existed as of 2026-06-15 18:42:11 UTC".
 ## Beat 6 — 22-host fleet investigation (3:10–4:00)
 
 **On-screen:** Terminal showing
-`bash scripts/find-evil-auto && python scripts/fleet_correlate.py
+`python scripts/fleet_investigate.py && python scripts/fleet_correlate.py
 && python scripts/render_fleet_report.py`. (Pre-recorded, sped up
 4× — the actual fleet run takes ~30 minutes; viewer sees the
 sped-up summary scroll.) At 3:30, switch to the rendered
