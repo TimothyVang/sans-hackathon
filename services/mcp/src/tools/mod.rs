@@ -22,6 +22,7 @@ pub mod mft_timeline;
 pub mod prefetch_parse;
 pub mod registry_query;
 pub mod usnjrnl_query;
+pub mod vel_collect;
 pub mod vol_malfind;
 pub mod vol_pslist;
 pub mod yara_scan;
@@ -47,6 +48,7 @@ pub use registry_query::{
 pub use usnjrnl_query::{
     path_looks_like_usnjrnl, usnjrnl_query, UsnJrnlEntry, UsnJrnlError, UsnJrnlInput, UsnJrnlOutput,
 };
+pub use vel_collect::{vel_collect, VelCollectError, VelCollectInput, VelCollectOutput, VelRow};
 pub use vol_malfind::{
     vol_malfind, VolInjection, VolMalfindError, VolMalfindInput, VolMalfindOutput,
 };
