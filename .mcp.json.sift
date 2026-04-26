@@ -1,18 +1,21 @@
 {
   "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/specification/main/schema/draft/schema.json",
-  "_comment": "SSH-transport variant. Activate with `scripts/find-evil-sift` or `cp .mcp.json.sift .mcp.json`. Requires the SIFT VM running with port-forwarding 2222 → 22 and an SSH key at ~/.ssh/sift_key whose pubkey is in the VM's authorized_keys. Repo path inside VM is assumed at /home/sansforensics/find-evil — change SIFT_REPO_PATH below if you put it elsewhere.",
+  "_comment": "SSH-transport variant. Activate with `scripts/find-evil-sift` or `cp .mcp.json.sift .mcp.json`. Requires the SIFT VM running with port-forwarding 2222 \u2192 22 and an SSH key at ~/.ssh/sift_key whose pubkey is in the VM's authorized_keys. Repo path inside VM is assumed at /home/sansforensics/find-evil \u2014 change SIFT_REPO_PATH below if you put it elsewhere.",
   "mcpServers": {
     "findevil-mcp": {
       "type": "stdio",
       "command": "ssh",
       "args": [
-        "-p", "2222",
-        "-i", "~/.ssh/sift_key",
+        "-i",
+        "C:/Users/newbi/.ssh/sift_key",
         "-T",
-        "-o", "StrictHostKeyChecking=accept-new",
-        "-o", "ServerAliveInterval=30",
-        "-o", "ServerAliveCountMax=3",
-        "sansforensics@localhost",
+        "-o",
+        "StrictHostKeyChecking=accept-new",
+        "-o",
+        "ServerAliveInterval=30",
+        "-o",
+        "ServerAliveCountMax=3",
+        "sansforensics@192.168.197.143",
         "/home/sansforensics/find-evil/target/release/findevil-mcp"
       ]
     },
@@ -20,13 +23,16 @@
       "type": "stdio",
       "command": "ssh",
       "args": [
-        "-p", "2222",
-        "-i", "~/.ssh/sift_key",
+        "-i",
+        "C:/Users/newbi/.ssh/sift_key",
         "-T",
-        "-o", "StrictHostKeyChecking=accept-new",
-        "-o", "ServerAliveInterval=30",
-        "-o", "ServerAliveCountMax=3",
-        "sansforensics@localhost",
+        "-o",
+        "StrictHostKeyChecking=accept-new",
+        "-o",
+        "ServerAliveInterval=30",
+        "-o",
+        "ServerAliveCountMax=3",
+        "sansforensics@192.168.197.143",
         "cd /home/sansforensics/find-evil/services/agent_mcp && exec uv run python -m findevil_agent_mcp.server"
       ]
     }
