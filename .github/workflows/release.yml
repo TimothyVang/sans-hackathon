@@ -149,7 +149,7 @@ jobs:
           if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             gh release create "${GITHUB_REF_NAME}" \
               --title "find-evil ${GITHUB_REF_NAME}" \
-              --notes "Auto-generated release. See docs/architecture.md + README-submission.md for details." \
+              --notes "Auto-generated release. See docs/architecture.md + README.md for details." \
               --draft=false
           fi
           for f in dist/*; do
