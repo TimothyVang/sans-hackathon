@@ -22,11 +22,23 @@ set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO}"
 
-c_red=$'\033[0;31m'
-c_grn=$'\033[0;32m'
-c_yel=$'\033[0;33m'
-c_blu=$'\033[0;34m'
-c_off=$'\033[0m'
+# Skip ANSI color codes when stdout isn't a TTY (CI logs, file
+# redirects, Windows cmd.exe without ENABLE_VIRTUAL_TERMINAL_
+# PROCESSING). Colors are nice-to-have for interactive terminals;
+# raw escape sequences in a CI log file are noise.
+if [ -t 1 ]; then
+    c_red=$'\033[0;31m'
+    c_grn=$'\033[0;32m'
+    c_yel=$'\033[0;33m'
+    c_blu=$'\033[0;34m'
+    c_off=$'\033[0m'
+else
+    c_red=""
+    c_grn=""
+    c_yel=""
+    c_blu=""
+    c_off=""
+fi
 
 passed=0
 failed=0
