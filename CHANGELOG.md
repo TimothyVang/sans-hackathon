@@ -160,12 +160,35 @@ once the first `v0.x` is cut on the `v-submit` tag.
 
 ### Documentation
 
-- **Rust toolchain pin alignment** (commit `f61860d`). Cargo.toml
-  line-13 comment said "Pinned toolchain is Rust 1.83" right next
-  to a [workspace.package] block correctly stating "Rust 1.88 —
-  bumped from the 1.83 spec pin..." Both references now read 1.88
-  with pointers to CLAUDE.md "Spec/code divergences" §1. CLAUDE.md
-  "Conventions" caught the matching staleness.
+- **Rust toolchain pin alignment** (commits `f61860d` + `6902bd0`
+  + `f429894`). Cargo.toml line-13 comment said "Pinned toolchain
+  is Rust 1.83" right next to a [workspace.package] block
+  correctly stating "Rust 1.88". Subsequent grep audit found the
+  same staleness in four more places: Dockerfile FROM line
+  (`rust:1.83-bookworm` → would have failed `docker build` once
+  rust-toolchain.toml's 1.88.0 took effect via rustup pull),
+  sandbox-plan §Task 2 scope text + planned commit-message
+  template, product-plan Tech Stack line + Task 31 instruction.
+  All five places now read 1.88 with pointers to CLAUDE.md
+  "Spec/code divergences" §1; only the historical CHANGELOG
+  reference describing what the OLD Cargo.toml said remains as
+  audit-trail.
+
+### Hard blockers discovered
+
+- **Dockerfile A2 cli.py mismatch** (commit `47f67b0`). The
+  shipped `Dockerfile`'s `find-evil` wrapper invokes
+  `python3 -m findevil_agent.cli` — but Amendment A2 dropped
+  `services/agent/findevil_agent/cli.py` (the L0
+  `amendment-a2-guard` job fails CI if it reappears). The .deb
+  package would error at first invocation. Two architectural paths
+  forward: (a) rewrite the wrapper to invoke
+  `scripts/find-evil-auto` in Tesla mode against the SIFT VM, or
+  (b) cut the `find-evil` wrapper entirely since A2's "Claude
+  Code IS the orchestrator" makes the in-container CLI redundant
+  (the .deb becomes documentation + CI artifacts only).
+  Architectural choice; flagged as a hard blocker pending user
+  resolution before the `v-submit` tag is cut.
 - **QUICKSTART.md inbound links** (commit `e3677c4`) to the two
   analyst-facing canonical docs (`verdict-semantics.md` +
   `cryptographic-attestation.md`). Step 5/6 of the find-evil-auto
