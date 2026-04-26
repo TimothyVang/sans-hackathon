@@ -13,11 +13,17 @@
 # What it does end-to-end (no human input required after launch):
 #   1. case_open (real SHA-256 of evidence)
 #   2. Detect evidence type → run playbook tool sequence
+#      (memory: vol_pslist + vol_psscan + vol_malfind for DKOM
+#       cross-validation; evtx: evtx_query; disk: case_open only)
 #   3. Synthesize Pool A/B Findings deterministically from tool outputs
-#   4. detect_contradictions → judge_findings → verify → correlate
-#   5. manifest_finalize (Merkle + sigstore)
-#   6. Write verdict.json
-#   7. Generate PDF report (matplotlib + pandoc + Chrome headless)
+#   4. detect_contradictions → judge_findings → correlate_findings
+#   5. Emit 6 kind=judge_selfscore audit records (per agent-config/JUDGING.md)
+#      BEFORE manifest_finalize so the score is part of the cryptographic
+#      attestation
+#   6. manifest_finalize (Merkle + sigstore)
+#   7. Write verdict.json
+#   8. Generate PDF report (matplotlib + pandoc + Chrome headless;
+#      surfaces the selfscore table in the per-case REPORT.pdf)
 #
 # Output (inside VM):
 #   /home/sansforensics/find-evil/tmp/auto-<uuid>/
