@@ -191,6 +191,17 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **`scripts/find-evil-sift` `claude-code` remnant** (commit
+  `cc4e93e`). The earlier `claude-code → claude` sweep (c167aec)
+  used grep filters `--include="*.sh"`, which missed
+  `scripts/find-evil-sift` (no extension). The script's launch path
+  ran `command -v claude-code` first, then fell back to `claude .` —
+  both passing `.` as a positional arg, which `claude` treats as a
+  prompt not a directory. Simplified to a single `claude` check
+  with no positional arg (script already cd's to repo root).
+  Logged the lesson in the autonomous-queue: extension-less shell
+  scripts (the `find-evil` family deliberately drops `.sh` to read
+  like CLI tools) need to be in the audit grep too.
 - **`claude-code` → `claude` across the Product entry path**
   (commit `c167aec`). The Anthropic Claude Code CLI binary is
   `claude`, not `claude-code`. The repo had `claude-code` everywhere
