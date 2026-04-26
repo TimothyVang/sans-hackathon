@@ -191,15 +191,19 @@ once the first `v0.x` is cut on the `v-submit` tag.
   case-insensitivity and .001 split-image, and 3 unknown
   including the deliberate non-routing of .zip Velociraptor
   bundles).
-  `scripts/fleet-policy-smoke.py` (28 cases) asserts
-  `normalize_image_name` 14-char Volatility-truncation behavior,
-  `COMMON_WIN_PROCS` filter coverage of the McAfee/Trellix +
-  VMware Tools + Windows infrastructure stack, deliberate
-  Sysinternals/analyst-flag exclusions per
-  `docs/false-positives.md`, and `selfscore_aggregate`
-  modal-answer + distinct-answers logic against a synthetic
-  3-host fleet. Both smokes load the target functions via
-  `importlib` so they assert against shipped logic — no
+  `scripts/fleet-policy-smoke.py` (35 cases, commit `925725e`
+  added 7 cross_host_processes end-to-end cases on top of the
+  original 28) asserts `normalize_image_name` 14-char Volatility-
+  truncation behavior, `COMMON_WIN_PROCS` filter coverage of the
+  McAfee/Trellix + VMware Tools + Windows infrastructure stack,
+  deliberate Sysinternals/analyst-flag exclusions per
+  `docs/false-positives.md`, `cross_host_processes` end-to-end
+  filter+threshold behavior against a synthetic 3-host fleet
+  (canonical and Volatility-truncated forms both filter; rubyw.exe
+  surfaces with 2 distinct hosts; single-host names excluded by
+  the ≥2 threshold), and `selfscore_aggregate` modal-answer +
+  distinct-answers logic. Both smokes load the target functions
+  via `importlib` so they assert against shipped logic — no
   copy-paste of policy. ~100ms wall-clock combined; wired into
   `docker/l1-compose.yml` after the agent-mcp-smoke step.
 
