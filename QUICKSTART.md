@@ -79,8 +79,8 @@ What it does in one command (no interactive prompts):
 2. Opens both MCP servers inside the SIFT VM via SSH stdio
 3. case_open → tool sequence per type → audit chain → judge → correlator → manifest_finalize
 4. Synthesizes Pool A (persistence-biased) and Pool B (exfil-biased) findings deterministically from tool outputs
-5. Writes `verdict.json` with the verdict (`SUSPICIOUS` / `NO_EVIL` / `INDETERMINATE`)
-6. Generates a fully-templated PDF investigation report (figures + findings + chain-of-custody attestation)
+5. Writes `verdict.json` with the verdict (`SUSPICIOUS` / `NO_EVIL` / `INDETERMINATE` — see [`docs/verdict-semantics.md`](docs/verdict-semantics.md) for the analyst triage flow)
+6. Generates a fully-templated PDF investigation report (figures + findings + chain-of-custody attestation; see [`docs/cryptographic-attestation.md`](docs/cryptographic-attestation.md) for offline-verification recipe)
 
 Output (on host, host-local):
 ```
@@ -184,8 +184,10 @@ Output lands at `~/.findevil/cases/<case_id>/` (or inside the VM at `/home/sansf
 | Question | File to read |
 |---|---|
 | "How do I avoid false positives?" | `docs/false-positives.md` |
+| "What do SUSPICIOUS / INDETERMINATE / NO_EVIL actually mean — and which findings do I act on first?" | `docs/verdict-semantics.md` |
 | "What does the agent actually do during an investigation?" | `agent-config/PLAYBOOK.md` |
 | "What's the architecture?" | `docs/architecture.md` |
+| "How does the cryptographic chain-of-custody work end-to-end? What does FRE 902(14) require?" | `docs/cryptographic-attestation.md` |
 | "What evidence is available?" | `docs/DATASET.md` |
 | "What if a tool is missing?" | The agent will return `BinaryNotFound -32602`. Install the binary OR set the env var pointing at it (e.g. `VOLATILITY_BIN=/path/to/vol`). |
 | "How do I verify a manifest someone else produced?" | `manifest_verify` MCP tool. Or `ots verify run.manifest.ots` for the Bitcoin anchor. |
