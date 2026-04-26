@@ -1,0 +1,151 @@
+# Changelog
+
+All notable changes to the Find Evil! submission. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
+project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
+once the first `v0.x` is cut on the `v-submit` tag.
+
+> **Pre-submission:** all changes below are on `master`. The first
+> tagged release will be `v-submit` cut on or before the SANS Find
+> Evil! deadline (2026-06-15 22:45 CDT).
+
+## [Unreleased]
+
+### Added — automation surface
+
+- **`scripts/find-evil-auto`** Tesla-mode single-command orchestrator
+  (commit `4b38d27`). Detects evidence type, spawns both MCP servers
+  inside the SIFT VM via SSH stdio, runs the per-type playbook,
+  synthesizes Pool A/B Findings, runs the full ACH stack
+  (detect_contradictions → judge_findings → correlate_findings →
+  judge_selfscore → manifest_finalize → ots_stamp), writes
+  `verdict.json` + signed manifest + audit chain + PDF report.
+  No interactive Claude Code session required.
+- **`scripts/fleet_investigate.py` + `scripts/fleet_correlate.py` +
+  `scripts/render_fleet_report.py`** — three-script fleet pipeline
+  (commits `0de2e53` + `2403188` + `0b87b83`). Walks every `.img` in
+  the evidence tree, invokes find-evil-auto per host, persists
+  results after each so crashes don't lose progress, then detects
+  cross-host patterns (uncommon process names on ≥2 hosts, 60s
+  multi-host temporal clusters, MITRE technique density,
+  Merkle-root uniqueness) and renders FLEET_REPORT.{md,html,pdf}
+  with four matplotlib figures.
+- **12th Rust MCP tool: `vol_psscan`** (commit `0de2e53`). Mirror of
+  `vol_pslist` but invokes Volatility 3's `windows.psscan` instead.
+  Critical for DKOM cross-validation against the active-list
+  walker — `pslist=0` + `psscan>0` is the textbook MITRE T1014
+  Rootkit signature. Spec #2 §6 enumerated 11; this brings the
+  shipped count to 12.
+- **`scripts/install.sh`** (commit `291828f`). Pre-flight + build
+  script: detects three Claude credential modes per Amendment A1
+  §3.2 (`CLAUDE_CODE_OAUTH_TOKEN` / interactive `~/.claude/` /
+  `ANTHROPIC_API_KEY`), verifies cargo + uv toolchain, builds
+  findevil-mcp release binary, syncs services/agent_mcp uv venv,
+  sanity-checks .mcp.json registers both servers.
+- **`scripts/agent-mcp-smoke.py --real-evidence` mode** (commit
+  `79535e2`). Replays a real find-evil-auto case dir through the
+  agent_mcp surface (audit_verify → manifest_verify →
+  detect_contradictions → judge_findings → correlate_findings).
+  Regression coverage proving the agent_mcp tools still parse
+  production output shape after schema changes.
+
+### Added — cryptographic chain-of-custody
+
+- **`kind=judge_selfscore` audit records** wired end-to-end (commits
+  `94c08dd` + `7729cfc` + `6f7f55a`). Per `agent-config/JUDGING.md`,
+  the supervisor emits 6 audit records (one per SANS rubric
+  criterion) BEFORE `manifest_finalize`. The records land in the
+  audit chain → Merkle tree → sigstore signature, so the agent's
+  self-score is itself part of the cryptographic attestation —
+  the agent doesn't get to revise after seeing the score it got.
+  Per-case `REPORT.pdf` and fleet `FLEET_REPORT.pdf` both surface
+  the selfscore records with explanatory text.
+
+### Added — documentation
+
+- **Repo-root `README.md`** (commit `6813566`) — GitHub front page.
+- **`docs/cryptographic-attestation.md`** (commit `08a9ff5`) — the
+  five-link chain narrative (sha256 → audit prev_hash → rs_merkle →
+  sigstore → OpenTimestamps Bitcoin) collected in one canonical
+  doc, with FRE 902(14) prong-by-prong analysis and the negative
+  test (tamper detection) live demonstration.
+- **`docs/demo-script-a2.md`** (commit `edf56f4`) — 5-minute
+  Devpost video script with per-beat seconds, on-screen content,
+  spoken narration, rubric-criterion mapping, recording mechanics.
+- **`docs/false-positives.md` "Fleet cross-host correlation" entry**
+  (commit `88554e1`) — documents the enterprise-AV FP trap and the
+  COMMON_WIN_PROCS filter mitigation.
+- **`docs/reports/2026-04-26-srl2018-dc-investigation.md` §9.1 fleet
+  rollup** (commits `0c1e00b` + `f7df6c4`) — the showcase analyst
+  report now references the 22-host fleet result.
+- **`agent-config/JUDGING.md`** (commit `7808afd`) and rewritten
+  `AGENTS.md` (commit `541e3b2`) + `TOOLS.md` (commit `5469935`).
+  All 7 agent-config files now consistent with the shipped 12-tool
+  MCP surface and the judge_selfscore wiring.
+
+### Changed — accuracy
+
+- **`fleet_correlate` known-FP filter expanded 21 → 94 entries**
+  (commit `ba038c6`) covering the McAfee/Trellix endpoint stack,
+  Windows infrastructure, VMware Tools, Microsoft Defender. Fleet
+  correlation cross-host names dropped from 119 to 73; the "≥4
+  hosts" finding list dropped from 68 to 30. Sysinternals tools
+  (Autorunsc, PsExec) deliberately not filtered since cross-host
+  runs of those ARE forensic findings worth analyst attention.
+- **`fleet_correlate` MITRE density now counts distinct hosts**
+  (commit `bf11c4d`), not findings. The earlier code reported
+  T1014 = 24 on a 21-host fleet; the actual answer is T1014 = 11
+  (each host can emit T1014 from both Pool A and Pool B; the
+  per-host metric is what the analyst wants).
+
+### Fixed
+
+- **MCP tool timeout 120s → 600s with clean queue.Empty handling**
+  (commit `d0f7fd5`). 120s was too tight for vol3 plugins on 5GB+
+  memory images — vol_pslist alone takes 60-90s and the next call
+  inherited the same budget. `vol_malfind` gets a 30-minute budget
+  at the call site since it routinely exceeds 600s. Re-investigated
+  base-admin (5GB DC RAM) successfully after this fix.
+- **`COMMON_WIN_PROCS` drift between orchestrator and correlator**
+  (commit `8638fa4`). The orchestrator's per-host filter and the
+  fleet correlator's cross-host filter had separate hard-coded
+  copies. Replaced the orchestrator's class attribute with a
+  runtime import of `fleet_correlate.COMMON_WIN_PROCS` via
+  `importlib.util` — single source of truth, no manual sync.
+
+### CI
+
+- **L1 now runs both MCP smoke harnesses end-to-end** (commit
+  `ed3c35c`). `docker/l1-compose.yml`'s command sequence gained
+  steps that run `scripts/rust-mcp-smoke.py` (12-tool dispatch +
+  error-path checks) and `scripts/agent-mcp-smoke.py` (synthetic-
+  Findings flow through the full demo path). Catches a class of
+  integration drift unit tests miss — dispatcher/registry mismatch,
+  ToolAnnotations bool flip, etc. Estimated CI cost ~20s, well
+  within L1's 2-5min budget.
+- **L0 amendment-A2 guard already in place** from earlier session
+  (commit `ad4a36e`). Fails CI if any of the dropped pre-A2
+  modules (graph.py / api.py / cli.py / supervisor.py /
+  specialists/) reappear under any filename.
+
+### Real-evidence runs
+
+- **22-host SRL-2018 fleet investigation completed** (artifact:
+  `tmp/fleet-runs/fleet-20260426T055440Z/`). 12 SUSPICIOUS, 10
+  INDETERMINATE, 0 NO_EVIL. 22/22 unique Merkle roots — chain
+  integrity intact across the fleet. 11/22 hosts show T1014
+  (DKOM/Rootkit), 9/22 show T1055 (Process Injection). Headline
+  cross-host patterns: 6 hosts ran `Autorunsc.exe` at the *exact
+  same second* (cluster 1 in `temporal_clusters.png` — automated
+  recon sweep fingerprint), `rubyw.exe` on 13 hosts and `ruby.exe`
+  on 12 (Ruby for Windows is not standard enterprise tooling),
+  `msadvapi2_32.e` and `msadvapi2_64.e` on 8 hosts each
+  (name-spoofing the legitimate `advapi32.dll`).
+
+---
+
+*This changelog is updated as commits land on `master`. The
+`v-submit` tag will be cut by `package-devpost.sh` on or before
+2026-06-15 22:45 CDT and will template-substitute the demo video
+URL, accuracy benchmark score, and final commit SHA into
+`docs/templates/devpost-readme.md`.*
