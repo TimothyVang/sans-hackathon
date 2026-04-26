@@ -81,6 +81,29 @@ services:
           echo "-- no pnpm workspace yet, skipping Node --"
         fi
 
+        # End-to-end MCP smoke. cargo build --release above already
+        # produced target/release/findevil-mcp; agent_mcp's uv venv
+        # was synced. Both smokes spawn the server as a subprocess
+        # over stdio JSON-RPC and assert tool registration + error
+        # paths. Failure here is more informative than a unit-test
+        # failure because it catches integration drift between the
+        # tool registration table, the dispatcher, and the
+        # ToolAnnotations schema all at once.
+        if [ -x target/release/findevil-mcp ] && [ -f scripts/rust-mcp-smoke.py ]; then
+          echo "== scripts/rust-mcp-smoke.py (Rust MCP end-to-end) =="
+          # rust-mcp-smoke spawns target/release/findevil-mcp directly
+          python3 scripts/rust-mcp-smoke.py
+        else
+          echo "-- skipping rust-mcp-smoke (binary or script absent) --"
+        fi
+
+        if [ -d services/agent_mcp ] && [ -f scripts/agent-mcp-smoke.py ]; then
+          echo "== scripts/agent-mcp-smoke.py (Python agent_mcp end-to-end) =="
+          uv run --directory services/agent_mcp python ../../scripts/agent-mcp-smoke.py
+        else
+          echo "-- skipping agent-mcp-smoke (services/agent_mcp or script absent) --"
+        fi
+
         echo "L1 complete."
 
 volumes:
