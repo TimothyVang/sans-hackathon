@@ -304,7 +304,14 @@ pub fn path_looks_like_memory_image(path: &Path) -> bool {
 
 fn truncate_to(mut s: String, max: usize) -> String {
     if s.len() > max {
-        s.truncate(max);
+        // Walk to the nearest char boundary so multi-byte UTF-8 (Vol3
+        // progress output uses Unicode box-drawing characters) doesn't
+        // panic `String::truncate`. Bounded at 4 bytes per codepoint.
+        let mut boundary = max;
+        while boundary > 0 && !s.is_char_boundary(boundary) {
+            boundary -= 1;
+        }
+        s.truncate(boundary);
         s.push_str("…[truncated]");
     }
     s

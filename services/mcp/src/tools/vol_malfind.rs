@@ -296,13 +296,24 @@ fn json_value_to_injection(v: &serde_json::Value) -> VolInjection {
         cleaned
     };
 
+    // mz_match: prefer the explicit boolean field; fall back to a
+    // case-insensitive "MZ" substring check on the free-form Notes field
+    // (Volatility 3 emits e.g. "MZ header" / "MZ header detected" there
+    // rather than a JSON bool — `pick_bool` would silently return false
+    // for any of those strings, masking real injections).
+    let mz_from_bool = pick_bool(&["MZ Header", "mz_header"]);
+    let mz_from_notes = map
+        .get("Notes")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|s| s.to_ascii_uppercase().contains("MZ"));
+
     VolInjection {
         pid: pick_u32(&["PID", "pid"]),
         image_name: pick_str(&["Process", "ImageFileName", "image_name"]),
         vad_start_hex,
         vad_end_hex,
         protection: pick_str(&["Protection", "protection"]),
-        mz_match: pick_bool(&["MZ Header", "mz_header", "Notes"]),
+        mz_match: mz_from_bool || mz_from_notes,
         sample_hex,
     }
 }
@@ -325,8 +336,61 @@ fn normalize_hex_field(value: Option<&serde_json::Value>) -> String {
 
 fn truncate_to(mut s: String, max: usize) -> String {
     if s.len() > max {
-        s.truncate(max);
+        // Walk to the nearest char boundary so multi-byte UTF-8 doesn't
+        // panic `String::truncate` (Vol3 stderr can contain Unicode
+        // progress markers; from_utf8_lossy can also insert a 3-byte
+        // U+FFFD that straddles the boundary).
+        let mut boundary = max;
+        while boundary > 0 && !s.is_char_boundary(boundary) {
+            boundary -= 1;
+        }
+        s.truncate(boundary);
         s.push_str("…[truncated]");
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mz_match_true_when_notes_contains_mz_substring() {
+        // P1 regression: Vol3 emits `Notes: "MZ header"` (free-form
+        // string), not a JSON bool. `pick_bool` would silently return
+        // false on those strings, masking real PE-injection findings.
+        let v = serde_json::json!({
+            "PID": 1234,
+            "Process": "explorer.exe",
+            "Protection": "PAGE_EXECUTE_READWRITE",
+            "Notes": "MZ header detected",
+        });
+        let inj = json_value_to_injection(&v);
+        assert_eq!(inj.pid, 1234);
+        assert!(inj.mz_match, "MZ in Notes string must surface as mz_match=true");
+    }
+
+    #[test]
+    fn mz_match_true_when_explicit_boolean_field_set() {
+        let v = serde_json::json!({
+            "PID": 1234,
+            "Process": "lsass.exe",
+            "Protection": "PAGE_EXECUTE_READWRITE",
+            "MZ Header": true,
+        });
+        let inj = json_value_to_injection(&v);
+        assert!(inj.mz_match);
+    }
+
+    #[test]
+    fn mz_match_false_when_notes_lacks_mz() {
+        let v = serde_json::json!({
+            "PID": 1234,
+            "Process": "explorer.exe",
+            "Protection": "PAGE_EXECUTE_READWRITE",
+            "Notes": "Suspicious permissions",
+        });
+        let inj = json_value_to_injection(&v);
+        assert!(!inj.mz_match);
+    }
 }

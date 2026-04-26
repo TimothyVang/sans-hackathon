@@ -324,7 +324,15 @@ const fn json_kind(v: &serde_json::Value) -> &'static str {
 
 fn truncate_to(mut s: String, max: usize) -> String {
     if s.len() > max {
-        s.truncate(max);
+        // Walk down to the nearest char boundary so multi-byte UTF-8
+        // codepoints (Velociraptor often emits Unicode log lines) don't
+        // panic `String::truncate`. `is_char_boundary` is O(1) and the
+        // walk is bounded at 4 bytes (max codepoint length).
+        let mut boundary = max;
+        while boundary > 0 && !s.is_char_boundary(boundary) {
+            boundary -= 1;
+        }
+        s.truncate(boundary);
         s.push_str("…[truncated]");
     }
     s
@@ -427,6 +435,33 @@ mod tests {
     fn parse_rows_rejects_garbage() {
         let err = parse_rows("not json at all\n", "X", 100, String::new()).unwrap_err();
         assert!(matches!(err, VelCollectError::OutputParse(_)));
+    }
+
+    #[test]
+    fn truncate_to_does_not_panic_on_multibyte_boundary() {
+        // P0 regression: a multi-byte codepoint straddling `max` would
+        // panic String::truncate. Hayabusa/Volatility/Velociraptor all
+        // emit non-ASCII output, so this needs to be safe.
+        // U+FFFD (3 bytes: EF BF BD) is what from_utf8_lossy emits for
+        // invalid input; 1000× of it produces a 3000-byte string where
+        // truncating at any non-multiple-of-3 is mid-codepoint.
+        let s: String = "\u{FFFD}".repeat(1000);
+        assert_eq!(s.len(), 3000);
+        let out = truncate_to(s, 100);
+        // Walked down to byte 99 (the last char boundary <= 100, since
+        // codepoints occupy bytes 0,3,6,…). 99 / 3 = 33 codepoints.
+        assert!(out.ends_with("…[truncated]"));
+        let body_len = out.len() - "…[truncated]".len();
+        assert!(body_len <= 100);
+        // The kept prefix must itself be valid UTF-8 (i.e., no panic
+        // path on construction).
+        assert!(out.is_char_boundary(body_len));
+    }
+
+    #[test]
+    fn truncate_to_passthrough_when_short_enough() {
+        let s = "short".to_string();
+        assert_eq!(truncate_to(s, 100), "short");
     }
 
     #[test]

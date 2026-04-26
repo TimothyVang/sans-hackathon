@@ -392,7 +392,15 @@ fn json_value_to_alert(v: &serde_json::Value) -> HayabusaAlert {
 
 fn truncate_to(mut s: String, max: usize) -> String {
     if s.len() > max {
-        s.truncate(max);
+        // Walk to the nearest char boundary. Hayabusa is a Yamato Security
+        // project — its stderr is Japanese-friendly and contains multi-byte
+        // codepoints. `String::truncate` panics if the cut splits a
+        // codepoint; this avoids that.
+        let mut boundary = max;
+        while boundary > 0 && !s.is_char_boundary(boundary) {
+            boundary -= 1;
+        }
+        s.truncate(boundary);
         s.push_str("…[truncated]");
     }
     s

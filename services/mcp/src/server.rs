@@ -639,20 +639,38 @@ fn dispatch_case_open(args: Value) -> Result<Value, ToolError> {
 
 fn dispatch_evtx_query(args: Value) -> Result<Value, ToolError> {
     let input: EvtxQueryInput = parse_args(args)?;
-    let output = evtx_query(&input).map_err(|e| ToolError::Internal(format!("evtx_query: {e}")))?;
-    serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+    // EvtxNotFound is user-input territory — surface as -32602 so the
+    // agent can correct the path instead of treating it as a tool crash.
+    match evtx_query(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(e @ crate::tools::EvtxError::EvtxNotFound(_)) => {
+            Err(ToolError::InvalidParams(format!("{e}")))
+        }
+        Err(e) => Err(ToolError::Internal(format!("evtx_query: {e}"))),
+    }
 }
 
 fn dispatch_prefetch_parse(args: Value) -> Result<Value, ToolError> {
     let input: PrefetchInput = parse_args(args)?;
-    let output =
-        prefetch_parse(&input).map_err(|e| ToolError::Internal(format!("prefetch_parse: {e}")))?;
-    serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+    // NotFound is user-input territory; surface as -32602.
+    match prefetch_parse(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(e @ crate::tools::PrefetchError::NotFound(_)) => {
+            Err(ToolError::InvalidParams(format!("{e}")))
+        }
+        Err(e) => Err(ToolError::Internal(format!("prefetch_parse: {e}"))),
+    }
 }
 
 fn dispatch_mft_timeline(args: Value) -> Result<Value, ToolError> {
     let input: MftInput = parse_args(args)?;
-    // InvalidTimeFilter is user-facing input; surface as -32602 not -32603.
+    // InvalidTimeFilter + MftNotFound are user-facing input; surface as
+    // -32602 not -32603 so the agent corrects the input rather than
+    // treating the tool as crashed.
     match mft_timeline(&input) {
         Ok(output) => {
             serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
@@ -660,16 +678,25 @@ fn dispatch_mft_timeline(args: Value) -> Result<Value, ToolError> {
         Err(crate::tools::MftError::InvalidTimeFilter { value, reason }) => Err(
             ToolError::InvalidParams(format!("invalid time filter {value:?}: {reason}")),
         ),
+        Err(e @ crate::tools::MftError::MftNotFound(_)) => {
+            Err(ToolError::InvalidParams(format!("{e}")))
+        }
         Err(e) => Err(ToolError::Internal(format!("mft_timeline: {e}"))),
     }
 }
 
 fn dispatch_registry_query(args: Value) -> Result<Value, ToolError> {
     let input: RegistryInput = parse_args(args)?;
-    // KeyNotFound is user-input territory; surface as -32602.
+    // HiveNotFound + KeyNotFound are user-input territory; surface as -32602.
+    // (HiveOpen/Unreadable stay -32603 since those represent corrupt or
+    // permission-denied files — system-state issues the agent can't fix
+    // by retrying with a different argument.)
     match registry_query(&input) {
         Ok(output) => {
             serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(e @ crate::tools::RegistryError::HiveNotFound(_)) => {
+            Err(ToolError::InvalidParams(format!("{e}")))
         }
         Err(crate::tools::RegistryError::KeyNotFound(path)) => Err(ToolError::InvalidParams(
             format!("registry key not found: {path}"),
@@ -680,14 +707,17 @@ fn dispatch_registry_query(args: Value) -> Result<Value, ToolError> {
 
 fn dispatch_yara_scan(args: Value) -> Result<Value, ToolError> {
     let input: YaraInput = parse_args(args)?;
-    // RulesCompileFailed and NoRulesFiles are user-input issues; surface as -32602.
+    // TargetNotFound, RulesNotFound, RulesCompileFailed, NoRulesFiles
+    // are all user-input issues; surface as -32602.
     match yara_scan(&input) {
         Ok(output) => {
             serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
         }
         Err(
             e @ (crate::tools::YaraError::RulesCompileFailed { .. }
-            | crate::tools::YaraError::NoRulesFiles(_)),
+            | crate::tools::YaraError::NoRulesFiles(_)
+            | crate::tools::YaraError::TargetNotFound(_)
+            | crate::tools::YaraError::RulesNotFound(_)),
         ) => Err(ToolError::InvalidParams(format!("{e}"))),
         Err(e) => Err(ToolError::Internal(format!("yara_scan: {e}"))),
     }
@@ -695,13 +725,15 @@ fn dispatch_yara_scan(args: Value) -> Result<Value, ToolError> {
 
 fn dispatch_usnjrnl_query(args: Value) -> Result<Value, ToolError> {
     let input: UsnJrnlInput = parse_args(args)?;
-    // InvalidTimeFilter / InvalidReason are user-input issues; surface as -32602.
+    // UsnJrnlNotFound, InvalidTimeFilter, InvalidReason are user-input
+    // issues; surface as -32602.
     match usnjrnl_query(&input) {
         Ok(output) => {
             serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
         }
         Err(
-            e @ (crate::tools::UsnJrnlError::InvalidTimeFilter { .. }
+            e @ (crate::tools::UsnJrnlError::UsnJrnlNotFound(_)
+            | crate::tools::UsnJrnlError::InvalidTimeFilter { .. }
             | crate::tools::UsnJrnlError::InvalidReason(_)),
         ) => Err(ToolError::InvalidParams(format!("{e}"))),
         Err(e) => Err(ToolError::Internal(format!("usnjrnl_query: {e}"))),
@@ -710,29 +742,52 @@ fn dispatch_usnjrnl_query(args: Value) -> Result<Value, ToolError> {
 
 fn dispatch_hayabusa_scan(args: Value) -> Result<Value, ToolError> {
     let input: HayabusaInput = parse_args(args)?;
-    // InvalidMinLevel is user-input; surface as -32602.
+    // EvtxDirNotFound/NotDirectory, RuleSetNotFound, InvalidMinLevel
+    // are user-input; surface as -32602.
     match hayabusa_scan(&input) {
         Ok(output) => {
             serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
         }
-        Err(e @ crate::tools::HayabusaError::InvalidMinLevel(_)) => {
-            Err(ToolError::InvalidParams(format!("{e}")))
-        }
+        Err(
+            e @ (crate::tools::HayabusaError::InvalidMinLevel(_)
+            | crate::tools::HayabusaError::EvtxDirNotFound(_)
+            | crate::tools::HayabusaError::EvtxDirNotDirectory(_)
+            | crate::tools::HayabusaError::RuleSetNotFound(_)),
+        ) => Err(ToolError::InvalidParams(format!("{e}"))),
         Err(e) => Err(ToolError::Internal(format!("hayabusa_scan: {e}"))),
     }
 }
 
 fn dispatch_vol_pslist(args: Value) -> Result<Value, ToolError> {
     let input: VolPslistInput = parse_args(args)?;
-    let output = vol_pslist(&input).map_err(|e| ToolError::Internal(format!("vol_pslist: {e}")))?;
-    serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+    // MemoryNotFound / MemoryNotRegular are user-input errors; surface
+    // as -32602 so the agent corrects the path rather than treating
+    // the tool as crashed.
+    match vol_pslist(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(
+            e @ (crate::tools::VolError::MemoryNotFound(_)
+            | crate::tools::VolError::MemoryNotRegular(_)),
+        ) => Err(ToolError::InvalidParams(format!("{e}"))),
+        Err(e) => Err(ToolError::Internal(format!("vol_pslist: {e}"))),
+    }
 }
 
 fn dispatch_vol_malfind(args: Value) -> Result<Value, ToolError> {
     let input: VolMalfindInput = parse_args(args)?;
-    let output =
-        vol_malfind(&input).map_err(|e| ToolError::Internal(format!("vol_malfind: {e}")))?;
-    serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+    // Same: MemoryNotFound / MemoryNotRegular are user-input.
+    match vol_malfind(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(
+            e @ (crate::tools::VolMalfindError::MemoryNotFound(_)
+            | crate::tools::VolMalfindError::MemoryNotRegular(_)),
+        ) => Err(ToolError::InvalidParams(format!("{e}"))),
+        Err(e) => Err(ToolError::Internal(format!("vol_malfind: {e}"))),
+    }
 }
 
 fn dispatch_vel_collect(args: Value) -> Result<Value, ToolError> {
