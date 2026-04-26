@@ -191,6 +191,19 @@ once the first `v0.x` is cut on the `v-submit` tag.
   render_fleet_report) are invoked directly as
   `python scripts/<name>.py` so their default prog matches; left
   alone.
+- **CLAUDE.md documents the autonomous-loop harness** (commit
+  `eaed5c4`). New subsection in the "Commands" section names the
+  driver (`python scripts/autonomous-loop.py`), the stop
+  conditions, the subscription auth path (Amendment A1 — no API
+  key), and a one-line decision rule for picking between the
+  swarm and the autonomous-loop ("PRs (swarm) vs commits-on-
+  current-branch (autonomous-loop)"). Also added `^memory/` to
+  path-existence-smoke ALLOW_PATTERNS since CLAUDE.md cites
+  `memory/project_autonomous_queue.md` which lives in user-level
+  `~/.claude/projects/<project>/memory/`, not at repo root —
+  third time path-existence-smoke caught a real ref-vs-reality
+  mismatch on first run after I edited a doc (5e01954 +
+  385c867 + this).
 - **smoke-regex-tests now covers autonomous-loop + rate-limit fix**
   (commit `7d31e07`). Extended `smoke-regex-tests.py` with 12 new
   cases for the new harness (5 queue-parser + 7 rate-limit
