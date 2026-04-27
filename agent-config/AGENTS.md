@@ -15,6 +15,17 @@ Never touches evidence directly; only dispatches and merges.
 Emits the six `kind=judge_selfscore` audit records before
 `manifest_finalize` per `agent-config/JUDGING.md`.
 
+**Memory-store path resolution (do this once at session start, before
+forking subagents):** the cross-case memory SQLite file lives at
+`$FINDEVIL_MEMORY_STORE` if set, else `$XDG_STATE_HOME/findevil/memory.sqlite`,
+else `$HOME/.local/state/findevil/memory.sqlite` on POSIX or
+`%LOCALAPPDATA%\findevil\memory.sqlite` on Windows. Resolve the
+absolute path once via the `Bash` tool, remember it as the session
+constant `MEMORY_STORE_PATH`, and pass it as `store_path=` to every
+`memory_remember` / `memory_recall` call (Pool A, Pool B, and any
+forked subagent that needs to consult prior cases). The file is
+created on first write.
+
 ## Pool A — persistence-biased
 Investigates the evidence assuming the attacker is *staying*. Uses
 the typed MCP surface to look at:
@@ -27,6 +38,22 @@ the typed MCP surface to look at:
 
 Pool A's bias means it weights persistence-shaped evidence higher
 in confidence. Run the tools; emit Findings with `pool_origin=A`.
+
+**Cross-case memory (per-Finding):**
+- *Before* drafting a Finding, call `memory_recall(store_path=MEMORY_STORE_PATH,
+  query=<the IOC, hash, TTP code, or hostname you'd cite>)`. Non-empty
+  hits become a `prior_observations: [{case_id, ts, confidence}, …]`
+  field on the Finding. Empty hits are also informative — note "no
+  prior observations" in the Finding's reasoning so the analyst can
+  see the recall happened.
+- *After* the judge marks a Finding `CONFIRMED`, call
+  `memory_remember(store_path=MEMORY_STORE_PATH, case_id=<this case>,
+  kind=<ttp|hostname|finding_summary>, key=<short id>, value=<full text>,
+  sha256=<sha256:...>)` so future Pool A invocations on different cases
+  can recall it. Pool A's typical kinds: `ttp` (e.g. `T1547.001`),
+  `hostname` (the persisted box), `finding_summary` (one-line of the
+  persistence mechanism). Skip for HYPOTHESIS-tier — the chain only
+  remembers things we'd stand behind.
 
 ## Pool B — exfiltration-biased
 Investigates assuming the attacker is *taking something*. Looks at:
@@ -44,6 +71,14 @@ Same MCP surface, different reasoning prior. Emit Findings with
 same `tool_call_id` with different confidence labels — that's a
 contradiction, surfaced before the judge.
 
+**Cross-case memory (same recall-before / remember-after policy as
+Pool A):** Pool B's typical `memory_remember` kinds skew toward `ioc`
+(C2 domains, IPs, URLs), `hash` (staged binary hashes, archive
+hashes), and `finding_summary` (one-line of the exfil mechanism).
+Use `memory_recall` whenever you're about to cite an IOC / hash /
+TTP — a prior-case hit converts a HYPOTHESIS into an INFERRED with
+the prior-case `case_id` as the corroborating artifact class.
+
 ## verifier
 Re-runs every Finding's cited `tool_call_id` via the
 `verify_finding` MCP tool. The verifier spawns its own short-lived
@@ -53,6 +88,16 @@ Finding without a `tool_call_id` is rejected outright.
 Disagreement on hash means the cited tool was re-run with the
 same args and produced a different output — the verifier
 downgrades or rejects depending on severity.
+
+**Structured handoff to the judge:** after each verifier verdict
+(approved / downgraded / rejected), call `pool_handoff(audit_path=
+<case audit.jsonl>, from_role="verifier", to_role="judge",
+payload={finding_id, action, replay_record_sha256})`. This records
+a `kind="acp_handoff"` line in the audit chain so the judge
+receives structured verifier output instead of a natural-language
+message — the IBM-ACP envelope's `correlation_id` lets the judge
+group all verifier decisions for one finding when the verifier
+re-runs after a downgrade.
 
 ## judge
 Calls `judge_findings` MCP tool. Credibility-weighted merge: each
@@ -90,6 +135,23 @@ Single-source claims auto-downgrade. Outcome is `kept` or
 - **Report assembly** → supervisor, gated by verifier. Verifier
   rejects → supervisor re-dispatches (one retry, then escalates
   the Finding to HYPOTHESIS).
+
+## Cross-case memory + structured handoff (A3 §2.2 / §2.3)
+
+Three MCP tools added in Amendment A3 give the army (a) prior-case
+recall and (b) a structured agent-to-agent channel distinct from
+Claude Code's natural-language messaging:
+
+| Tool | Caller | Purpose |
+|---|---|---|
+| `memory_recall` | Pool A, Pool B (and judge, if cross-checking) | "Have we seen this IOC / hash / TTP before?" Returns prior-case hits ranked by BM25 × 90-day decay. Phrase-match semantics — pass single tokens or exact phrases. |
+| `memory_remember` | Pool A, Pool B (post-CONFIRMED) | Seeds the cross-case index for future investigations. CONFIRMED-tier only; HYPOTHESIS doesn't get remembered. |
+| `pool_handoff` | verifier → judge (always); Pool A → Pool B (when handing exfil-staging context); supervisor → any role (when assigning a structured task) | IBM-ACP envelope written to the audit chain as `kind="acp_handoff"`. Use the `correlation_id` to thread replies across multiple handoffs about one finding. |
+
+The store path is the `MEMORY_STORE_PATH` constant the supervisor
+resolves once at session start (see the supervisor section).
+Forked subagents inherit the path via the prompt the supervisor
+passes when forking.
 
 ## Why this structure (Heuer's ACH applied as agent topology)
 
