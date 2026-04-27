@@ -26,6 +26,9 @@ _MODULES: tuple[str, ...] = (
     "detect_contradictions",
     "judge_findings",
     "correlate_findings",
+    "memory_remember",
+    "memory_recall",
+    "pool_handoff",
 )
 
 

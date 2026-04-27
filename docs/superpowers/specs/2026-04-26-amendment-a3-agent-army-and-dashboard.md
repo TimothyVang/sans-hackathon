@@ -153,7 +153,12 @@ CREATE TABLE meta (
 );
 ```
 
-`recall()` returns rows ordered by `bm25(memories)` with a per-row `confidence` field computed as `bm25_score * exp(-days_since_last_seen / 90)` (90-day half-life — tunable).
+`recall()` returns rows ordered by descending **combined confidence**, where `confidence = relevance × decay`:
+
+- `relevance = 1.0 / (1.0 + abs(bm25_score))` — SQLite's `bm25()` returns negative scores (more negative = better match), so we take the absolute value and remap into `[0, 1]`; better matches get higher relevance.
+- `decay = exp(-days_since_last_seen / 90)` — 90-day half-life, tunable via the `_HALF_LIFE_DAYS` module constant.
+- Sorting is done in Python after computing `confidence`, since SQLite's `ORDER BY bm25(...)` returns insertion order on ties — and decay must be allowed to break those ties.
+- FTS5 query strings containing `.`, `@`, `-`, etc. are phrase-quoted before being passed to `MATCH` (e.g. `"evil.com"` rather than `evil.com`). This avoids `fts5: syntax error near "."` while still matching the canonical IOC / hash / TTP shapes the store is designed for. Multi-word queries become phrase searches — conservative but appropriate for the lookup-shaped workload; revisit if multi-token recall becomes a real use case.
 
 ---
 
