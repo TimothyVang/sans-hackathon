@@ -65,6 +65,9 @@ GLOB_PATTERNS: tuple[str, ...] = (
     "docs/*.md",
     # Decision runbooks + ci-smoke-checklist.
     "docs/runbooks/*.md",
+    # Engineering-to-design handoff briefs (Phase 5/6 sprite work
+    # under Amendment A3 §1.2 and any future design passes).
+    "docs/design-briefs/*.md",
     # Runtime DFIR agent identity (loaded by Claude Code at session
     # start per CLAUDE.md "Agent investigation prompt").
     "agent-config/*.md",

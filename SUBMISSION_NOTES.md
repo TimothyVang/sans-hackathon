@@ -97,10 +97,13 @@ Setting expectations honestly so you can score the right thing.
 
 ### Gated on Claude Design pass (Phase 5/6 of A3)
 
+The handoff artifact for this gate is [`docs/design-briefs/phase-5-6-sprite-design-brief.md`](docs/design-briefs/phase-5-6-sprite-design-brief.md) — a self-contained brief listing the locked engineering contract (props, state machine, file paths), the role-by-role narrative, the deliverables (5 PNG sprite sheets + 5 component swap-ins + 3 chrome components + style guide), CI-checkable success criteria, and 5 explicit open questions for the design pass to resolve. The Claude Design prototyping toolchain ([anthropic.com/news/claude-design-anthropic-labs](https://www.anthropic.com/news/claude-design-anthropic-labs)) is the intended consumer per A3 §1.2.
+
 | Capability | Status |
 |---|---|
-| 5 pixel-art agent sprites (Pool A / Pool B / Verifier / Judge / Correlator) | Component contracts + state-derivation are scaffolded in `apps/web/components/sprites/`; visuals will swap in during the Claude Design pass per [Amendment A3](docs/superpowers/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md) §3 |
-| AuditBeadString chrome polish | Same — bead state derives from the SSE audit stream today; the NES.css visual treatment lands in Phase 5/6 |
+| 5 pixel-art agent sprites (Pool A / Pool B / Verifier / Judge / Correlator) | Component contracts + state-derivation are scaffolded in `apps/web/components/sprites/`; visuals will swap in during the Claude Design pass per [Amendment A3](docs/superpowers/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md) §3. Brief: §1 narrative + §2.1-2.3 sprite contract + §4.1-4.2 deliverables. |
+| AuditBeadString chrome polish | Same — bead state derives from the SSE audit stream today; the NES.css visual treatment lands in Phase 5/6. Brief: §2.4 + §4.3. |
+| HashChainBadge + FindingChip chrome | Net-new components landing in Phase 6. Brief: §2.5 + §2.6 + §4.3. |
 
 ### Deferred / out of scope (intentional)
 
