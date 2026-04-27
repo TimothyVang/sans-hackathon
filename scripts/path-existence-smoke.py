@@ -115,6 +115,13 @@ ALLOW_PATTERNS: tuple[re.Pattern[str], ...] = (
     # MCP wire-format identifiers (tools/list, tools/call) -
     # JSON-RPC method names, not file paths.
     re.compile(r"^tools/(list|call)$"),
+    # npm/pnpm scoped package names (e.g. `@findevil/web`,
+    # `@tailwindcss/postcss`) — the `@scope/name` syntax uses `/`
+    # the same way scoped npm packages have done since 2014, but
+    # they're package identifiers, not filesystem paths. Quoted
+    # in CLAUDE.md "Commands" section + apps/web/README.md for
+    # `pnpm --filter` invocations.
+    re.compile(r"^@[a-z0-9_-]+/[a-z0-9_-]+$"),
     # Deferred-per-Amendment-A2 paths (apps/web + apps/mcp-widgets
     # are scheduled as week-7 polish bonus, not on the critical
     # path - docs reference them as future surfaces).
