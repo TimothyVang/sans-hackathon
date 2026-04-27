@@ -46,24 +46,12 @@ jobs:
             echo "l3_green=false" >> "$GITHUB_OUTPUT"
           fi
 
-  build-deb:
-    name: Build .deb
-    needs: l3-gate
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install dpkg-deb
-        run: sudo apt-get update && sudo apt-get install -y dpkg
-      - name: Build .deb
-        run: |
-          bash scripts/build-deb.sh "${GITHUB_REF_NAME}"
-          ls -lh dist/
-      - name: Upload .deb
-        uses: actions/upload-artifact@v4
-        with:
-          name: find-evil-deb-${{ github.ref_name }}
-          path: dist/*.deb
-          retention-days: 30
+  # build-deb job removed 2026-04-27 — Amendment A2 + dockerfile-a2-decision.md
+  # "Option B". The .deb wrapped a Python CLI that A2 dropped; under
+  # "Claude Code IS the orchestrator", the .deb has no runtime to
+  # package. ghcr image (build-docker below) still ships for CI build-
+  # state reproduction. Devpost submission delivery is `git clone` +
+  # `scripts/install.sh` + `claude .` per A2 §2.4.
 
   build-docker:
     name: Build + push Docker image
@@ -128,15 +116,10 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    needs: [build-deb, build-docker, build-report]
+    needs: [build-docker, build-report]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Download .deb
-        uses: actions/download-artifact@v4
-        with:
-          name: find-evil-deb-${{ github.ref_name }}
-          path: dist/
       - name: Download report.html
         uses: actions/download-artifact@v4
         with:
@@ -175,7 +158,7 @@ jobs:
           SLACK_WEBHOOK_RELEASES: ${{ secrets.SLACK_WEBHOOK_RELEASES }}
         run: |
           msg="[find-evil CI] release | PASS | ${GITHUB_SHA:0:7} | ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}
-          ${GITHUB_REF_NAME} shipped — .deb + Docker ghcr + report.html."
+          ${GITHUB_REF_NAME} shipped — Docker ghcr + report.html."
           curl -fsSL -X POST "${SLACK_WEBHOOK_RELEASES}" \
             -H 'Content-Type: application/json' \
             -d "$(jq -nR --arg t "$msg" '{text:$t}')" \

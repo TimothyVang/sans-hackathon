@@ -102,6 +102,10 @@ once the first `v0.x` is cut on the `v-submit` tag.
   All 7 agent-config files now consistent with the shipped 12-tool
   MCP surface and the judge_selfscore wiring.
 
+### Removed — A2 hard-blocker resolution
+
+- **Dockerfile `find-evil` wrapper + `scripts/build-deb.sh` + release.yml `build-deb` job** (PR #4, 2026-04-27). Resolves the hard blocker recorded under "Hard blockers discovered" below ("Dockerfile A2 cli.py mismatch", commit `47f67b0`). Per `docs/runbooks/dockerfile-a2-decision.md` "Option B": A2's central claim is "Claude Code IS the orchestrator," so the in-container `find-evil` wrapper had no runtime to invoke and the `.deb` had no orchestrator binary to package. Cut from three places: (1) Dockerfile RUN block + CMD changed to `bash`, (2) `scripts/build-deb.sh` deleted entirely, (3) release.yml `build-deb` job removed + `publish` job's `needs:` array trimmed. The `divergence-smoke.py` §3 allow-list dropped its two exemptions (`Dockerfile`, `scripts/build-deb.sh`) — any future re-introduction of `python -m findevil_agent.cli` or `find-evil run/verify/serve` in active code will now fail the L1 smoke loudly. The Docker image still ships to `ghcr.io` (build-state reproduction); the canonical user contract remains `git clone` + `scripts/install.sh` + `claude .` per A2 §2.4. The runbook is preserved with a `DECISION TAKEN` header for future re-evaluation.
+
 ### Changed — accuracy
 
 - **`fleet_correlate` known-FP filter expanded 21 → 94 entries**
