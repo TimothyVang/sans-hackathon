@@ -78,10 +78,14 @@ Thumbs.db
 /hermes-agent/
 /Linear-Coding-Agent-Harness/
 /.playwright-mcp/
-# The same reference clones, now relocated under ref-folders/ —
-# also research-only, also never shipped, and ruff should not scan
-# them.
+# The same reference clones, now relocated under ref-folders/ or
+# git-hub-references/ — also research-only, also never shipped, and
+# ruff should not scan them. The git-hub-references/ tree currently
+# holds 5 clones (claude-agent-sdk-python/-typescript/, openclaw/,
+# hermes-agent/, awesome-openclaw-skills/); see
+# git-hub-references/CLAUDE.md for the per-clone purpose table.
 /ref-folders/
+/git-hub-references/
 
 # Smoke test working dir (Amendment A2) — produces audit logs +
 # manifests under tmp/smoke/ that should never be committed.
