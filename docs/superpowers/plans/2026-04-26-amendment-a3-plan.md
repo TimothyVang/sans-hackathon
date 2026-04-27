@@ -909,39 +909,35 @@ git commit -m "feat(agent_mcp): add pool_handoff IBM-ACP tool (A3 §2.3)"
 
 ### Task 3.1: Register the three new SPECs in the MCP server
 
-**Files:**
-- Modify: `services/agent_mcp/findevil_agent_mcp/server.py`
-- Modify: `services/agent_mcp/tests/test_registry.py` (extend tool-count assertion)
+**Files (corrected against actual codebase shape):**
+- Modify: `services/agent_mcp/findevil_agent_mcp/tools/__init__.py` — the registration point is here, NOT in `server.py`. Auto-discovery iterates a `_MODULES: tuple[str, ...]`; adding a module name imports it and picks up its `SPEC`.
+- Modify: `services/agent_mcp/tests/test_registry.py` — extend tool-count assertion + extend `EXPECTED_TOOL_NAMES` set.
+- Modify: `services/agent_mcp/tests/test_server_boot.py` — bump `test_returns_*_specs` count assertion + rename method honestly.
+- Modify: `services/agent_mcp/tests/test_stdio_smoke.py` — extend the in-test list of expected tool names with the 3 new entries.
 
-- [ ] **Step 1: Update the failing assertion**
+> **Spec/code divergence (committed in run history)**: an earlier draft of this plan said to edit `server.py`; the actual server iterates `tools/__init__.py::all_specs()` dynamically and needs no edits. The earlier draft also named only `test_registry.py` as a test edit, but two more test files pin the count + the tool list and need updating. Match the names below — don't grep for `TOOL_SPECS` in `server.py`.
 
-Open `services/agent_mcp/tests/test_registry.py`. Find the assertion that pins the registered tool count (currently 10). Change to 13. Re-read that test file first to know the exact line.
+- [ ] **Step 1: Update the failing count assertions**
+
+In `services/agent_mcp/tests/test_registry.py` (around line 30) and `services/agent_mcp/tests/test_server_boot.py` (around line 24), change the count from `== 10` to `== 13` AND rename the test method to match (e.g., `test_all_specs_returns_thirteen_tools`, `test_returns_thirteen_specs`). A method named `test_returns_ten_specs` that asserts 13 is dishonest — readers and CI logs lie.
+
+In `services/agent_mcp/tests/test_registry.py`, also extend the `EXPECTED_TOOL_NAMES` set (look for the literal set near the top of the file) with `"memory_remember"`, `"memory_recall"`, `"pool_handoff"`.
+
+In `services/agent_mcp/tests/test_stdio_smoke.py`, find the ordered list of tool names asserted by the `tools/list` smoke and extend it with the 3 new names in the same order they appear in `_MODULES`.
 
 - [ ] **Step 2: Run RED**
 
 ```bash
-uv run --directory services/agent_mcp pytest tests/test_registry.py -v
+uv run --directory services/agent_mcp pytest tests/ -v
 ```
 
-Expected: assertion failure: server registers 10 tools, expected 13.
+Expected: 3 failures (count assertions + the names-list / set assertions).
 
-- [ ] **Step 3: Wire SPECs into the server**
+- [ ] **Step 3: Wire SPECs into the registry**
 
-Open `services/agent_mcp/findevil_agent_mcp/server.py`. The existing pattern is to import each tool's `SPEC` and add it to a list (or iterate a registry). Add three import lines + three list-append lines mirroring the existing 10. Pattern (illustrative — match the actual file shape):
+Open `services/agent_mcp/findevil_agent_mcp/tools/__init__.py`. Find the `_MODULES` tuple. Append `"memory_remember"`, `"memory_recall"`, `"pool_handoff"` (alphabetical or grouped — match the existing convention, which groups crypto/ACH first and the A3 additions last).
 
-```python
-from findevil_agent_mcp.tools.memory_remember import SPEC as MEMORY_REMEMBER_SPEC
-from findevil_agent_mcp.tools.memory_recall import SPEC as MEMORY_RECALL_SPEC
-from findevil_agent_mcp.tools.pool_handoff import SPEC as POOL_HANDOFF_SPEC
-
-# ... existing TOOL_SPECS list ...
-TOOL_SPECS = [
-    # ... 10 existing ...
-    MEMORY_REMEMBER_SPEC,
-    MEMORY_RECALL_SPEC,
-    POOL_HANDOFF_SPEC,
-]
-```
+Do **not** edit `server.py` — it iterates `all_specs()` dynamically and picks up the new modules automatically.
 
 - [ ] **Step 4: GREEN**
 
@@ -949,20 +945,16 @@ TOOL_SPECS = [
 uv run --directory services/agent_mcp pytest tests/ -v
 ```
 
-Expected: all tests pass, including the now-13 tool-count assertion.
+Expected: all 44 tests pass, including the now-13 tool-count assertion and the extended name list.
 
-- [ ] **Step 5: Smoke-test stdio boot**
+- [ ] **Step 5: Smoke-test stdio boot (already covered above)**
 
-```bash
-uv run --directory services/agent_mcp pytest tests/test_stdio_smoke.py -v
-```
-
-Expected: server boots, lists 13 tools, exits clean.
+The stdio smoke test in `test_stdio_smoke.py` already runs as part of the full suite; no separate invocation needed unless you want to single it out.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add services/agent_mcp/findevil_agent_mcp/server.py services/agent_mcp/tests/test_registry.py
+git add services/agent_mcp/findevil_agent_mcp/tools/__init__.py services/agent_mcp/tests/test_registry.py services/agent_mcp/tests/test_server_boot.py services/agent_mcp/tests/test_stdio_smoke.py
 git commit -m "feat(agent_mcp): register memory_* + pool_handoff (13 tools total) (A3 §2.2)"
 ```
 
