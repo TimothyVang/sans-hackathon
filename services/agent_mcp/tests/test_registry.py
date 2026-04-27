@@ -27,7 +27,7 @@ EXPECTED_TOOL_NAMES = {
 
 
 class TestRegistry:
-    def test_all_specs_returns_ten_tools(self) -> None:
+    def test_all_specs_returns_thirteen_tools(self) -> None:
         specs = all_specs()
         assert len(specs) == 13
 

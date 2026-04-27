@@ -21,7 +21,7 @@ from findevil_agent_mcp.tools.audit_verify import AuditVerifyOutput
 
 
 class TestBuildServer:
-    def test_returns_ten_specs(self) -> None:
+    def test_returns_thirteen_specs(self) -> None:
         _server, specs = build_server()
         assert len(specs) == 13
 
