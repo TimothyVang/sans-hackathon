@@ -30,7 +30,13 @@ export default function DashboardPage() {
           <li>Next.js 15 + React 19 ✓</li>
           <li>Tailwind v4 (CSS-first config) ✓</li>
           <li>NES.css component library ✓</li>
-          <li>SSE audit-log tail — pending PR (Task 4.2)</li>
+          <li>
+            SSE audit-log tail —{" "}
+            <a href="/debug" className="nes-text is-primary">
+              /debug stream viewer
+            </a>{" "}
+            (raw events, dev/QA only)
+          </li>
           <li>Audit event-type codegen — pending PR (Task 4.3)</li>
           <li>5 sprite components — pending Claude Design pass (Phase 5)</li>
           <li>
