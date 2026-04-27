@@ -63,6 +63,20 @@ once the first `v0.x` is cut on the `v-submit` tag.
 
 ### Added — documentation
 
+- **CLAUDE.md "Spec/code divergences" SSE-not-WebSocket entry +
+  `scripts/divergence-smoke.py` §8 guard** (PR #7 sha `281d26f`).
+  A3 plan Task 4.2 said "WebSocket upgrade" for the dashboard's
+  `audit.jsonl` push; PR #7 shipped Server-Sent Events instead
+  because the data flow is strictly server→client (WebSocket's
+  bidirectional channel is unused complexity), App Router routes
+  don't natively support the WS upgrade handshake (would need a
+  custom `server.ts` wrapper), and SSE has been universally
+  supported since the IE 9 era. The new divergence-smoke §8 entry
+  scans every active `package.json` for a re-introduced `"ws"`
+  npm dep — the canary signal a future executor blindly followed
+  the stale plan text. Live SSE handler at
+  `apps/web/app/api/audit/route.ts`; iterator at
+  `apps/web/lib/audit-tail.ts`.
 - **Repo-root `README.md`** (commit `6813566`) — GitHub front page.
 - **`services/agent/README.md` rewrite for A2** (commit `532b1db`).
   The package's README still described the pre-A2 architecture
