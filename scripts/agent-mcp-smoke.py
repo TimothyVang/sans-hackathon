@@ -5,9 +5,13 @@ Two modes:
 
 **Synthetic** (default): spawns the server as a subprocess (matching
 the ``.mcp.json`` boot recipe) and drives a full investigation
-through 9 of 10 MCP tools with hand-crafted Findings. This is the
-demo flow under Amendment A2 minus the actual SCHARDT.001 disk
-image — exercises the same crypto/ACH paths the live demo will.
+through 10 of 13 MCP tools with hand-crafted Findings. This is the
+demo flow under Amendment A2/A3 minus the actual SCHARDT.001 disk
+image — exercises the same crypto/ACH/memory/ACP paths the live demo
+will. Skipped: ``ots_stamp`` + ``ots_verify`` (need network) and
+``verify_finding`` (needs the Rust DFIR MCP server). The A3 additions
+(``memory_remember`` + ``memory_recall`` cold→warm transition,
+``pool_handoff`` IBM-ACP envelope) are exercised in steps 4a-4f.
 
 **Real-evidence** (``--real-evidence [<auto-run-dir>]``): replays a
 real ``find-evil-auto`` case directory through the agent_mcp surface.
@@ -405,6 +409,104 @@ def synthetic_flow(client: StdioClient) -> int:
             fatal(f"audit chain replay failed: {v}")
         log(f"  -> chain verifies, {v['record_count']} records")
 
+        # ---- 4a. pool_handoff: verifier -> judge (IBM-ACP, A3 §2.3) ---
+        # Writes a kind="acp_handoff" line into the same chain. Proves
+        # the new envelope shape lands without breaking audit_verify.
+        log("pool_handoff: verifier -> judge structured handoff (A3 §2.3)...")
+        ph = client.call_tool(
+            "pool_handoff",
+            {
+                "audit_path": str(audit_path),
+                "from_role": "verifier",
+                "to_role": "judge",
+                "payload": {
+                    "finding_id": "f-A-1",
+                    "action": "approved",
+                    "replay_record_sha256": "a" * 64,
+                },
+            },
+        )
+        if ph["acp_version"] != "1.0" or ph["from_role"] != "verifier":
+            fatal(f"pool_handoff returned unexpected envelope: {ph}")
+        log(
+            f"  -> acp v{ph['acp_version']} from={ph['from_role']} to={ph['to_role']} "
+            f"corr={ph['correlation_id'][:8]}..."
+        )
+
+        # ---- 4b. audit_verify (post-handoff): chain still verifies ---
+        # Proves kind="acp_handoff" doesn't break the prev_hash chain.
+        log("audit_verify (post-handoff): chain still verifies with acp_handoff line...")
+        v_post = client.call_tool("audit_verify", {"path": str(audit_path)})
+        if not (v_post["ok"] and v_post["record_count"] == len(records) + 1):
+            fatal(f"audit chain replay failed after acp_handoff: {v_post}")
+        log(f"  -> chain verifies, {v_post['record_count']} records (+1 acp_handoff)")
+
+        # ---- 4c. memory_recall (cold): empty store returns no hits ---
+        # Demonstrates the cold-start case Pool A/B sees on the first
+        # investigation against a fresh memory store.
+        memory_path = workdir / "memory.sqlite"
+        log("memory_recall (cold): empty store returns no hits...")
+        rc_cold = client.call_tool(
+            "memory_recall",
+            {"store_path": str(memory_path), "query": "evil.example.com", "limit": 5},
+        )
+        if rc_cold["hits"]:
+            fatal(f"cold recall expected 0 hits, got {len(rc_cold['hits'])}: {rc_cold}")
+        log("  -> 0 hits (expected on first run)")
+
+        # ---- 4d. memory_remember: seed an IOC the next case should see ---
+        log("memory_remember: seed a Pool B IOC (A3 §2.2)...")
+        mr = client.call_tool(
+            "memory_remember",
+            {
+                "store_path": str(memory_path),
+                "case_id": case_id,
+                "kind": "ioc",
+                "key": "evil.example.com",
+                "value": "evil.example.com C2 from Pool B exfil finding",
+                "sha256": "sha256:" + "f" * 64,
+            },
+        )
+        if mr["case_id"] != case_id or mr["kind"] != "ioc":
+            fatal(f"memory_remember returned unexpected echo: {mr}")
+        log(f"  -> remembered case_id={mr['case_id'][:12]}... kind={mr['kind']} key={mr['key']!r}")
+
+        # ---- 4e. memory_recall (warm): same key now returns the hit ---
+        # The cold/warm transition is what makes this a "cross-case
+        # memory" tool — a future case investigating evil.example.com
+        # gets this hit back as a prior_observations entry, which counts
+        # toward the SOUL.md ≥2-artifact-class rule.
+        log("memory_recall (warm): expect 1 hit with confidence > 0...")
+        rc_warm = client.call_tool(
+            "memory_recall",
+            {"store_path": str(memory_path), "query": "evil.example.com", "limit": 5},
+        )
+        if len(rc_warm["hits"]) != 1:
+            fatal(f"warm recall expected 1 hit, got {len(rc_warm['hits'])}: {rc_warm}")
+        hit = rc_warm["hits"][0]
+        if hit["case_id"] != case_id or hit["kind"] != "ioc" or hit["confidence"] <= 0:
+            fatal(f"warm recall hit shape unexpected: {hit}")
+        log(
+            f"  -> hit case_id={hit['case_id'][:12]}... kind={hit['kind']} "
+            f"confidence={hit['confidence']:.3f}"
+        )
+
+        # ---- 4f. memory_recall (kind-filtered): only the wrong kind --
+        # Proves the optional kind filter actually filters. We seeded
+        # an "ioc"; ask for "hash" — should be empty.
+        log("memory_recall (kind=hash): expect 0 hits (we seeded only ioc)...")
+        rc_kf = client.call_tool(
+            "memory_recall",
+            {
+                "store_path": str(memory_path),
+                "query": "evil.example.com",
+                "kind": "hash",
+            },
+        )
+        if rc_kf["hits"]:
+            fatal(f"kind-filtered recall expected 0 hits, got {len(rc_kf['hits'])}")
+        log("  -> 0 hits (kind filter correctly excluded the ioc seed)")
+
         # ---- 5. detect_contradictions ----------------------------------
         log("detect_contradictions: Pool A persistence vs Pool B exfil...")
         a_findings = [
@@ -532,10 +634,14 @@ def synthetic_flow(client: StdioClient) -> int:
 
         print()
         print("=" * 60)
-        print("OK — full A2 demo flow round-trips clean.")
+        print("OK — full A2+A3 demo flow round-trips clean.")
         print(f"  case_id        : {case_id}")
         print(f"  run_id         : {run_id}")
-        print(f"  audit log      : {audit_path} ({v['record_count']} records)")
+        print(
+            f"  audit log      : {audit_path} ({v_post['record_count']} records, "
+            f"includes 1 acp_handoff)"
+        )
+        print(f"  memory store   : {memory_path} (1 ioc seeded)")
         print(f"  manifest       : {manifest_path}")
         print("=" * 60)
         return 0
@@ -598,6 +704,7 @@ def main() -> int:
         names = sorted(t["name"] for t in tools_resp["tools"])
         expected = sorted(
             [
+                # A2 baseline (10 tools)
                 "audit_append",
                 "audit_verify",
                 "manifest_finalize",
@@ -608,6 +715,10 @@ def main() -> int:
                 "detect_contradictions",
                 "judge_findings",
                 "correlate_findings",
+                # A3 additions (cross-case memory + IBM-ACP handoff)
+                "memory_remember",
+                "memory_recall",
+                "pool_handoff",
             ]
         )
         if names != expected:
