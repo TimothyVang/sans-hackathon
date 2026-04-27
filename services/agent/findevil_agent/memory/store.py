@@ -13,9 +13,8 @@ from __future__ import annotations
 import math
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 _HALF_LIFE_DAYS = 90.0
 
@@ -69,13 +68,12 @@ class MemoryStore:
         key: str,
         value: str,
         sha256: str,
-        ts: Optional[str] = None,
-        case_path: Optional[str] = None,
+        ts: str | None = None,
+        case_path: str | None = None,
     ) -> None:
-        now = ts or datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z")
+        now = ts or datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
         self._conn.execute(
-            "INSERT INTO memories(case_id, kind, key, value, sha256, ts) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO memories(case_id, kind, key, value, sha256, ts) VALUES (?, ?, ?, ?, ?, ?)",
             (case_id, kind, key, value, sha256, now),
         )
         self._conn.execute(
@@ -91,7 +89,7 @@ class MemoryStore:
         self,
         query: str,
         *,
-        kind: Optional[str] = None,
+        kind: str | None = None,
         limit: int = 10,
     ) -> list[RecallHit]:
         # FTS5 requires special characters (., @, -, etc.) to be phrase-quoted.
@@ -111,7 +109,7 @@ class MemoryStore:
         sql += "ORDER BY score LIMIT ?"
         params.append(limit)
 
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         out: list[RecallHit] = []
         for row in self._conn.execute(sql, params):
             row_ts = datetime.fromisoformat(row["ts"].replace("Z", "+00:00"))
@@ -138,7 +136,7 @@ class MemoryStore:
     def close(self) -> None:
         self._conn.close()
 
-    def __enter__(self) -> "MemoryStore":
+    def __enter__(self) -> MemoryStore:
         return self
 
     def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:

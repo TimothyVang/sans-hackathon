@@ -9,11 +9,12 @@ the same `handoff()` signature.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
-from findevil_agent.crypto.audit_log import AuditLog
 from pydantic import BaseModel, ConfigDict, Field
+
+from findevil_agent.crypto.audit_log import AuditLog
 
 Role = Literal["pool_a", "pool_b", "verifier", "judge", "correlator", "supervisor"]
 
@@ -26,9 +27,7 @@ class ACPMessage(BaseModel):
     to_role: Role
     correlation_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     payload: dict[str, Any]
-    ts: str = Field(
-        default_factory=lambda: datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z")
-    )
+    ts: str = Field(default_factory=lambda: datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"))
 
 
 def handoff(
