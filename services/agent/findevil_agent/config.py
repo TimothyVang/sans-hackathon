@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
 
-class CredentialMode(str, Enum):
+class CredentialMode(StrEnum):
     """Which credential path was detected at startup."""
 
     OAUTH_TOKEN = "oauth_token"
@@ -160,12 +160,12 @@ def resolve_case_home(*, env: os._Environ[str] | dict[str, str] | None = None) -
 
 __all__ = [
     "ACH_MAX_ROUNDS",
-    "CredentialMode",
-    "CredentialResolution",
-    "CredentialsNotAvailableError",
     "JUDGE_WALL_CLOCK_BUDGET_SECONDS",
     "MODEL",
     "TOOL_SUBPROCESS_BUDGET_SECONDS",
+    "CredentialMode",
+    "CredentialResolution",
+    "CredentialsNotAvailableError",
     "resolve_case_home",
     "resolve_credentials",
 ]

@@ -102,9 +102,7 @@ def _classify_pair(a: Finding, b: Finding) -> str | None:
         and a.artifact_path == b.artifact_path
         and _token_overlap(a.description, b.description) < 0.30
     ):
-        return (
-            f"both pools cite artifact {a.artifact_path!r} but " f"description token-overlap < 30%"
-        )
+        return f"both pools cite artifact {a.artifact_path!r} but description token-overlap < 30%"
 
     return None
 

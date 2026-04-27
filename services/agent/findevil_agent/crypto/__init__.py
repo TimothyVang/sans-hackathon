@@ -53,10 +53,10 @@ from findevil_agent.crypto.signer import (
 )
 
 __all__ = [
+    "MANIFEST_VERSION",
     "AuditLog",
     "AuditLogError",
     "AuditRecord",
-    "MANIFEST_VERSION",
     "ManifestLeaf",
     "ManifestVerification",
     "MerkleError",
