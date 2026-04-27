@@ -60,7 +60,9 @@ def main() -> int:
         and not name.startswith("_")
     ]
     if not models:
-        print("ERROR: no Pydantic models found in findevil_agent.events", file=sys.stderr)
+        print(
+            "ERROR: no Pydantic models found in findevil_agent.events", file=sys.stderr
+        )
         return 1
 
     # --- 2. Generate the unified JSON schema.
@@ -81,9 +83,7 @@ def main() -> int:
     # Without this, json2ts only emits interfaces for definitions
     # reachable from the top-level — which would be none, leaving the
     # output essentially empty.
-    schema["oneOf"] = [
-        {"$ref": f"#/definitions/{m.__name__}"} for m in models
-    ]
+    schema["oneOf"] = [{"$ref": f"#/definitions/{m.__name__}"} for m in models]
     schema["title"] = "AgentEvent"
     schema.pop("type", None)
 
