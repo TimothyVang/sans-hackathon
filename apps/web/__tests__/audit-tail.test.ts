@@ -5,9 +5,13 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { tailAuditLog, type AuditLine } from "@/lib/audit-tail";
+import {
+  isAllowedCasePath,
+  tailAuditLog,
+  type AuditLine,
+} from "@/lib/audit-tail";
 
 let tmpDir: string;
 
@@ -136,5 +140,74 @@ describe("tailAuditLog", () => {
     expect(collected).toHaveLength(2);
     expect(collected[0].payload).toEqual({ content: "first" });
     expect(collected[1].payload).toEqual({ content: "second" });
+  });
+});
+
+describe("isAllowedCasePath", () => {
+  // The helper resolves allow-listed roots against process.cwd(), so
+  // pin cwd to a known fake repo root to keep these tests independent
+  // of where vitest runs from.
+  const fakeRepoRoot =
+    process.platform === "win32" ? "C:\\repo" : "/repo";
+
+  beforeEach(() => {
+    vi.spyOn(process, "cwd").mockReturnValue(fakeRepoRoot);
+    delete process.env.FINDEVIL_DASHBOARD_EXTRA_ROOTS;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.FINDEVIL_DASHBOARD_EXTRA_ROOTS;
+  });
+
+  it("allows a case dir directly under goldens/synthetic-benign/", () => {
+    const caseDir = path.join(
+      fakeRepoRoot,
+      "goldens",
+      "synthetic-benign",
+      "case-001",
+    );
+    expect(isAllowedCasePath(caseDir)).toBe(true);
+  });
+
+  it("allows a custom root supplied via FINDEVIL_DASHBOARD_EXTRA_ROOTS", () => {
+    const customRoot =
+      process.platform === "win32" ? "D:\\evidence" : "/srv/evidence";
+    const caseDir = path.join(customRoot, "case-2026-04-26");
+    // Path-delimiter-separated: ":" on POSIX, ";" on Windows.
+    process.env.FINDEVIL_DASHBOARD_EXTRA_ROOTS = customRoot;
+    expect(isAllowedCasePath(caseDir)).toBe(true);
+  });
+
+  it("blocks a path obviously outside the allow-list", () => {
+    const outside =
+      process.platform === "win32" ? "C:\\Windows\\System32" : "/etc";
+    expect(isAllowedCasePath(outside)).toBe(false);
+  });
+
+  it("blocks a traversal that resolves outside the allow-list", () => {
+    // `goldens/../../etc` resolves (against fakeRepoRoot) above the
+    // repo root and outside every allow-listed root.
+    const traversal = path.join(fakeRepoRoot, "goldens", "..", "..", "etc");
+    expect(isAllowedCasePath(traversal)).toBe(false);
+  });
+
+  it("does not prefix-match (custom root /foo/bar allowed != /foo/baroot allowed)", () => {
+    // Allow-list a narrow custom root, then check that a sibling
+    // directory whose name shares the prefix does NOT match it. The
+    // trailing path-separator check is what prevents this foot-gun.
+    // Use a custom root well outside the default allow-list so the
+    // assertion is unambiguous.
+    const allowed =
+      process.platform === "win32" ? "D:\\foo\\bar" : "/foo/bar";
+    const siblingPrefix =
+      process.platform === "win32" ? "D:\\foo\\baroot" : "/foo/baroot";
+    process.env.FINDEVIL_DASHBOARD_EXTRA_ROOTS = allowed;
+    expect(isAllowedCasePath(path.join(siblingPrefix, "case-1"))).toBe(
+      false,
+    );
+    // Sanity: the actually-allowed root and a child of it both pass.
+    expect(isAllowedCasePath(allowed)).toBe(true);
+    expect(isAllowedCasePath(path.join(allowed, "case-1"))).toBe(true);
   });
 });

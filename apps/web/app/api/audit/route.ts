@@ -8,16 +8,15 @@
 //   });
 //
 // The `case` query param is the absolute path to a case directory
-// containing `audit.jsonl`. Path validation is intentionally minimal
-// for the dev scaffold — the dashboard runs on the same machine as
-// Claude Code and reads case directories the operator already has
-// access to. **Before shipping to judges**, add an allow-list of
-// case-root prefixes (e.g. `goldens/`, `tmp/auto-runs/`); see the
-// "Security follow-up" note in apps/web/README.md.
+// containing `audit.jsonl`. Paths are validated against the case-path
+// allow-list in `lib/audit-tail.ts` (`isAllowedCasePath`) — see the
+// "Path allow-list for `/api/audit`" section of apps/web/README.md
+// for the default roots and the `FINDEVIL_DASHBOARD_EXTRA_ROOTS`
+// override.
 
 import path from "node:path";
 
-import { tailAuditLog } from "@/lib/audit-tail";
+import { isAllowedCasePath, tailAuditLog } from "@/lib/audit-tail";
 
 // SSE needs a long-lived connection — Node runtime, not Edge.
 export const runtime = "nodejs";
@@ -33,8 +32,25 @@ export async function GET(request: Request): Promise<Response> {
     });
   }
 
+  // Resolve the case dir first so the allow-list check sees the
+  // post-traversal path (e.g. `goldens/../../etc` collapses to
+  // `/etc` before comparison).
+  const resolvedCaseDir = path.resolve(caseDir);
+  if (!isAllowedCasePath(resolvedCaseDir)) {
+    return new Response(
+      JSON.stringify({
+        error: "case path not in allow-list",
+        reason: `${resolvedCaseDir} is not inside any allow-listed root (see apps/web/README.md "Path allow-list for /api/audit")`,
+      }),
+      {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  }
+
   // Resolve to the audit.jsonl inside the case dir.
-  const auditPath = path.resolve(caseDir, "audit.jsonl");
+  const auditPath = path.resolve(resolvedCaseDir, "audit.jsonl");
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({

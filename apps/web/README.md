@@ -33,6 +33,26 @@ pnpm --filter @findevil/web build
 
 Tailwind v4 moves config from JS to CSS — the `@theme` block in `app/globals.css` (added in Phase 5/6) is the equivalent. A `tailwind.config.ts` shim is only needed if you wire in JS plugins or do programmatic theme generation, neither of which we do.
 
-## Why no `tailwind.config.ts` AND why no WebSocket route in this PR
+## Path allow-list for `/api/audit`
 
-This PR is the scaffold only. The WebSocket / SSE audit-log tail (`app/api/audit/route.ts` + `lib/audit-tail.ts`) lands in Task 4.2 along with an integration test. Same shape: keep PRs small enough to review thoroughly.
+The SSE tail at `GET /api/audit?case=<dir>` (`app/api/audit/route.ts`) validates `<dir>` against an allow-list in `lib/audit-tail.ts` (`isAllowedCasePath`) before opening any file handle. A path outside the allow-list returns `400` with a JSON body `{ error: "case path not in allow-list", reason: "..." }` and is never read.
+
+Default allow-listed roots (resolved against `process.cwd()`, which for the dashboard is the repo root):
+
+- `goldens/` — committed L3 test fixtures
+- `tmp/auto-runs/` — `find-evil-auto` headless output
+- `tmp/smoke/` — synthetic smoke output
+- `test-forensics/` — operator's local DFIR corpus (gitignored)
+
+To add roots without code changes, set the `FINDEVIL_DASHBOARD_EXTRA_ROOTS` env var. It uses the platform path delimiter (`:` on POSIX, `;` on Windows — i.e. `path.delimiter`):
+
+```bash
+# POSIX
+FINDEVIL_DASHBOARD_EXTRA_ROOTS="/srv/evidence:/mnt/dfir-share" pnpm --filter @findevil/web dev
+
+# Windows
+set FINDEVIL_DASHBOARD_EXTRA_ROOTS=D:\evidence;E:\dfir-share
+pnpm --filter @findevil/web dev
+```
+
+The allow-list closes the path-traversal hole flagged in PR #7's `route.ts` comment — a malicious browser tab pointed at the dashboard URL can no longer trick the route into reading arbitrary filesystem paths.
