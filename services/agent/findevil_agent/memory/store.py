@@ -1,8 +1,11 @@
 """Cross-case memory store backed by SQLite FTS5.
 
 Schema and confidence formula: see Amendment A3 §2.4. Designed for
-single-machine investigations; concurrent writers serialize on the
-default sqlite3 file lock.
+single-machine, single-thread callers; the underlying
+sqlite3.Connection raises ProgrammingError if shared across threads
+(`check_same_thread=True` is the Python default and we keep it).
+Cross-process writers to the same file serialize on the default
+sqlite3 file lock.
 """
 
 from __future__ import annotations
@@ -114,6 +117,8 @@ class MemoryStore:
             row_ts = datetime.fromisoformat(row["ts"].replace("Z", "+00:00"))
             days_old = max(0.0, (now - row_ts).total_seconds() / 86400.0)
             decay = math.exp(-days_old / _HALF_LIFE_DAYS)
+            # bm25 returns negative scores in sqlite (lower = better);
+            # invert so confidence rises with relevance.
             relevance = 1.0 / (1.0 + abs(row["score"]))
             out.append(
                 RecallHit(
@@ -132,3 +137,9 @@ class MemoryStore:
 
     def close(self) -> None:
         self._conn.close()
+
+    def __enter__(self) -> "MemoryStore":
+        return self
+
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        self.close()

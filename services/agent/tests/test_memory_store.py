@@ -1,5 +1,6 @@
 """Round-trip + FTS5 ranking tests for MemoryStore."""
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -8,8 +9,12 @@ from findevil_agent.memory.store import MemoryStore
 
 
 @pytest.fixture
-def store(tmp_path: Path) -> MemoryStore:
-    return MemoryStore(tmp_path / "memory.sqlite")
+def store(tmp_path: Path) -> Iterator[MemoryStore]:
+    s = MemoryStore(tmp_path / "memory.sqlite")
+    try:
+        yield s
+    finally:
+        s.close()
 
 
 def test_remember_then_recall_exact_hash(store: MemoryStore) -> None:
