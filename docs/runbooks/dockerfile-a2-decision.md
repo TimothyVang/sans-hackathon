@@ -1,6 +1,18 @@
 # Dockerfile A2 wrapper — decision helper
 
-**Status:** open hard blocker as of 2026-04-26.  Documented in
+**Status: DECISION TAKEN — Option B, 2026-04-27 (PR #4).** The
+`find-evil` in-container wrapper was cut from `Dockerfile`,
+`scripts/build-deb.sh` was deleted entirely, and the `build-deb`
+job was removed from `.github/workflows/release.yml`. The L0
+`amendment-a2-guard` GHA job + L1 `divergence-smoke.py` §3 remain
+in place to fail CI if `findevil_agent.cli` resurfaces. CLAUDE.md
+"Spec/code divergences" §3 is updated to reflect the resolved
+state. The body below is preserved as the decision record — useful
+for future re-evaluations if A2 is ever revisited.
+
+---
+
+**Original status (open hard blocker as of 2026-04-26):** Documented in
 `CLAUDE.md` "Spec/code divergences" §3 and `CHANGELOG.md`
 "Hard blockers discovered" (commit `47f67b0`).  This file lays
 out the two paths so the decision-maker has both options side
