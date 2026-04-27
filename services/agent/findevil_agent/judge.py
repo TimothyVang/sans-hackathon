@@ -152,7 +152,7 @@ def judge_findings(
         # even on fast systems where time.monotonic() drift is sub-microsecond.
         if time.monotonic() - started >= budget_seconds:
             raise JudgeBudgetExceeded(
-                f"judge exceeded {budget_seconds}s budget after " f"{len(out)} merged findings"
+                f"judge exceeded {budget_seconds}s budget after {len(out)} merged findings"
             )
 
         a_items = [(f, p) for (f, p) in items if p == "A"]
@@ -277,10 +277,10 @@ __all__ = [
     "CONFIDENCE_VALUE",
     "CORROBORATION_BONUS",
     "INITIAL_PRIOR_ACCURACY",
+    "THRESHOLD_CONFIRMED",
+    "THRESHOLD_INFERRED",
     "JudgeBudgetExceeded",
     "MergedFinding",
     "PoolStats",
-    "THRESHOLD_CONFIRMED",
-    "THRESHOLD_INFERRED",
     "judge_findings",
 ]

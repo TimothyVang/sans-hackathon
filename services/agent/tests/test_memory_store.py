@@ -56,10 +56,12 @@ def test_recall_ranks_by_bm25_then_decay(store: MemoryStore) -> None:
 
 
 def test_recall_filters_by_kind(store: MemoryStore) -> None:
-    store.remember(case_id="c1", kind="ioc", key="evil.com", value="evil.com",
-                   sha256="sha256:" + "a" * 64)
-    store.remember(case_id="c2", kind="hash", key="evil.com", value="evil.com",
-                   sha256="sha256:" + "b" * 64)
+    store.remember(
+        case_id="c1", kind="ioc", key="evil.com", value="evil.com", sha256="sha256:" + "a" * 64
+    )
+    store.remember(
+        case_id="c2", kind="hash", key="evil.com", value="evil.com", sha256="sha256:" + "b" * 64
+    )
     hits = store.recall("evil.com", kind="ioc")
     assert len(hits) == 1
     assert hits[0].kind == "ioc"

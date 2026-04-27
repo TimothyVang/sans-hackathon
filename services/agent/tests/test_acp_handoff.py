@@ -39,5 +39,12 @@ def test_acp_message_envelope_shape() -> None:
         payload={"x": 1},
     )
     dumped = msg.model_dump()
-    assert set(dumped.keys()) == {"acp_version", "from_role", "to_role", "correlation_id", "payload", "ts"}
+    assert set(dumped.keys()) == {
+        "acp_version",
+        "from_role",
+        "to_role",
+        "correlation_id",
+        "payload",
+        "ts",
+    }
     assert dumped["acp_version"] == "1.0"

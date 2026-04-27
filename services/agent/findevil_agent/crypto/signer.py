@@ -209,8 +209,8 @@ def make_signer(*, kind: str | None = None, **kwargs: Any) -> Signer:
 
 
 __all__ = [
-    "Signer",
     "SignedBundle",
+    "Signer",
     "SigstoreSigner",
     "StubSigner",
     "make_signer",

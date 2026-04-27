@@ -109,7 +109,7 @@ class TestMitreTechniqueTrigger:
             mitre="T1053.005",
             confidence="CONFIRMED",
         )
-        refined, outcomes = correlate([f])
+        refined, _outcomes = correlate([f])
         # Single artifact class + no EDR/prefetch cross-corroboration → downgrade.
         assert refined[0].confidence == "INFERRED"
 
@@ -121,7 +121,7 @@ class TestMitreTechniqueTrigger:
             artifact_path="sysmon.evtx",
             confidence="CONFIRMED",
         )
-        refined, outcomes = correlate([f])
+        refined, _outcomes = correlate([f])
         assert refined[0].confidence == "CONFIRMED"
 
 

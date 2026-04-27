@@ -18,7 +18,7 @@ from findevil_agent.pools.persistence import PERSISTENCE_SYSTEM_PROMPT, Persiste
 
 __all__ = [
     "EXFIL_SYSTEM_PROMPT",
-    "ExfilPool",
     "PERSISTENCE_SYSTEM_PROMPT",
+    "ExfilPool",
     "PersistencePool",
 ]
