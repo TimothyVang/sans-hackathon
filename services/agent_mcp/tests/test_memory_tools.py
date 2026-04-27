@@ -6,10 +6,14 @@ import pytest
 
 from findevil_agent_mcp.tools.memory_recall import (
     SPEC as RECALL_SPEC,
+)
+from findevil_agent_mcp.tools.memory_recall import (
     MemoryRecallInput,
 )
 from findevil_agent_mcp.tools.memory_remember import (
     SPEC as REMEMBER_SPEC,
+)
+from findevil_agent_mcp.tools.memory_remember import (
     MemoryRememberInput,
 )
 
@@ -46,9 +50,7 @@ async def test_memory_recall_returns_remembered_row(tmp_path: Path) -> None:
         )
     )
     # Recall.
-    out = await RECALL_SPEC.handler(
-        MemoryRecallInput(store_path=str(db), query="badguy", limit=5)
-    )
+    out = await RECALL_SPEC.handler(MemoryRecallInput(store_path=str(db), query="badguy", limit=5))
     assert len(out.hits) == 1
     assert out.hits[0].case_id == "case-recall-1"
     assert out.hits[0].confidence > 0.0

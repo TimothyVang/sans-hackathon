@@ -15,7 +15,10 @@ class MemoryRecallInput(BaseModel):
 
     store_path: str = Field(..., description="Absolute path to memory.sqlite.")
     query: str = Field(..., min_length=1, description="FTS5 query string.")
-    kind: str | None = Field(default=None, description="Optional filter: 'ioc'|'hash'|'ttp'|'hostname'|'finding_summary'.")
+    kind: str | None = Field(
+        default=None,
+        description="Optional filter: 'ioc'|'hash'|'ttp'|'hostname'|'finding_summary'.",
+    )
     limit: int = Field(default=10, ge=1, le=100)
 
 
@@ -68,7 +71,7 @@ SPEC = ToolSpec(
         "being passed to FTS5 MATCH (so 'evil.com' or 'T1059.001' match safely without "
         "tripping on the dot). Multi-word queries become exact-phrase searches: pass "
         "'powershell' alone, NOT 'powershell encoded' (which would only hit rows containing "
-        "that literal two-word phrase). Hits are returned ordered by BM25 relevance × "
+        "that literal two-word phrase). Hits are returned ordered by BM25 relevance * "
         "90-day exponential decay. The kind argument optionally filters to one of: 'ioc', "
         "'hash', 'ttp', 'hostname', 'finding_summary'. Empty hits list means no prior cases "
         "matched — that's a useful signal too."

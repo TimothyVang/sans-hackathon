@@ -47,12 +47,30 @@ EXCLUDED_PATH_PARTS = (
     "hermes-agent",
     "Linear-Coding-Agent-Harness",
     ".playwright-mcp",
+    # Expanded research-library directory added 2026-04-26 holding
+    # 7+ upstream clones (claude-agent-sdk-{python,typescript},
+    # openclaw, hermes-agent, hermes-agent-self-evolution,
+    # pixel-agents, awesome-openclaw-skills, plus DFIR awesome-lists
+    # like LOLBAS / ThreatHunter-Playbook / awesome-forensics).
+    # All .gitignore'd at /git-hub-references/ per Amendment A3 §1.3
+    # but git rglob still walks the dir; scanning these picks up
+    # legitimate-but-unrelated patterns from upstream code (e.g.
+    # Archon ships the `ws` npm dep, which trips divergence #8).
+    "git-hub-references",
     # Build / venv / cache.
     "target",
     "node_modules",
     ".venv",
     "__pycache__",
     ".git",
+    # Sibling worktrees from `git worktree add .worktrees/<name>` —
+    # checked-out copies of feature branches living under the repo
+    # root. .gitignore'd at /.worktrees/ but git rglob still finds
+    # them; scanning them causes false drift hits when a feature
+    # branch's CHANGELOG / docs naturally quote the historical bad
+    # pattern (the master tree's CHANGELOG already has these allow-
+    # listed via ALLOWED_FILES below).
+    ".worktrees",
     # Generated artifacts (PDFs, HTML have embedded assets that
     # can grep-match the wrong-pattern coincidentally).
     "tmp",
