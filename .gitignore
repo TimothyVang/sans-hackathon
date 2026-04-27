@@ -106,3 +106,8 @@ Thumbs.db
 # .claude/settings.json beside it IS committed (it's the
 # project-scoped permissions config referenced by CLAUDE.md / Spec #4).
 /.claude/scheduled_tasks.lock
+
+# Isolated dev worktrees created by superpowers:using-git-worktrees
+# during subagent-driven development. Each subdir is a sibling
+# checkout of the same repo on its own feature branch — never ship.
+/.worktrees/
