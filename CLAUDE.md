@@ -19,15 +19,15 @@ Two MCP servers are registered in `.mcp.json` and auto-spawned by Claude Code on
 | Server | Lang | Tools |
 |---|---|---|
 | `findevil-mcp` | Rust (`services/mcp/`) | DFIR tool surface — `case_open`, `evtx_query`, plus 10 more (`mft_timeline`, `hayabusa_scan`, `vol_pslist`, `vol_psscan`, `vol_malfind`, `yara_scan`, `usnjrnl_query`, `registry_query`, `prefetch_parse`, `vel_collect`). Read-only on evidence; SHA-256 every output. The `vol_pslist` + `vol_psscan` pair is deliberately redundant — pslist walks the active list, psscan signature-scans EPROCESS pool memory; divergence between the two is the textbook DKOM/T1014 (Rootkit) signature. |
-| `findevil-agent-mcp` | Python (`services/agent_mcp/`) | Crypto + ACH plumbing — `audit_append`, `audit_verify`, `manifest_finalize`, `manifest_verify`, `ots_stamp`, `ots_verify`, `verify_finding`, `detect_contradictions`, `judge_findings`, `correlate_findings`. |
+| `findevil-agent-mcp` | Python (`services/agent_mcp/`) | 13 tools — crypto/ACH plumbing (`audit_append`, `audit_verify`, `manifest_finalize`, `manifest_verify`, `ots_stamp`, `ots_verify`, `verify_finding`, `detect_contradictions`, `judge_findings`, `correlate_findings`) + Hermes-pattern cross-case memory (`memory_remember`, `memory_recall`) + IBM-ACP agent-to-agent handoff (`pool_handoff`). The 3 memory/ACP tools were added by Amendment A3; see `agent-config/AGENTS.md` "Cross-case memory + structured handoff" for the canonical use sites per role. |
 
 The investigation flow is roughly: `case_open` → split into Pool A (persistence) + Pool B (exfil) subagents → each pool runs DFIR tools and emits Findings (each citing a `tool_call_id`) → `detect_contradictions` → analyst resolves → `verify_finding` re-runs each cited tool → `judge_findings` (credibility-weighted merge) → `correlate_findings` → `manifest_finalize` (signs the run) → `ots_stamp` (Bitcoin anchor). The terminal beat map for the judge demo lives in Amendment A2 §2.3.
 
 ## Project state
 
-This is the SANS **Find Evil!** hackathon submission (deadline **2026-06-15 22:45 CDT**). Week-1 implementation is underway — `services/mcp/` (Rust MCP server with `evtx_query` and other tools), `services/agent/` (Python package, AgentEvent union, M2 crypto layer, M4 ACH stack with verifier/judge/contradiction/pools/correlator, `mcp_client.py` Python↔Rust bridge), and `services/swarm/` scaffolding all exist. `packer/`, `docker/`, `scripts/`, `goldens/`, `.github/workflows/`, root `Cargo.toml`/`Cargo.lock`/`rust-toolchain.toml`, and a root-level production `Dockerfile` are all in place. Check `git log --oneline -20` before assuming anything is missing.
+This is the SANS **Find Evil!** hackathon submission (deadline **2026-06-15 22:45 CDT**). All four subsystems exist and the smoke suite is **fully green** (14/14 in `bash scripts/run-all-smokes.sh` as of 2026-04-27). The Product layer is feature-complete through Amendment A3 Phase 4: **25 MCP tools** (12 Rust DFIR + 13 Python crypto/ACH/memory/ACP), the agent-config prompts know when to call them, the audit-log SSE tail powers a Next.js + Tailwind v4 + NES.css dashboard scaffold at `apps/web/`. The five pixel-art sprite components (Phase 5) and the AuditBeadString chrome (Phase 6) remain gated on a Claude Design prototyping pass per A3 §1.2. The 0-hard-blocker state was reached when PR #4 cut the pre-A2 `find-evil` CLI wrapper + `.deb` packaging.
 
-Before writing code of your own, **read the relevant spec and plan** for the subsystem you are touching. The specs define exact file paths, pinned dependency versions, and TDD task sequences; diverging from them silently creates integration mismatches with other subsystems. When a spec and the current code disagree, the **code + its committed pin files win** — see "Spec/code divergences" below for known cases.
+Before writing code of your own, **read the relevant spec and plan** for the subsystem you are touching. The specs define exact file paths, pinned dependency versions, and TDD task sequences; diverging from them silently creates integration mismatches with other subsystems. When a spec and the current code disagree, the **code + its committed pin files win** — see "Spec/code divergences" below for known cases. `CHANGELOG.md` summarizes per-feature; `git log --oneline -20` for recent commit context.
 
 ## External reference clones (never ship, never edit, never import)
 
@@ -76,17 +76,19 @@ Shipped tree — these are the directories that end up in the submission:
 ├── Cargo.toml / Cargo.lock / rust-toolchain.toml   # Rust workspace (members = [services/mcp]); Cargo.lock IS committed (app, not library)
 ├── Dockerfile                                      # Production multi-stage image → ghcr.io/find-evil/find-evil:v<N>
 ├── LICENSE                                         # Apache-2.0
-├── BUILD_PLAN_v2.md / Find_Evil_Research_and_Build_Plan.docx
+├── BUILD_PLAN_v2.md                                # 9-week roadmap; v1 .docx archived under docs/legacy/
 ├── SUBMISSION_NOTES.md                             # Stub; edit before cutting v-submit
 ├── sift-2026.03.24.ova                             # 9.3 GB SIFT VM image — Packer input; gitignored (*.ova)
 ├── agent-config/                                   # Runtime DFIR agent identity (SOUL/AGENTS/TOOLS/MEMORY/HEARTBEAT/JUDGING/PLAYBOOK)
-├── docs/superpowers/specs/ + plans/                # 5 specs (incl. Amendment A1) + 4 TDD plans
+├── docs/superpowers/specs/ + plans/                # 8 specs (incl. A1 + A2 + A3 amendments) + 5 TDD plans
+├── docs/braindumps/                                # Origin-of-feature scratch docs — A3 spawned from docs/braindumps/2026-04-26-agent-army-and-dashboard.md
+├── docs/legacy/                                    # v1 docs superseded by v2 + amendments
 ├── services/mcp/                                   # Rust MCP server (hand-rolled stdio JSON-RPC 2.0 per "Spec/code divergences" §5; evtx/duckdb/rs_merkle linked; others subprocess-only)
-├── services/agent/                                 # Python package findevil_agent — M2 crypto + M4 ACH (FastAPI/LangGraph DROPPED under A2)
-├── services/agent_mcp/                             # Python MCP server (A2) wrapping M2+M4 as 10 typed tools for Claude Code
+├── services/agent/                                 # Python package findevil_agent — M2 crypto + M4 ACH + A3 memory/acp (FastAPI/LangGraph DROPPED under A2)
+├── services/agent_mcp/                             # Python MCP server wrapping M2/M4/memory/ACP as 13 typed tools for Claude Code
 ├── services/swarm/                                 # Python build swarm (Option B — Claude CLI subagents)
 ├── .mcp.json                                       # A2: registers findevil-mcp (Rust) + findevil-agent-mcp (Python) for auto-spawn
-├── apps/web/                                       # Next.js SPA — UN-DEFERRED per A3 §2.1 (NES.css live dashboard, 5 sprites tail audit.jsonl over WebSocket)
+├── apps/web/                                       # Next.js 15 + Tailwind v4 + NES.css scaffold (A3 §2.1) — SSE audit-log tail at /api/audit, /debug live viewer, pydantic→TS event codegen at lib/events.ts; sprites + chrome gated on Claude Design pass
 ├── apps/mcp-widgets/                               # M3 widgets — still DEFERRED per A2 §2.1 (A3 does not need them)
 ├── packer/sift-microvm.pkr.hcl                     # L3 warm-qcow2 build from the OVA
 ├── docker/                                         # l1-compose.yml, l1-devbase.Dockerfile, l2-siftlite.Dockerfile, swarm-postgres.yml
@@ -100,7 +102,7 @@ Shipped tree — these are the directories that end up in the submission:
 └── .github/workflows/                              # l0/l1/l2/l3 + release + competitor-watch + devpost-submit + budget-guard
 ```
 
-The shipped `Dockerfile` lines 74–78 still wrap an in-container CLI as `exec python3 -m findevil_agent.cli "$@"` — but Amendment A2 dropped `findevil_agent/cli.py`, so that wrapper currently calls a module that doesn't exist (flagged in "Spec/code divergences" §3 Caveat (A2) as a hard blocker pending architectural decision). In dev under A2, **don't** invoke `findevil_agent.cli` — it isn't there. The dev entry points are `scripts/find-evil` (interactive Claude Code session) and `bash scripts/find-evil-auto <evidence>` (headless single-shot orchestrator); see "Commands" below.
+The dev entry points are `scripts/find-evil` (interactive Claude Code session) and `bash scripts/find-evil-auto <evidence>` (headless single-shot orchestrator over SSH into a SIFT VM); see "Commands" below. The pre-A2 `python -m findevil_agent.cli` entry point was dropped by A2; the corresponding Dockerfile wrapper + `scripts/build-deb.sh` were cut on 2026-04-27 (PR #4) per `docs/runbooks/dockerfile-a2-decision.md` "Option B." The L0 `amendment-a2-guard` GHA job + L1 `divergence-smoke.py` §3 both fail CI if `findevil_agent.cli` re-appears in active code.
 
 ## The 4 subsystems (master design §3)
 
@@ -142,7 +144,7 @@ The Product (`scripts/install.sh`) detects three credential paths in priority or
 
 ## Commands
 
-None of these succeed today — the code they target doesn't exist yet. They are the canonical commands the specs and plans will produce code for. Quote them verbatim so swarm-generated code and human work use the same invocations.
+Canonical commands. As of 2026-04-27 the smoke suite is fully green (14/14); quote these verbatim so swarm-generated code and human work use the same invocations.
 
 **Rust MCP server (`services/mcp/`):**
 - Build: `cargo build --workspace --release --locked`
@@ -160,13 +162,14 @@ None of these succeed today — the code they target doesn't exist yet. They are
 - Single test function: `uv run --directory services/agent pytest tests/test_crypto_audit_log.py::TestCanonicalize::test_sorted_keys -v`
 - Run an investigation directly (dev, under A2): `scripts/find-evil` (interactive Claude Code session) or `bash scripts/find-evil-auto <evidence-path>` (headless single-shot orchestrator). The pre-A2 `python -m findevil_agent.cli` entry point was dropped — see the "## Agent investigation prompt" guidance at the top of this file.
 
-**Next.js web + MCP widgets (`apps/web/`, `apps/mcp-widgets/`):**
-- Install: `pnpm install --frozen-lockfile`
-- Typecheck: `pnpm -r exec tsc --noEmit`
-- Lint: `pnpm -r lint`
-- Build: `pnpm -r build`
-- Test all: `pnpm -r test`
-- Test one file (web): `pnpm --filter @findevil/web test -- components/narrative/StreamingSpanTree.test.tsx`
+**Next.js web (`apps/web/`):** `apps/mcp-widgets/` remains deferred per A2 §2.1; commands below filter to `@findevil/web` since it's the only live workspace member.
+- Install: `pnpm install --frozen-lockfile` (run from repo root)
+- Typecheck: `pnpm --filter @findevil/web typecheck`
+- Build: `pnpm --filter @findevil/web build`
+- Test all: `pnpm --filter @findevil/web test` (8 Vitest tests covering `audit-tail.ts` + the path allow-list)
+- Test one file: `pnpm --filter @findevil/web test -- __tests__/audit-tail.test.ts`
+- Dev server: `pnpm --filter @findevil/web dev` then open `http://localhost:3000` (placeholder dashboard) or `http://localhost:3000/debug` (live SSE event viewer)
+- Regenerate audit-event TypeScript types from Pydantic source: `pnpm --filter @findevil/web codegen:events` (writes `apps/web/lib/events.ts`)
 
 **Launchers under Amendment A2 (Claude Code as primary interface):**
 - Open an investigation, **local mode** (the demo entry point): `scripts/find-evil` or `claude` from the repo root. `.mcp.json` auto-spawns both MCP servers locally. Use this when the DFIR tool binaries (Hayabusa, Volatility3, Velociraptor) are installed on the host machine.
