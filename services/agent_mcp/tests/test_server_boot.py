@@ -23,7 +23,7 @@ from findevil_agent_mcp.tools.audit_verify import AuditVerifyOutput
 class TestBuildServer:
     def test_returns_ten_specs(self) -> None:
         _server, specs = build_server()
-        assert len(specs) == 10
+        assert len(specs) == 13
 
     def test_server_name_constant(self) -> None:
         assert SERVER_NAME == "findevil-agent-mcp"

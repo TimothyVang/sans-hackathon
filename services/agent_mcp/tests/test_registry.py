@@ -20,13 +20,16 @@ EXPECTED_TOOL_NAMES = {
     "detect_contradictions",
     "judge_findings",
     "correlate_findings",
+    "memory_remember",
+    "memory_recall",
+    "pool_handoff",
 }
 
 
 class TestRegistry:
     def test_all_specs_returns_ten_tools(self) -> None:
         specs = all_specs()
-        assert len(specs) == 10
+        assert len(specs) == 13
 
     def test_all_specs_returns_only_tool_specs(self) -> None:
         specs = all_specs()
