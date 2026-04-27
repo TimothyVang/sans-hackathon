@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "codegen:events": "uv run --directory ../../services/agent python ../../scripts/codegen-events.py"
   },
   "dependencies": {
     "next": "^15.1.0",
@@ -21,6 +22,7 @@
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "json-schema-to-typescript": "^14.1.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0"
   }
