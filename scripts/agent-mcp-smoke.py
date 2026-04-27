@@ -435,7 +435,9 @@ def synthetic_flow(client: StdioClient) -> int:
 
         # ---- 4b. audit_verify (post-handoff): chain still verifies ---
         # Proves kind="acp_handoff" doesn't break the prev_hash chain.
-        log("audit_verify (post-handoff): chain still verifies with acp_handoff line...")
+        log(
+            "audit_verify (post-handoff): chain still verifies with acp_handoff line..."
+        )
         v_post = client.call_tool("audit_verify", {"path": str(audit_path)})
         if not (v_post["ok"] and v_post["record_count"] == len(records) + 1):
             fatal(f"audit chain replay failed after acp_handoff: {v_post}")
@@ -469,7 +471,9 @@ def synthetic_flow(client: StdioClient) -> int:
         )
         if mr["case_id"] != case_id or mr["kind"] != "ioc":
             fatal(f"memory_remember returned unexpected echo: {mr}")
-        log(f"  -> remembered case_id={mr['case_id'][:12]}... kind={mr['kind']} key={mr['key']!r}")
+        log(
+            f"  -> remembered case_id={mr['case_id'][:12]}... kind={mr['kind']} key={mr['key']!r}"
+        )
 
         # ---- 4e. memory_recall (warm): same key now returns the hit ---
         # The cold/warm transition is what makes this a "cross-case

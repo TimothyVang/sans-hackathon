@@ -15,7 +15,9 @@ class MemoryRememberInput(BaseModel):
 
     store_path: str = Field(..., description="Absolute path to memory.sqlite. Created if missing.")
     case_id: str = Field(..., min_length=1)
-    kind: str = Field(..., description="One of: 'ioc', 'hash', 'ttp', 'hostname', 'finding_summary'.")
+    kind: str = Field(
+        ..., description="One of: 'ioc', 'hash', 'ttp', 'hostname', 'finding_summary'."
+    )
     key: str = Field(..., min_length=1)
     value: str = Field(..., min_length=1)
     sha256: str = Field(
