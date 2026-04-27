@@ -130,15 +130,12 @@ DIVERGENCES = [
             r"(?<!`)(?:python3?\s+-m\s+findevil_agent\.cli|"
             r"\bfind-evil\s+(?:run|verify|serve)\b)"
         ),
-        # The Dockerfile + scripts/build-deb.sh both still inline
-        # the broken wrapper; CLAUDE.md §3 flags this as a hard
-        # blocker pending architectural decision. Allow them here
-        # so the smoke doesn't fail until the architectural
-        # decision is made; once that lands, drop these entries.
-        "allowed_in_path": (
-            "Dockerfile",
-            "scripts/build-deb.sh",
-        ),
+        # 2026-04-27: the Dockerfile wrapper + scripts/build-deb.sh
+        # were both cut per docs/runbooks/dockerfile-a2-decision.md
+        # "Option B" (PR #4). The allow-list is empty now — any future
+        # re-introduction of the bad pattern in active code is a
+        # genuine regression and should fail this smoke loudly.
+        "allowed_in_path": (),
         "remediation": (
             "A2 dropped findevil_agent/cli.py and the L0 "
             "amendment-a2-guard fails CI on its return. Use "

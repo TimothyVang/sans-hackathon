@@ -76,12 +76,13 @@ RUN if ls /tmp/wheels/*.whl >/dev/null 2>&1; then \
     fi \
  && rm -rf /tmp/wheels
 
-# CLI wrapper mirrors what the .deb postinst sets up.
-RUN cat <<'SH' > /usr/local/bin/find-evil && chmod +x /usr/local/bin/find-evil
-#!/usr/bin/env bash
-set -euo pipefail
-exec python3 -m findevil_agent.cli "$@"
-SH
+# Amendment A2 decision (2026-04-27, runbook docs/runbooks/dockerfile-
+# a2-decision.md "Option B"): no in-container CLI wrapper. A2's central
+# claim is "Claude Code IS the orchestrator" — the canonical user
+# contract is `claude` invoked from a repo clone with .mcp.json present.
+# This image ships the Rust MCP binary + Python wheel as build
+# artifacts, useful for reproducing CI build state and for the .mcp.json
+# server-spawn entries that point at the in-image binaries.
 
 # Non-root runtime user.
 ARG RUN_UID=1000
@@ -92,11 +93,11 @@ USER find-evil
 WORKDIR /home/find-evil
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=2 \
-  CMD command -v find-evil && command -v python3 || exit 1
+  CMD command -v findevil-mcp && command -v python3 || exit 1
 
 LABEL org.opencontainers.image.title="find-evil" \
-      org.opencontainers.image.description="Automated DFIR pipeline for the SANS SIFT Workstation" \
+      org.opencontainers.image.description="Find Evil! DFIR build artifacts for SANS SIFT (Rust MCP + Python wheel; orchestrator is Claude Code, not in-container)" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.source="https://github.com/"
 
-CMD ["find-evil", "--help"]
+CMD ["bash"]
