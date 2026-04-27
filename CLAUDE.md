@@ -40,6 +40,8 @@ Four directory names are reserved at the repo root for external research clones 
 
 If any of these directories appears in your local checkout, .gitignore prevents commit; our code imports none of them. When a judge runs the Product, only the contents of this repo's **non-vendored** tree ship (plus whatever Devpost-submission zip `scripts/package-devpost.sh` produces). A future session that edits files inside one of these directories is almost certainly making a mistake — check `.gitignore` first.
 
+In addition, an **expanded research library** lives at `git-hub-references/` (added 2026-04-26) — see `git-hub-references/CLAUDE.md` for the per-clone index. It holds the seven SDK / OpenClaw / Hermes / Pixel-Agents reference clones plus DFIR awesome-lists (LOLBAS, ThreatHunter-Playbook, awesome-forensics, etc.). The same "never ship, never edit, never import" rule applies. Per Amendment A3 §1.3, `/git-hub-references/` is in `.gitignore` (added at the same time as A3 to close the documented gap that the root-anchored `/openclaw/` pattern didn't catch the relocated copies).
+
 ## Quickstart for the impatient
 
 If you want to run the agent against evidence right now, see **`QUICKSTART.md`** at the repo root. Three steps: pick environment (SIFT VM or local), open Claude Code, prompt `investigate <path>`. Everything else in this file is reference material.
@@ -55,14 +57,15 @@ Read these in precedence order. Later documents override earlier ones only where
 1. **`docs/superpowers/specs/2026-04-23-find-evil-automation-master-design.md`** — master design. Defines the 4-subsystem decomposition and the 4 moonshots (M1 leaderboard, M2 crypto chain-of-custody, M3 MCP App widgets, M4 ACH competing-hypothesis agents).
 2. **`docs/superpowers/specs/2026-04-23-amendment-option-b-claude-code-mode.md`** — **amendment A1, active.** Overrides the swarm's credential/budget architecture. LiteLLM proxy, `services/swarm/budget.py`, and USD caps are removed; workers use the user's Claude Code subscription via `claude` CLI. The Product accepts three credential modes (`CLAUDE_CODE_OAUTH_TOKEN`, interactive `~/.claude/` session, `ANTHROPIC_API_KEY`).
 3. **`docs/superpowers/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md`** — **amendment A2, active.** Drops the custom Python orchestrator (`graph.py`, `api.py`, `cli.py`, `supervisor.py`, specialists/) — Claude Code IS the orchestrator. Adds `services/agent_mcp/` (Python MCP server wrapping M2 + M4 stacks) and `.mcp.json` at repo root registering both MCP servers. `apps/web/` Next.js SPA + `apps/mcp-widgets/` deferred to week-7 polish bonus, NOT on the critical path.
-4. **Per-subsystem specs** (in `docs/superpowers/specs/`):
+4. **`docs/superpowers/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md`** — **amendment A3, active.** Overrides A2 §2.1 by un-deferring `apps/web/` (a NES.css live dashboard reading the audit JSONL hash chain over WebSocket; 5 sprites mapping 1:1 to `agent-config/AGENTS.md` roles). Adds three tools to the existing `findevil-agent-mcp` server: `memory_remember` + `memory_recall` (Hermes-pattern FTS5 cross-case memory) and `pool_handoff` (IBM Agent Communication Protocol envelope, recorded into the audit JSONL). Originated from the repo-root `braindump` file. `apps/mcp-widgets/` remains deferred per A2 §2.1.
+5. **Per-subsystem specs** (in `docs/superpowers/specs/`):
    - `2026-04-23-layered-test-sandbox-design.md` — Spec #3 (L0-L3 sandbox; blocks all other work).
    - `2026-04-24-autonomous-build-swarm-design.md` — Spec #1 (build swarm; interpret through A1).
    - `2026-04-25-the-product-design.md` — Spec #2 (the DFIR tool judges run).
    - `2026-04-26-orchestration-glue-design.md` — Spec #4 (GHA CI; `budget-guard.yml` is a no-op under A1 unless `ANTHROPIC_API_KEY` is set).
-5. **Implementation plans** (in `docs/superpowers/plans/`) — one per spec, each step written as a TDD checkbox with the exact failing test → implement → commit sequence.
-6. **`BUILD_PLAN_v2.md`** — 9-week roadmap and the v2 architecture the swarm works against. Still authoritative for DFIR fundamentals, rubric analysis, and the demo script.
-7. **`Find_Evil_Research_and_Build_Plan.docx`** — v1 research doc; authoritative only for what v2 doesn't contradict.
+6. **Implementation plans** (in `docs/superpowers/plans/`) — one per spec, each step written as a TDD checkbox with the exact failing test → implement → commit sequence.
+7. **`BUILD_PLAN_v2.md`** — 9-week roadmap and the v2 architecture the swarm works against. Still authoritative for DFIR fundamentals, rubric analysis, and the demo script.
+8. **`Find_Evil_Research_and_Build_Plan.docx`** — v1 research doc; authoritative only for what v2 doesn't contradict.
 
 ## Repository layout (current)
 
@@ -83,7 +86,8 @@ Shipped tree — these are the directories that end up in the submission:
 ├── services/agent_mcp/                             # Python MCP server (A2) wrapping M2+M4 as 10 typed tools for Claude Code
 ├── services/swarm/                                 # Python build swarm (Option B — Claude CLI subagents)
 ├── .mcp.json                                       # A2: registers findevil-mcp (Rust) + findevil-agent-mcp (Python) for auto-spawn
-├── apps/web/ + apps/mcp-widgets/                   # Next.js SPA + M3 widgets — DEFERRED to bonus per A2 §2.1
+├── apps/web/                                       # Next.js SPA — UN-DEFERRED per A3 §2.1 (NES.css live dashboard, 5 sprites tail audit.jsonl over WebSocket)
+├── apps/mcp-widgets/                               # M3 widgets — still DEFERRED per A2 §2.1 (A3 does not need them)
 ├── packer/sift-microvm.pkr.hcl                     # L3 warm-qcow2 build from the OVA
 ├── docker/                                         # l1-compose.yml, l1-devbase.Dockerfile, l2-siftlite.Dockerfile, swarm-postgres.yml
 ├── scripts/                                        # swarm-start, swarm-status, l2-dfir-smoke, l3-run-goldens, fetch-fixtures,
@@ -254,127 +258,10 @@ When you spot a new divergence, append it here (one bullet, one line) before con
 User-level auto-memory lives at `C:/Users/newbi/.claude/projects/C--Users-newbi-Desktop-PUG-Projects-SANS-Hackathon/memory/` and is auto-loaded into every session. The index (`MEMORY.md`) points to per-topic memory files covering: automation scope, top competitors, DFIR tooling picks, swarm architecture, sandbox stack, judging signals, crypto chain-of-custody stack, MCP Apps readiness, adversarial-agents pattern, the Option B credential decision, and Devpost rules compliance + new intel. Read the index at session start if you need historical context; update the relevant memory file (don't invent a new one) when facts change.
 
 
----
+## External "Protocol SIFT" reference (not authoritative)
 
-## Appendix: external "Protocol SIFT" reference (not authoritative)
+The full Protocol SIFT integration material lives at `docs/references/protocol-sift-integration-reference.md`. It uses a different conceptual frame than this repo's authoritative spec/plan stack — **where the two disagree, the specs win.** Three reconciled contradictions to keep in mind before acting on anything from that doc:
 
-The content below was appended from external research material and uses a different conceptual frame ("Protocol SIFT") than the authoritative spec/plan stack above. Where the appendix and the specs disagree, **the specs win**. Known contradictions to reconcile before acting on any appendix instruction:
-
-- The example `settings.json` deny-list blocks `curl` and `wget`, but `scripts/install.sh` (Amendment A1 §3.2) and `scripts/l3-run-goldens.sh` (Spec #3 §4.4) both rely on curl. Treat that deny-list as illustrative, not a drop-in config — the repo's real permissions will live in `.claude/settings.json` per Spec #4.
-- The `~/.claude/skills/volatility/SKILL.md` pattern duplicates the typed MCP tool surface pinned in Spec #2 §6 (`services/mcp/src/tools/vol_pslist.rs`, `vol_malfind.rs`). Volatility is invoked as a subprocess from the Rust MCP server, not as a Claude skill.
-- The `/ralph-loop` self-learning Stop hook is not defined in any spec, plan, or memory file in this repo. Treat it as background reading only; wiring it in needs its own design doc first.
-
-To provide Claude Code with the full context of **Protocol SIFT**, you should create several specific files in your project root or the `~/.claude/` directory. Claude Code is designed to automatically ingest these files at the start of every session to establish its role, rules, and tool knowledge.
-
-The following sections contain the essential text you need to feed into Claude Code.
-
-### 1. Authoritative Project Memory (`CLAUDE.md`)
-This file is the "brain" of the integration. It defines the AI's role and operational boundaries.
-
-```markdown
-# Protocol SIFT: Authoritative Project Memory
-
-## WHY (Purpose)
-Protocol SIFT is a framework for orchestrating the 400+ forensic tools in the SANS SIFT Workstation ecosystem. It shifts the analyst from manual execution to high-level orchestration to match the speed of modern AI-driven adversarial attacks.
-
-## WHAT (Environment)
-- **Role**: Principal DFIR Orchestrator.
-- **Environment**: SANS SIFT Workstation (Ubuntu 22.04 LTS).
-- **Evidence Mode**: Strict read-only handling to maintain the chain of custody.
-
-## HOW (Operational Rules)
-- **Autonomous Operation**: Run workflows start-to-finish without check-ins or confirmation prompts unless a destructive action is detected.
-- **Hierarchical Context**: Use progressive disclosure. Read `SKILL.md` files in the `skills/` directory only when specific tools are required.
-- **Standard Formatting**: Timestamps must always be in UTC.
-- **Chain of Custody**: Document all actions in `./analysis/forensic_audit.log` via automated hooks.
-
-## Routing Table (Core Skills)
-- **Timeline Analysis**: Use Plaso (`log2timeline.py`, `psort.py`).
-- **Memory Forensics**: Use Volatility 3.
-- **Filesystem**: Use The Sleuth Kit (TSK) tools like `fls` and `icat`.
-- **Windows Artifacts**: Use Eric Zimmerman's (EZ) Tools natively via .NET.
-- **Threat Hunting**: Deploy YARA rules across memory and disk.
-```
-
----
-
-### 2. Global Permissions and Auditing (`settings.json`)
-This file configures the underlying software engine to allow forensic tools to run without constant "Allow?" prompts.
-
-```json
-{
-  "permissions": {
-    "allowedTools": [
-      "Read",
-      "Write(./analysis/*)",
-      "Write(./reports/*)",
-      "Bash(log2timeline.py *)",
-      "Bash(psort.py *)",
-      "Bash(volatility *)",
-      "Bash(fls *)",
-      "Bash(icat *)",
-      "Bash(yara *)",
-      "Bash(exiftool *)",
-      "Bash(md5sum *)",
-      "Bash(grep *)"
-    ],
-    "deny": [
-      "rm -rf",
-      "dd",
-      "wget",
-      "curl",
-      "WebFetch"
-    ],
-    "defaultMode": "acceptEdits"
-  },
-  "hooks": {
-    "Stop": [
-      {
-        "type": "command",
-        "command": "echo \"$(date -u): $CONVERSATION_SUMMARY\" >> ./analysis/forensic_audit.log"
-      }
-    ]
-  }
-}
-```
-**
-
----
-
-### 3. Progressive Disclosure Architecture
-To manage the complexity of SIFT, you must use **Progressive Disclosure**. Instead of one giant file, place tool-specific instructions in a `skills/` folder.
-
-**Skill Template (`~/.claude/skills/volatility/SKILL.md`):**
-```markdown
----
-name: memory-forensics
-description: Use for analyzing RAM captures via Volatility 3. Triggers on "memory", "dump", or "process list".
-allowed-tools: Bash, Read
----
-# Volatility 3 Memory Forensics
-1. Always begin by detecting the OS profile using `imageinfo`.
-2. Identify anomalies by comparing `pslist` and `psscan` (hidden processes).
-3. Check for code injection using the `malfind` plugin.
-4. Extract suspicious processes using `procdump` to the `./exports/memdump/` directory.
-```
-**
-
----
-
-### 4. Self-Learning Loop (Ralph Wiggum)
-For long-running refactors or complex investigations, Protocol SIFT utilizes a **Self-Learning Loop**. This is a **Stop hook** that prevents Claude from exiting if a task is incomplete or if errors persist.
-
-**Mechanism:**
-- **Trigger**: The `/ralph-loop` initiates the session.
-- **Interceptor**: A Stop hook blocks the exit and re-injects the original prompt along with the terminal error output.
-- **Verification**: The loop only terminates when a predefined "completion promise" (e.g., `<promise>COMPLETE</promise>`) is output by the model.
-
-### 5. Installation and Setup Text
-**Binary Installation command:**
-`curl -fsSL https://claude.ai/install.sh | bash`
-
-**Authentication**:
-Run `claude` and complete the OAuth flow via the browser to link your **Anthropic Pro/Max** subscription or API key.
-
-**Initialization**:
-Run `/init` in a new case folder to let Claude analyze the evidence structure and create a case-specific memory file.
+- Its example `settings.json` deny-list blocks `curl` and `wget`, but `scripts/install.sh` (Amendment A1 §3.2) and `scripts/l3-run-goldens.sh` (Spec #3 §4.4) both rely on curl. Treat that deny-list as illustrative, not a drop-in config — the repo's real permissions live in `.claude/settings.json` per Spec #4.
+- Its `~/.claude/skills/volatility/SKILL.md` pattern duplicates the typed MCP tool surface pinned in Spec #2 §6 (`services/mcp/src/tools/vol_pslist.rs`, `vol_malfind.rs`). Volatility is invoked as a subprocess from the Rust MCP server, not as a Claude skill.
+- Its `/ralph-loop` self-learning Stop hook is not defined in any spec, plan, or memory file in this repo. Background reading only; wiring it in needs its own design doc first.
