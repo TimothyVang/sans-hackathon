@@ -18,7 +18,11 @@ class MemoryRememberInput(BaseModel):
     kind: str = Field(..., description="One of: 'ioc', 'hash', 'ttp', 'hostname', 'finding_summary'.")
     key: str = Field(..., min_length=1)
     value: str = Field(..., min_length=1)
-    sha256: str = Field(..., pattern=r"^sha256:[0-9a-f]{64}$")
+    sha256: str = Field(
+        ...,
+        pattern=r"^sha256:[0-9a-f]{64}$",
+        description="Lowercase hex SHA-256 with 'sha256:' prefix, e.g. 'sha256:ab12...'.",
+    )
     ts: str | None = Field(default=None, description="UTC ISO-8601Z; defaults to now().")
     case_path: str | None = Field(default=None)
 
