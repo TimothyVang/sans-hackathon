@@ -13,6 +13,59 @@ import chokidar, { type FSWatcher } from "chokidar";
 import type { AgentEvent } from "@/lib/events";
 
 /**
+ * Default allow-listed case roots, resolved against the repo root
+ * (assumed to be `process.cwd()` — Next.js dev server runs from the
+ * repo root, and the dashboard is started via `pnpm --filter
+ * @findevil/web dev` from there). The route handler uses
+ * isAllowedCasePath() to reject `?case=` paths that don't sit inside
+ * one of these roots, closing the path-traversal hole flagged in PR
+ * #7's `route.ts` comment + this README's "Path allow-list" section.
+ *
+ *  - `goldens/`        committed test fixtures
+ *  - `tmp/auto-runs/`  find-evil-auto headless output
+ *  - `tmp/smoke/`      synthetic smoke output
+ *  - `test-forensics/` operator's local DFIR corpus (gitignored)
+ *
+ * Operators can extend this set without code changes via the
+ * `FINDEVIL_DASHBOARD_EXTRA_ROOTS` env var (path-delimiter-separated:
+ * `:` on POSIX, `;` on Windows — i.e. `path.delimiter`).
+ */
+const DEFAULT_ALLOWED_ROOTS = [
+  "goldens",
+  "tmp/auto-runs",
+  "tmp/smoke",
+  "test-forensics",
+];
+
+/**
+ * Return true iff `absPath` resolves to a location strictly INSIDE
+ * one of the allow-listed roots (default roots + any
+ * `FINDEVIL_DASHBOARD_EXTRA_ROOTS` entries). The trailing-separator
+ * check guards against the prefix-match foot-gun where, given an
+ * allowed root `/foo/bar`, a path like `/foo/baroot/case` would
+ * otherwise pass a naive `startsWith`.
+ *
+ * The path itself is allowed when it is exactly equal to a root
+ * (operators sometimes point the dashboard at the root directory
+ * itself for a smoke check).
+ */
+export function isAllowedCasePath(absPath: string): boolean {
+  const resolved = path.resolve(absPath);
+  const extraRaw = process.env.FINDEVIL_DASHBOARD_EXTRA_ROOTS ?? "";
+  const extras = extraRaw
+    .split(path.delimiter)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const allRoots = [...DEFAULT_ALLOWED_ROOTS, ...extras];
+  for (const root of allRoots) {
+    const rootAbs = path.resolve(root);
+    if (resolved === rootAbs) return true;
+    if (resolved.startsWith(rootAbs + path.sep)) return true;
+  }
+  return false;
+}
+
+/**
  * One yielded record. We surface the raw parsed JSON object plus a
  * `kind` tag because audit.jsonl carries lines OUTSIDE the
  * AgentEvent union too — `audit_append`, `acp_handoff`,
