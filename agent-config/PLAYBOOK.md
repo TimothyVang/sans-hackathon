@@ -16,6 +16,20 @@ When the analyst says **"investigate &lt;path&gt;"**, **"find evil in &lt;path&g
 
 ---
 
+## Cross-case memory hooks (A3 §2.2)
+
+Two MCP tools (`memory_recall`, `memory_remember`) and one structured-handoff tool (`pool_handoff`) wire into the standard sequence above. The supervisor's job is to make sure they fire at the right beats:
+
+- **Session start (supervisor):** resolve `MEMORY_STORE_PATH` once via the `Bash` tool, per the recipe in `AGENTS.md` § supervisor. Pass it to forked Pool A / Pool B / verifier subagents in their prompts so they don't re-derive it.
+- **Pre-Finding (each pool):** before each pool emits a Finding, it calls `memory_recall(store_path=MEMORY_STORE_PATH, query=<the IOC|hash|TTP|hostname>)`. A non-empty hit becomes a `prior_observations` field on the Finding and counts as a corroborating artifact class for the SOUL.md ≥2 rule. An empty hit is also informative — note "no prior observations" so the analyst sees recall happened.
+- **Post-judge (each pool, only for CONFIRMED Findings):** the originating pool calls `memory_remember(...)` with the IOC / hash / TTP that it would want a future investigation to recall. HYPOTHESIS-tier doesn't get remembered (the chain only keeps things the army stands behind).
+- **Verifier → judge (always):** after each verdict, the verifier calls `pool_handoff(from_role="verifier", to_role="judge", payload={finding_id, action, replay_record_sha256})` so the judge receives structured input rather than parsing natural-language supervisor messages.
+- **Pool A → Pool B (when relevant):** if Pool A surfaces evidence that the persistence is staging for exfil (e.g. a Run-key dropper that drops to `\Users\Public\`), it should `pool_handoff(from_role="pool_a", to_role="pool_b", payload={persistence_path, dropped_artifacts, ttps})` so Pool B can pick up the thread. Use the same `correlation_id` for every handoff about that finding.
+
+These hooks are additive — they do not change the per-evidence-type tool sequences below.
+
+---
+
 ## Evidence-type playbooks
 
 Pick the one whose extension matches the input. If multiple apply (e.g., a case directory containing both an `.e01` and a `.mem`), run them in order and let the case_id thread them together.
