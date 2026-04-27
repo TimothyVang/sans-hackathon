@@ -157,6 +157,9 @@ def test_stdio_initialize_and_list_tools(tmp_path: Path) -> None:
                 "detect_contradictions",
                 "judge_findings",
                 "correlate_findings",
+                "memory_remember",
+                "memory_recall",
+                "pool_handoff",
             ]
         )
 
