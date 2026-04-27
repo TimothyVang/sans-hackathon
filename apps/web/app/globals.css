@@ -1,0 +1,17 @@
+/* Tailwind v4 — CSS-first import. */
+@import "tailwindcss";
+
+/* NES.css — 8-bit pixel-art component library that powers the
+ * sprite + chrome aesthetic per Amendment A3 §1.2. Imported AFTER
+ * Tailwind so its component classes (.nes-container, .nes-btn,
+ * .nes-icon) win over generic Tailwind base styles. */
+@import "nes.css/css/nes.min.css";
+
+/* Pin the body to NES.css's pixel font (Press Start 2P would be
+ * the canonical pick; nes.css itself doesn't bundle it, so we
+ * stay on the system stack until the sprite-components PR ships
+ * the font asset). */
+body {
+  font-family: "Press Start 2P", system-ui, -apple-system, sans-serif;
+  background: #fff;
+}
