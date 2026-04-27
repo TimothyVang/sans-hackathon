@@ -27,6 +27,8 @@ The divergences (matching CLAUDE.md "Spec/code divergences"):
   §4  Rust MCP tool count is 12        bad: "11 typed Rust"
   §5  rmcp not a runtime dep           bad: live `rmcp = "=...` (uncommented)
   §6  swarm pkg = findevil_swarm       bad: python -m services.swarm.main
+  §7  A3 MemoryStore phrase-quote      doc-only; no shipped wrong-pattern
+  §8  A3 audit push: SSE not WebSocket bad: "ws": "..." dep in apps/web pkg
 """
 
 from __future__ import annotations
@@ -193,6 +195,30 @@ DIVERGENCES = [
             "findevil_swarm.main run' (matches "
             "scripts/swarm-start.sh:105). See CLAUDE.md "
             "'Spec/code divergences' §6."
+        ),
+    },
+    {
+        "id": "#8",
+        "label": "A3 audit-log push uses SSE, not WebSocket",
+        # Match a `"ws"` dep in any active package.json — the most
+        # likely re-introduction shape if a future executor follows
+        # A3 plan §4.2's stale "WebSocket upgrade" instruction. The
+        # `ws` npm package is the de-facto WebSocket-server lib for
+        # Node; adding it back to apps/web/package.json is the canary.
+        # `\b"ws"\s*:\s*"` matches the JSON dep line; the leading \b
+        # ensures we don't match `"aws"` / `"news"` / `"awscli"` etc.
+        "regex": re.compile(r'(?<![A-Za-z0-9_-])"ws"\s*:\s*"'),
+        "allowed_in_path": (),
+        "remediation": (
+            "PR #7 (sha 281d26f) shipped Server-Sent Events instead "
+            "of WebSocket: data flow is strictly server->client, SSE "
+            "is App-Router-native (no custom server.ts), all target "
+            "browsers support SSE. Live handler is "
+            "apps/web/app/api/audit/route.ts (text/event-stream + "
+            "15s :keepalive); iterator is apps/web/lib/audit-tail.ts. "
+            "Do not add the 'ws' npm dep without a spec amendment "
+            "naming a concrete client->server message. See CLAUDE.md "
+            "'Spec/code divergences' SSE-not-WebSocket entry."
         ),
     },
 ]
