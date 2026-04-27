@@ -262,16 +262,24 @@ class MemoryStore:
         kind: Optional[str] = None,
         limit: int = 10,
     ) -> list[RecallHit]:
+        # FTS5 requires special characters (., @, -, etc.) to be phrase-quoted —
+        # raw "evil.com" or "T1059.001" otherwise triggers
+        # `sqlite3.OperationalError: fts5: syntax error near "."`.
+        fts_query = '"' + query.replace('"', '""') + '"'
         sql = (
             "SELECT case_id, kind, key, value, sha256, ts, "
             "       bm25(memories) AS score "
             "FROM memories "
             "WHERE memories MATCH ? "
         )
-        params: list = [query]
+        params: list = [fts_query]
         if kind is not None:
             sql += "AND kind = ? "
             params.append(kind)
+        # Fetch up to `limit` ordered by raw BM25 only; final sort by combined
+        # confidence (relevance * decay) is done in Python below so decay can
+        # break BM25 ties (which `ORDER BY` would otherwise return in
+        # insertion order).
         sql += "ORDER BY score LIMIT ?"
         params.append(limit)
 
@@ -295,6 +303,8 @@ class MemoryStore:
                     confidence=relevance * decay,
                 )
             )
+        # Re-rank by combined confidence descending so decay breaks BM25 ties.
+        out.sort(key=lambda h: h.confidence, reverse=True)
         return out
 
     def close(self) -> None:
