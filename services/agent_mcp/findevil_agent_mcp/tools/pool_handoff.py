@@ -62,7 +62,9 @@ SPEC = ToolSpec(
         "structured findings or context to another, distinct from natural-language "
         "supervisor messaging. The correlation_id lets downstream roles thread replies. "
         "Returns the envelope echo so the caller can record the correlation_id for "
-        "later replies."
+        "later replies. "
+        "On error: verify audit_path's parent directory exists and is writable, and "
+        "that no concurrent process is appending to the same file."
     ),
     input_model=PoolHandoffInput,
     output_model=PoolHandoffOutput,

@@ -63,10 +63,15 @@ SPEC = ToolSpec(
         "Query the cross-case FTS5 memory store for prior-case observations matching a search. "
         "Use this BEFORE proposing a finding to check whether you've seen this IOC/hash/TTP "
         "in a previous investigation — reduces re-investigation hallucination on patterns you "
-        "already know. Hermes-pattern (A3 §2.2). Hits are returned ordered by "
-        "BM25 relevance × 90-day exponential decay. The kind argument optionally filters to "
-        "one of: 'ioc', 'hash', 'ttp', 'hostname', 'finding_summary'. Empty hits list means "
-        "no prior cases matched — that's a useful signal too."
+        "already know. Hermes-pattern (A3 §2.2). "
+        "**Query semantics: exact phrase match.** The query string is phrase-quoted before "
+        "being passed to FTS5 MATCH (so 'evil.com' or 'T1059.001' match safely without "
+        "tripping on the dot). Multi-word queries become exact-phrase searches: pass "
+        "'powershell' alone, NOT 'powershell encoded' (which would only hit rows containing "
+        "that literal two-word phrase). Hits are returned ordered by BM25 relevance × "
+        "90-day exponential decay. The kind argument optionally filters to one of: 'ioc', "
+        "'hash', 'ttp', 'hostname', 'finding_summary'. Empty hits list means no prior cases "
+        "matched — that's a useful signal too."
     ),
     input_model=MemoryRecallInput,
     output_model=MemoryRecallOutput,
