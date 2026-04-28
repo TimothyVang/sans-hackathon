@@ -23,7 +23,7 @@ or more concrete improvements to the spec or brief.
 | 5 | Autopsy Timeline (new — replaces dropped Sigstore Rekor) | https://sleuthkit.org/autopsy/timeline.php | landed | Two display modes (summary stacked-histogram + detail) + clustering of similar events + filter sidebar (Hide Known Files etc.). | (this commit) |
 | 6 | ProofSnap evidence verification (was iter-4) | https://getproofsnap.com/verify/index.html | landed | "What Gets Verified" 4-card grid + step-by-step verification flow + FRE 902 / eIDAS / ISO 27037 standards-compliance footer cards. Affidavit page restructure. | (this commit) |
 | 7 | Wikipedia diff visualization (was iter-5) | https://en.wikipedia.org/wiki/Help:Diff | landed | Side-by-side line-number-anchored diff with color-coded additions/removals + per-revision metadata header. Forensically defensible: revision history IS the canonical "audit trail of changes" pattern. Resurrects the Expected vs Actual idea rejected in iter-2 in a domain-aligned way. | (this commit) |
-| 8 | NES.css legitimate examples (was iter-8) | https://nostalgic-css.github.io/NES.css/ | pending | — | — |
+| 8 | NES.css legitimate examples (was iter-8) | https://nostalgic-css.github.io/NES.css/ | landed | Confirms iter-3's split: NES.css for `/` (analyst playful), forensic-tool aesthetic for /judge. Catalogs the NES.css component vocabulary the Phase 5/6 brief should pin. | (this commit) |
 | ~ | ~~Sigstore Rekor search~~ | ~~https://search.sigstore.dev/~~ | **DROPPED** | Same crypto-coding risk as mempool.space (transparency log for software-supply-chain attestation reads as "supply-chain dev tool" not "DFIR forensics"). Pattern of "minimalist log-entry detail view" can be re-derived from forensic tools (Autopsy event detail) instead. |
 | ~ | ~~The Pudding scrollytelling~~ | ~~https://pudding.cool~~ | **DROPPED** | Narrative-pattern reference no longer needed — Iter 1 (Replay.io annotations) already covers the storytelling gap; spec §4.1 has scrollable narrative via annotation pins. |
 
@@ -526,3 +526,57 @@ far the breakage propagated. That's more pedagogically
 powerful than a red badge with a sentence diagnostic.
 
 **Commit:** `docs(design): iter-7 — Wikipedia-style diff for the tamper flow`
+
+---
+
+### Iter 8 — NES.css legitimate examples
+
+**References captured:**
+- `screenshots/iter-8/ref/nescss-home.png` — official NES.css
+  documentation/showcase. Pixel-art components rendered against clean
+  information architecture: dotted-border containers with title
+  labels, 5-color button palette, 4-color progress bars,
+  avatar/character badges, dialog balloons, member cards.
+
+**Ours:** dashboard baseline reused (already uses NES.css).
+
+**What this iteration confirms (no new improvements):**
+
+1. **iter-3's split is correct.** NES.css works on its own showcase
+   site because it uses pixel art as *decoration over* clean
+   information architecture: tables and navigation use clean sans-
+   serif; pixel art is icons + flourishes. This is the same
+   principle the Phase 5/6 brief states ("pixel art for decoration,
+   not data"). For our project, that means NES.css is right for
+   the analyst dashboard at `/` (the playful surface) but wrong
+   for the affidavit page (the legally-coded surface) — exactly
+   the split iter-3 codified.
+
+2. **Component vocabulary the Phase 5/6 brief should pin.** From
+   the showcase, the specific NES.css idioms appearing on `/` are:
+   `.nes-container.with-title.is-rounded`, `.nes-input`,
+   `.nes-btn` (default/primary/success/warning/error variants),
+   `.nes-progress`, `.nes-avatar`, `.nes-balloon`,
+   `.nes-text.is-primary`. The brief currently says "use NES.css"
+   without enumerating; pinning the actual vocabulary helps the
+   design pass.
+
+3. **Member-card layout = sprite-card template.** The NES.css
+   member-card layout (avatar left, name + role text right) is
+   a clean structural template for our role sprites at `/`.
+   The Phase 5/6 brief's three-layer bead anatomy could optionally
+   be applied here too, but the existing card structure is fine.
+
+**Improvements applied:**
+1. Phase 5/6 brief §2.2 — pin the specific NES.css component
+   vocabulary used by the dashboard. Quote the showcase URL as
+   the canonical reference.
+2. Phase 5/6 brief — add a one-line note that NES.css is for `/`
+   only; `/judge` adopts a different aesthetic per the Judge Mode
+   spec §0.1.
+
+**Decision:** Apply both. Low-leverage but tightens the brief's
+guidance for the design pass. iter-8 is the natural closing
+iteration — a confirmation pass rather than a new direction.
+
+**Commit:** `docs(design): iter-8 — NES.css component vocabulary pinning + aesthetic-split confirmation`
