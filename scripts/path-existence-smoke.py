@@ -129,6 +129,16 @@ ALLOW_PATTERNS: tuple[re.Pattern[str], ...] = (
     # are scheduled as week-7 polish bonus, not on the critical
     # path - docs reference them as future surfaces).
     re.compile(r"^apps/(web|mcp-widgets)(/|$)"),
+    # Future-deployment paths from Amendment A4 (Managed Agents
+    # production runtime).  A4 is purely additive future work,
+    # not on the hackathon critical path - the spec at
+    # docs/superpowers/specs/2026-04-27-amendment-a4-managed-
+    # agents-runtime.md documents these as paths the implementation
+    # WILL create when adopted by an organization wanting hosted
+    # durability.  See A4 §4.5 for the full file structure.
+    re.compile(r"^services/mcp_http(/|$)"),
+    re.compile(r"^services/managed_agent(/|$)"),
+    re.compile(r"^scripts/find-evil-managed$"),
     # Dropped-per-Amendment-A2 modules deliberately quoted in
     # docs to document what was removed (the L0 amendment-a2-
     # guard fails CI on their return).

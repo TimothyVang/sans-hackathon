@@ -58,14 +58,15 @@ Read these in precedence order. Later documents override earlier ones only where
 2. **`docs/superpowers/specs/2026-04-23-amendment-option-b-claude-code-mode.md`** — **amendment A1, active.** Overrides the swarm's credential/budget architecture. LiteLLM proxy, `services/swarm/budget.py`, and USD caps are removed; workers use the user's Claude Code subscription via `claude` CLI. The Product accepts three credential modes (`CLAUDE_CODE_OAUTH_TOKEN`, interactive `~/.claude/` session, `ANTHROPIC_API_KEY`).
 3. **`docs/superpowers/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md`** — **amendment A2, active.** Drops the custom Python orchestrator (`graph.py`, `api.py`, `cli.py`, `supervisor.py`, specialists/) — Claude Code IS the orchestrator. Adds `services/agent_mcp/` (Python MCP server wrapping M2 + M4 stacks) and `.mcp.json` at repo root registering both MCP servers. `apps/web/` Next.js SPA + `apps/mcp-widgets/` deferred to week-7 polish bonus, NOT on the critical path.
 4. **`docs/superpowers/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md`** — **amendment A3, active.** Overrides A2 §2.1 by un-deferring `apps/web/` (a NES.css live dashboard reading the audit JSONL hash chain over WebSocket; 5 sprites mapping 1:1 to `agent-config/AGENTS.md` roles). Adds three tools to the existing `findevil-agent-mcp` server: `memory_remember` + `memory_recall` (Hermes-pattern FTS5 cross-case memory) and `pool_handoff` (IBM Agent Communication Protocol envelope, recorded into the audit JSONL). Originated from the repo-root `braindump` file. `apps/mcp-widgets/` remains deferred per A2 §2.1.
-5. **Per-subsystem specs** (in `docs/superpowers/specs/`):
+5. **`docs/superpowers/specs/2026-04-27-amendment-a4-managed-agents-runtime.md`** — **amendment A4, future-deployment design (NOT on the hackathon critical path).** Adds a third deployment mode alongside A1/A2: Find Evil! the agent running on Anthropic's Managed Agents infrastructure (durable per-session containers, auto crash-recovery, multi-tenant). Purely additive — A1/A2/A3 are unchanged; the SANS submission still ships against the local Claude Code path. Adds `services/mcp_http/` (HTTP shims around the existing stdio MCP servers) + `services/managed_agent/` (agent + environment + session driver) + `scripts/find-evil-managed`. Cost model conflicts with A1 (Managed Agents is metered, A1 is subscription) — A4 documents the tradeoff explicitly and does not deprecate A1. Origin: user redirect 2026-04-27. Implementation deferred until post-submission adoption by an organization wanting hosted durability.
+6. **Per-subsystem specs** (in `docs/superpowers/specs/`):
    - `2026-04-23-layered-test-sandbox-design.md` — Spec #3 (L0-L3 sandbox; blocks all other work).
    - `2026-04-24-autonomous-build-swarm-design.md` — Spec #1 (build swarm; interpret through A1).
    - `2026-04-25-the-product-design.md` — Spec #2 (the DFIR tool judges run).
    - `2026-04-26-orchestration-glue-design.md` — Spec #4 (GHA CI; `budget-guard.yml` is a no-op under A1 unless `ANTHROPIC_API_KEY` is set).
-6. **Implementation plans** (in `docs/superpowers/plans/`) — one per spec, each step written as a TDD checkbox with the exact failing test → implement → commit sequence.
-7. **`BUILD_PLAN_v2.md`** — 9-week roadmap and the v2 architecture the swarm works against. Still authoritative for DFIR fundamentals, rubric analysis, and the demo script.
-8. **`Find_Evil_Research_and_Build_Plan.docx`** — v1 research doc; authoritative only for what v2 doesn't contradict.
+7. **Implementation plans** (in `docs/superpowers/plans/`) — one per spec, each step written as a TDD checkbox with the exact failing test → implement → commit sequence.
+8. **`BUILD_PLAN_v2.md`** — 9-week roadmap and the v2 architecture the swarm works against. Still authoritative for DFIR fundamentals, rubric analysis, and the demo script.
+9. **`Find_Evil_Research_and_Build_Plan.docx`** — v1 research doc; authoritative only for what v2 doesn't contradict.
 
 ## Repository layout (current)
 
@@ -270,3 +271,5 @@ The full Protocol SIFT integration material lives at `docs/references/protocol-s
 - Its example `settings.json` deny-list blocks `curl` and `wget`, but `scripts/install.sh` (Amendment A1 §3.2) and `scripts/l3-run-goldens.sh` (Spec #3 §4.4) both rely on curl. Treat that deny-list as illustrative, not a drop-in config — the repo's real permissions live in `.claude/settings.json` per Spec #4.
 - Its `~/.claude/skills/volatility/SKILL.md` pattern duplicates the typed MCP tool surface pinned in Spec #2 §6 (`services/mcp/src/tools/vol_pslist.rs`, `vol_malfind.rs`). Volatility is invoked as a subprocess from the Rust MCP server, not as a Claude skill.
 - Its `/ralph-loop` self-learning Stop hook is not defined in any spec, plan, or memory file in this repo. Background reading only; wiring it in needs its own design doc first.
+
+https://www.anthropic.com/engineering/managed-agents
