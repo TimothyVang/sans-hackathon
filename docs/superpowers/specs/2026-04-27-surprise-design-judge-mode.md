@@ -13,6 +13,40 @@ route under `/judge` that re-uses the same SSE + audit-chain primitives.
 
 ---
 
+## 0. Forensic framing (read first)
+
+This is a **forensic tool** for the SANS Find Evil! 2026 hackathon. Where
+the design references cryptographic primitives (audit hash chain, sigstore
+attestation, OpenTimestamps anchor), the framing is always
+**crypto-forensics** — the discipline of using cryptographic constructs
+to establish chain of custody, evidence integrity, and self-authenticating
+trust for forensic artifacts. This is the same epistemic territory as
+RFC 3161 trusted timestamping, FRE 902(14) self-authenticating electronic
+evidence, and the National Institute of Standards' guidance on forensic
+audit trails.
+
+**It is not a crypto-trading project, a blockchain explorer, or a
+financial primitive.** Bitcoin appears only as the 5th link of the
+chain-of-custody attestation chain — used as a write-once distributed
+timestamp authority via the OpenTimestamps protocol. The Bitcoin block
+height appearing in a verified manifest is forensic metadata, not a
+financial reading.
+
+When the spec describes UI for the cryptographic chain (HashChainBadge,
+AffidavitCard, OTS receipt, sigstore certificate), the visual language
+is **forensic and courtroom-evidentiary** — federal-court stamp seals,
+chain-of-custody log aesthetics, expert-witness affidavit treatment.
+NOT exchange-dashboard, NOT DeFi, NOT block-explorer aesthetics.
+
+This framing is load-bearing for the Find Evil! pitch. A judge who
+reads the dashboard as "crypto-trading" rather than "DFIR with
+crypto-forensic chain of custody" is confused at the level of identity,
+not aesthetic preference. Iter 2 of the design-iteration loop
+(mempool.space) was rejected on exactly this ground — see
+`docs/design-briefs/surprise-design-iteration-log.md` Iter 2 entry.
+
+---
+
 ## 1. The pitch (90 seconds)
 
 The dashboard at `/` is for analysts watching an investigation run. Judge
@@ -31,9 +65,13 @@ the existing dashboard does not do:
    correctness is the ability to break it on demand.
 
 3. **A stamped court affidavit view.** The verified manifest renders as a
-   federal-court-style affidavit with sigstore certificate ID + OpenTimestamps
-   Bitcoin block height + timestamp + Merkle root + signature digest.
-   Materializes the FRE 902(14) framing into something visually concrete.
+   federal-court-style affidavit with the chain-of-custody primitives:
+   sigstore certificate ID, trusted-timestamp anchor (OpenTimestamps
+   over Bitcoin — used here as a write-once timestamp authority, NOT
+   as a financial primitive — see §0 forensic framing), Merkle root,
+   signature digest. Materializes the FRE 902(14) self-authenticating-
+   evidence framing into something visually concrete: the kind of
+   document an expert witness would attach to a deposition.
 
 The pitch in one line: *judges do not have to take our word for any
 cryptographic claim — they can scrub the chain, break it, and read the
@@ -47,7 +85,7 @@ affidavit.*
 | 2. IR Accuracy | Reasoning split shows Pool A / Pool B side-by-side; contradictions surface as red highlights at the moment they emerged. The CONFIRMED / INFERRED / HYPOTHESIS distinction is annotated per Finding. |
 | 3. Breadth/Depth | Scrubber timeline shows artifact-class density per beat; >2 artifact classes corroborated → green chain link; <2 → yellow warning. |
 | 4. Constraint Implementation | Tamper-replay demonstrates typed-surface enforcement live: judge tries to inject `execute_shell` via a doctored audit line; verifier MCP tool rejects with the exact error code. |
-| 5. Audit Trail Quality | The whole route IS criterion 5. Scrubber + tamper + affidavit together make the five-link chain (sha256 → audit → Merkle → sigstore → Bitcoin) concrete and inspectable. |
+| 5. Audit Trail Quality | The whole route IS criterion 5. Scrubber + tamper + affidavit together make the five-link chain-of-custody attestation (sha256 → audit prev_hash chain → Merkle root → sigstore identity → trusted timestamp anchor) concrete and inspectable. |
 | 6. Usability and Documentation | Judge route includes inline links to `agent-config/JUDGING.md` and `docs/cryptographic-attestation.md`; deep-linkable URL `/?case=...&seq=42` so judges can share specific moments. |
 
 ## 3. Scope
@@ -157,8 +195,11 @@ rubric criteria it lifts.
   - Case metadata: case_id, image_hash, evidence path
   - Manifest summary: leaf count, Merkle root, signature digest
   - Sigstore certificate: subject, issuer, transparency log URL
-  - OpenTimestamps receipt: Bitcoin block height, block time, calendar
-    URL
+  - Trusted-timestamp anchor (OpenTimestamps): block height + block
+    time of the Bitcoin block in which the manifest's Merkle root was
+    timestamped (used here as a write-once timestamp authority for
+    chain-of-custody — *not* as a financial reference; see §0).
+    Plus the calendar URL for third-party re-verification.
   - "Verified locally" stamp with timestamp of verification
   - QR code link to opentimestamps.org block + sigstore tlog entry
 - Visual treatment: serif type, gold-ink stamp, watermark, signature line
@@ -268,7 +309,9 @@ goldens/judge-case/                  apps/web/                                Br
 - `audit.jsonl` (~50-200 events, captured from a real SRL-2018 host)
 - `run.manifest.json` (signed)
 - `sigstore.crt` (Fulcio cert)
-- `manifest.ots` (OTS receipt; Bitcoin-anchored within ~1 hour of stamping)
+- `manifest.ots` (OpenTimestamps receipt; matures into a Bitcoin-anchored
+  trusted timestamp within ~1 hour of stamping — chain-of-custody
+  primitive, not a financial artifact)
 - `case_meta.json` (display-friendly summary: hostname, evidence type,
   timeline summary)
 - `README.md` (provenance: which fleet run, which host, why this case is
@@ -287,8 +330,9 @@ into `goldens/judge-case/`, regenerates `case_meta.json`. Re-runnable.
 - **Sigstore cert missing:** AffidavitCard renders a "verified by local
   Merkle root only" notice instead of the sigstore subject line. Affidavit
   remains valid; just narrower in attestation scope.
-- **OTS receipt missing OR not yet matured:** AffidavitCard renders "Bitcoin
-  anchor pending — receipt was stamped at <ts>; matures within ~1 hour" with
+- **OTS receipt missing OR not yet matured:** AffidavitCard renders
+  "trusted-timestamp anchor pending — receipt was stamped at <ts>;
+  matures within ~1 hour into a Bitcoin-anchored timestamp" with
   a refresh button.
 - **Tamper-mode body > 1MB:** `/api/judge/verify` rejects with 413; client
   shows "audit log too large for in-browser tamper mode; use scripts/agent-mcp-smoke.py
