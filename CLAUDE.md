@@ -25,9 +25,29 @@ The investigation flow is roughly: `case_open` → split into Pool A (persistenc
 
 ## Project state
 
-This is the SANS **Find Evil!** hackathon submission (deadline **2026-06-15 22:45 CDT**). All four subsystems exist and the smoke suite is **fully green** (14/14 in `bash scripts/run-all-smokes.sh` as of 2026-04-27). The Product layer is feature-complete through Amendment A3 Phase 4: **25 MCP tools** (12 Rust DFIR + 13 Python crypto/ACH/memory/ACP), the agent-config prompts know when to call them, the audit-log SSE tail powers a Next.js + Tailwind v4 + NES.css dashboard scaffold at `apps/web/`. The five pixel-art sprite components (Phase 5) and the AuditBeadString chrome (Phase 6) remain gated on a Claude Design prototyping pass per A3 §1.2. The 0-hard-blocker state was reached when PR #4 cut the pre-A2 `find-evil` CLI wrapper + `.deb` packaging.
+This is the SANS **Find Evil!** hackathon submission (deadline **2026-06-15 22:45 CDT**). All four subsystems exist and the smoke suite is **fully green** (13/13 in `bash scripts/run-all-smokes.sh` as of 2026-04-27). The Product layer is feature-complete through Amendment A3 Phase 4: **25 MCP tools** (12 Rust DFIR + 13 Python crypto/ACH/memory/ACP), the agent-config prompts know when to call them, the audit-log SSE tail powers a Next.js + Tailwind v4 + NES.css dashboard scaffold at `apps/web/`. The five pixel-art sprite components (Phase 5) and the AuditBeadString chrome (Phase 6) remain gated on a Claude Design prototyping pass per A3 §1.2. The 0-hard-blocker state was reached when PR #4 cut the pre-A2 `find-evil` CLI wrapper + `.deb` packaging.
 
 Before writing code of your own, **read the relevant spec and plan** for the subsystem you are touching. The specs define exact file paths, pinned dependency versions, and TDD task sequences; diverging from them silently creates integration mismatches with other subsystems. When a spec and the current code disagree, the **code + its committed pin files win** — see "Spec/code divergences" below for known cases. `CHANGELOG.md` summarizes per-feature; `git log --oneline -20` for recent commit context.
+
+## In-flight design work (post-A3, not yet implemented as code)
+
+Recent design work has produced specs + plans that are **not yet implemented**. A future session picking up the project should read these before deciding what to build:
+
+**Judge Mode + Tamper Replay** — a new `/judge` route built specifically for the SANS judge (separate from `/`'s analyst dashboard). Three sub-routes: a forensic-notebook replay with annotation pins + filters + clustering, a byte-flip tamper sandbox with Wikipedia-style diff + hash-chain propagation cascade, and a court-admissible affidavit with FRE 902(14) + ISO 27037 + NIST SP 800-86 standards-compliance citations.
+- **Spec:** `docs/superpowers/specs/2026-04-27-surprise-design-judge-mode.md` (~700 lines, 12 sections, 5 open questions in §12)
+- **Plans:** `docs/superpowers/plans/2026-04-27-judge-mode-foundation-replay.md` (Plan A — 17 TDD tasks) + `docs/superpowers/plans/2026-04-27-judge-mode-tamper.md` (Plan B — 11 TDD tasks). Plan C (the affidavit sub-route) is parked pending user direction.
+- **Forensic framing (load-bearing):** `/judge` adopts a forensic-tool aesthetic (Velociraptor + Timesketch references) deliberately distinct from `/`'s NES.css playful surface. See spec §0.1.
+
+**Autonomous design-iteration loop output** — an 8-iteration loop (2026-04-27) compared the design against best-in-class references via Playwright screenshots and committed comparison + improvement notes. Reference set: Replay.io (annotations as first-class), Velociraptor + Timesketch (forensic notebook), Autopsy (clustering + filters), ProofSnap (court-admissible structure), Wikipedia diffs (tamper visualization), NES.css legitimate examples. Iteration 2 (mempool.space) was REJECTED on user direction — *"focus on forensics; if crypto-forensics is involved, label it"* — and the spec's §0 forensic framing call-out exists because of that redirect.
+- **Iteration log:** `docs/design-briefs/surprise-design-iteration-log.md` — comparison + improvement per iteration
+- **Summary:** `docs/design-briefs/surprise-design-iteration-summary.md` — final reference table + components specced
+- **Exploration brief:** `docs/design-briefs/surprise-design-exploration.md` — original 12-candidate brainstorm pool
+- **Phase 5/6 sprite brief:** `docs/design-briefs/phase-5-6-sprite-design-brief.md` — Claude Design prototyping handoff
+- **Screenshot pairs:** `docs/design-briefs/screenshots/iter-{1..8}/{ours,ref}/*.png` (committed to repo)
+
+**Amendment A4 — Managed Agents production runtime** — third deployment mode (alongside A1 subscription + A2 Claude Code) for organizations wanting hosted durability. PURELY ADDITIVE; A1/A2/A3 unchanged. Implementation deferred until post-submission adoption. Spec at `docs/superpowers/specs/2026-04-27-amendment-a4-managed-agents-runtime.md` — 10 sections, 5 open questions, full file structure under §4.5 (planned `services/mcp_http/`, `services/managed_agent/`, `scripts/find-evil-managed`).
+
+**What this means for a future session:** the hackathon submission is feature-complete on the agent + MCP + cryptographic-attestation surfaces; the in-flight work is dashboard polish (Judge Mode) and a future-deployment design (A4). When the user says "build the surprise design," that's Plan A → B → C. When the user says "deploy as a service," that's A4. Otherwise, treat the existing investigation flow (`scripts/find-evil` + `scripts/find-evil-auto` + `scripts/find-evil-sift`) as the canonical Product.
 
 ## External reference clones (never ship, never edit, never import)
 
