@@ -131,7 +131,10 @@ affidavit.*
   - `FilterSidebar.tsx` — **left-rail forensic filters** (Iter 5 / Autopsy-derived). Multi-select toggle group: hide bookkeeping events, hide HYPOTHESIS-tier findings, filter by pool (A / B / merged), filter by MITRE technique, filter by tool name. Default-on filter "Hide low-value events" (named after Autopsy's "Hide Known Files" idiom) collapses bookkeeping + HYPOTHESIS so the judge sees only CONFIRMED + INFERRED findings on landing; one click expands to the full chain.
   - `SummaryModeToggle.tsx` — **dual display mode** (Iter 5 / Autopsy-derived). Top-of-NotebookView segmented control: "Summary" (stacked-bar histogram of kind-density over seq buckets, color-coded by the §2.4 kind palette, click bar to zoom into that window in detail mode) | "Detail" (the per-row notebook view).
   - `TamperButton.tsx`
-  - `AffidavitCard.tsx`
+  - `AffidavitCard.tsx` — **5-card "What Gets Verified" grid** (Iter 6 / ProofSnap-derived). One card per chain link with pass/fail badge + actual digest.
+  - `StandardsComplianceRow.tsx` — **FRE 902(14) / ISO 27037 / NIST SP 800-86 row** (Iter 6 / ProofSnap-derived).
+  - `VerificationStepsList.tsx` — **4-step "verify yourself" guide** (Iter 6 / ProofSnap-derived).
+  - `AffidavitFAQ.tsx` — **inline FAQ** (Iter 6 / ProofSnap-derived).
   - `ReasoningSplit.tsx`
 
 **Agent annotation kinds (Iter 1 / Replay.io-derived):** during a run,
@@ -249,20 +252,80 @@ rubric criteria it lifts.
 
 ### 4.3 Affidavit flow
 
-- Page renders a single stamped document with:
-  - Title: "Audit Affidavit — Find Evil! Investigation"
-  - Case metadata: case_id, image_hash, evidence path
-  - Manifest summary: leaf count, Merkle root, signature digest
-  - Sigstore certificate: subject, issuer, transparency log URL
-  - Trusted-timestamp anchor (OpenTimestamps): block height + block
-    time of the Bitcoin block in which the manifest's Merkle root was
-    timestamped (used here as a write-once timestamp authority for
-    chain-of-custody — *not* as a financial reference; see §0).
-    Plus the calendar URL for third-party re-verification.
-  - "Verified locally" stamp with timestamp of verification
-  - QR code link to opentimestamps.org block + sigstore tlog entry
-- Visual treatment: serif type, gold-ink stamp, watermark, signature line
-- Print-friendly CSS so judges can save it as PDF
+**Iter 6 / ProofSnap-derived structure.** The affidavit is not a
+single stamped document — it's a publicly-inspectable verification
+report with four sections, each its own testable component:
+
+**(1) Hero header** — serif title "Audit Affidavit — Find Evil!
+Investigation" with a legal-citation subtitle: *"Self-authenticating
+electronic evidence under Federal Rule of Evidence 902(14); chain
+of custody documented per ISO/IEC 27037:2012."* Case metadata
+table below: `case_id`, `image_hash` (sha-256 of the original
+evidence), evidence path, investigation start/end timestamps.
+
+**(2) "What Gets Verified" — 5-card grid** (`AffidavitCard.tsx`).
+One card per chain link, each with icon + title + pass/fail badge
++ the actual digest the judge can inspect:
+
+  - sha-256 image hash (the foundation: evidence file integrity)
+  - Audit prev_hash chain (each line cites the previous; broken
+    links are caught here)
+  - Merkle root over canonical-JSON audit lines (set membership)
+  - Sigstore signature (Fulcio cert subject + Rekor transparency
+    log URL — non-repudiable identity attestation)
+  - Trusted-timestamp anchor (OpenTimestamps over Bitcoin — block
+    height + time as the write-once timestamp authority for chain-
+    of-custody; see §0 — *not* a financial reference)
+
+**(3) Standards-compliance row — 3 cards**
+(`StandardsComplianceRow.tsx`). Each card cites a standard and
+explains how the manifest satisfies it:
+
+  - **FRE 902(14)** — self-authenticating electronic evidence:
+    typed-surface accuracy + trusted timestamp = both prongs met.
+  - **ISO/IEC 27037:2012** — digital evidence handling:
+    identification, collection, acquisition, preservation each
+    documented in the audit chain.
+  - **NIST SP 800-86** — forensic integration into incident
+    response: case_open → tool_call_id → finding citation chain
+    follows the recommended audit-trail pattern.
+
+**(4) "How to verify this yourself" — 4-step guide**
+(`VerificationStepsList.tsx`). Numbered badges with the exact
+command + expected output:
+
+  1. **Download** manifest + OTS receipt + sigstore cert from
+     this page footer.
+  2. Run **`manifest_verify`** — direct library call recipe in
+     `docs/cryptographic-attestation.md` § "How a third party
+     verifies offline" (no internet required after download).
+  3. Run **`ots verify`** against the OpenTimestamps calendar —
+     confirms Bitcoin-block-height anchor.
+  4. **Compare sigstore subject** against the expected identity
+     (the Find Evil! release identity).
+
+**(5) FAQ — brief inline answers** (`AffidavitFAQ.tsx`):
+
+  - *Is this admissible in court?* — Self-authenticating under FRE
+    902(14); admissibility ultimately determined by the court.
+  - *Do I need internet to verify?* — No, after manifest + OTS +
+    cert are downloaded.
+  - *What if the OTS receipt isn't yet matured?* — Receipt becomes
+    Bitcoin-anchored within ~1 hour of stamping; calendar URL is
+    valid immediately.
+  - *Can I tamper with the manifest to test the verifier?* — Yes,
+    use `/judge/tamper` for the live break-it-on-demand flow.
+  - *What hash algorithm + signature scheme?* — SHA-256 +
+    sigstore (Fulcio Ed25519 / RSA-256 cert chain).
+
+**Visual treatment:** light theme + serif typography (more formal
+than `/judge/replay` which uses Velociraptor-style monospace tables
+— the affidavit is the most legally-coded surface in the project).
+Print-friendly CSS so judges can save as PDF.
+
+**QR codes** in the page footer link to: opentimestamps.org block
+verification + sigstore Rekor tlog entry. Lets a judge scan from
+their printed copy and verify on a phone.
 
 ## 5. Architecture
 
