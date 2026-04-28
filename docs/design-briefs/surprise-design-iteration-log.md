@@ -17,7 +17,7 @@ or more concrete improvements to the spec or brief.
 | Iter | Reference | URL | Status | Headline finding | Commit |
 |---|---|---|---|---|---|
 | 1 | Replay.io scrubber | https://www.replay.io/ | landed | Annotations are first-class citizens, not viewer affordances. Re-design Scrubber.tsx as **annotation-first**. | (this commit) |
-| 2 | mempool.space block status | https://mempool.space | pending | — | — |
+| 2 | mempool.space block status | https://mempool.space | **REJECTED** | User redirect: "focus on forensics; if crypto-forensics is involved, label it." mempool.space reads as crypto-trading, not DFIR. Spec/brief edits reverted; Bitcoin-framing language rewritten as crypto-FORENSICS. | (redirect commit) |
 | 3 | Sigstore Rekor search | https://search.sigstore.dev/ | pending | — | — |
 | 4 | ProofSnap verification | https://getproofsnap.com/verify/index.html | pending | — | — |
 | 5 | Wikipedia diff visualization | https://en.wikipedia.org/wiki/Help:Diff | pending | — | — |
@@ -95,3 +95,54 @@ the agent already emits these as audit-chain records; we just need
 explicit pin rendering.
 
 **Commit:** see git log for `docs(design): iter-1 — Replay.io annotations`
+
+---
+
+### Iter 2 — mempool.space block status — **REJECTED**
+
+**References captured (kept on disk for the audit trail):**
+- `screenshots/iter-2/ref/mempool-home.png` — main dashboard
+- `screenshots/iter-2/ref/mempool-block-detail.png` — Expected vs
+  Actual block treemap with delta percentages
+
+**Ours captured:**
+- `screenshots/iter-2/ours/dashboard.png` — iter-1 baseline reused
+- `screenshots/iter-2/ours/debug.png` — `/debug` route raw-events view
+
+**Why rejected:** user redirect — *"i want to focus it on forensics. if
+you are including crypto forensics make it known."*
+
+The mempool.space reference brought genuine UX patterns (per-bead
+multi-layer anatomy, expected-vs-actual diff visualization, percentage
+health pills, "live → confirmed" animation) but the **source citation
+itself was the problem**: a SANS DFIR judge looking at a dashboard
+benchmarked against a Bitcoin block explorer reads "this is a crypto
+project," not "this is a forensic tool." The patterns can be re-derived
+from forensic references (Wikipedia diff view in Iter 5 for the
+expected/actual diff; Velociraptor + Timesketch in Iter 6 for the
+multi-layer event tile). No spec-level loss from the rejection.
+
+**Lesson encoded in this log for future iterations:** when a reference
+brings useful UX patterns but its *domain framing* is misaligned with
+the project's identity, the right move is rejection + re-derivation
+from a domain-aligned reference, NOT silently borrowing the patterns
+under the misaligned reference's name. The patterns we want from
+mempool.space all have analogs in DFIR / forensic-courtroom UI.
+
+**Action taken in this commit:**
+1. Reverted spec/brief edits via `git checkout HEAD --` on
+   `2026-04-27-surprise-design-judge-mode.md` and
+   `phase-5-6-sprite-design-brief.md`.
+2. Reframed existing "Bitcoin"-coded language in the spec as
+   **crypto-forensics**, making the forensic purpose explicit
+   wherever the cryptographic chain-of-custody appears (the OTS /
+   Bitcoin anchor IS in the project — it's the 5th link of the
+   chain-of-custody attestation; the framing now names it as a
+   trusted-timestamping primitive for chain-of-custody, not as a
+   "Bitcoin block height").
+3. Removed the iter-2 row from the active iteration sequence;
+   subsequent iterations renumber implicitly (Iter 3 stays Iter 3 —
+   the row remains in the table marked REJECTED for the audit
+   trail).
+
+**Commit:** `docs(design): iter-2 redirect — drop mempool.space; reframe crypto language as crypto-forensics`
