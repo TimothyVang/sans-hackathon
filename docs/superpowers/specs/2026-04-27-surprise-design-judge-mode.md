@@ -130,7 +130,9 @@ affidavit.*
   - `TimeGapMarker.tsx` — **inter-event gap indicator** (Iter 3 / Timesketch-derived). When seq jumps over a wall-clock gap > 30s, render a horizontal divider in the NotebookView showing the gap duration ("23 minutes", "2 days") so judges see pauses as forensic evidence in their own right.
   - `FilterSidebar.tsx` — **left-rail forensic filters** (Iter 5 / Autopsy-derived). Multi-select toggle group: hide bookkeeping events, hide HYPOTHESIS-tier findings, filter by pool (A / B / merged), filter by MITRE technique, filter by tool name. Default-on filter "Hide low-value events" (named after Autopsy's "Hide Known Files" idiom) collapses bookkeeping + HYPOTHESIS so the judge sees only CONFIRMED + INFERRED findings on landing; one click expands to the full chain.
   - `SummaryModeToggle.tsx` — **dual display mode** (Iter 5 / Autopsy-derived). Top-of-NotebookView segmented control: "Summary" (stacked-bar histogram of kind-density over seq buckets, color-coded by the §2.4 kind palette, click bar to zoom into that window in detail mode) | "Detail" (the per-row notebook view).
-  - `TamperButton.tsx`
+  - `TamperButton.tsx` — byte-pick UI on the hex view
+  - `DiffPanel.tsx` — **Wikipedia-style side-by-side diff renderer** (Iter 7-derived). Line-number anchors, red/green/grey color coding, character-level highlighting, three-mode toggle (Side-by-side | Unified | Field-only).
+  - `PropagationCascade.tsx` — **cascading-failure visualization** (Iter 7-derived). Small cascade showing byte flip → line_hash → prev_hash → Merkle leaf → Merkle root → signature, lit up in red as the failure propagates. Forensically educational: makes the hash-chain integrity property explicit instead of buried.
   - `AffidavitCard.tsx` — **5-card "What Gets Verified" grid** (Iter 6 / ProofSnap-derived). One card per chain link with pass/fail badge + actual digest.
   - `StandardsComplianceRow.tsx` — **FRE 902(14) / ISO 27037 / NIST SP 800-86 row** (Iter 6 / ProofSnap-derived).
   - `VerificationStepsList.tsx` — **4-step "verify yourself" guide** (Iter 6 / ProofSnap-derived).
@@ -240,15 +242,35 @@ rubric criteria it lifts.
 - Judge clicks a byte; modal asks "flip 0x{XX} → 0x{YY}?" with a "do it"
   button
 - Client copies the audit log into memory, applies the flip, calls
-  `/api/judge/verify` with the mutated bytes
+  the verify API endpoint with the mutated bytes
 - API returns the structured ManifestVerification result
-- Page renders the result as the HashChainBadge flipping red + a
-  diagnostic banner showing the exact field that failed (e.g.
-  `audit_chain_ok: "audit chain seq=4 prev_hash mismatch"`)
+- **Wikipedia-style side-by-side diff panel** (Iter 7-derived) renders
+  below the hex view:
+    - **Left column** "Original (untouched)" — original audit.jsonl
+      line at the affected seq, line-number anchor, syntax-highlighted
+      JSON
+    - **Right column** "Tampered" — mutated version with character-
+      level red highlighting on the flipped byte + its containing
+      field; per-column metadata header shows byte offset, original
+      value, new value, wall-clock timestamp of the tamper action
+    - **Diff-mode toggle** above the panel: Side-by-side | Unified |
+      Field-only (Wikipedia-derived three-mode pattern). Field-only
+      mode collapses to just the structural fields that changed
+      (line_hash, audit_chain_ok, Merkle root, signature digest).
+- **PropagationCascade visualization** (Iter 7-derived) alongside
+  the diff: small cascade showing byte flip → line_hash changed →
+  next line's prev_hash now mismatches → Merkle leaf hash changed →
+  Merkle root changed → signature now mismatches. Forensically
+  educational — judges see the cascading-failure property of hash
+  chains explicitly, not as a buried sentence in a diagnostic banner.
+- HashChainBadge flips to its red "broken at seq=N" state in
+  parallel with the diff panel rendering; the badge is the headline,
+  the diff + cascade are the explanation.
 - "Reset to original" button restores the page state without round-trip
 - Judges who want a more dramatic demo can pick a byte inside the
   `payload.tool_call_id` field — the verifier flags the broken citation
-  rather than the chain hash
+  rather than the chain hash, and the cascade shows the citation-
+  integrity branch instead of the structural-hash branch
 
 ### 4.3 Affidavit flow
 

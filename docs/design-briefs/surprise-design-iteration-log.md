@@ -22,7 +22,7 @@ or more concrete improvements to the spec or brief.
 | 4 | ~~Timesketch (split)~~ | ~~https://timesketch.org/~~ | **MERGED INTO ITER 3** | Timesketch was the natural co-reference with Velociraptor in iter-3; both DFIR timeline tools, complementary patterns. Splitting them was bookkeeping — they belong in the same comparison. |
 | 5 | Autopsy Timeline (new — replaces dropped Sigstore Rekor) | https://sleuthkit.org/autopsy/timeline.php | landed | Two display modes (summary stacked-histogram + detail) + clustering of similar events + filter sidebar (Hide Known Files etc.). | (this commit) |
 | 6 | ProofSnap evidence verification (was iter-4) | https://getproofsnap.com/verify/index.html | landed | "What Gets Verified" 4-card grid + step-by-step verification flow + FRE 902 / eIDAS / ISO 27037 standards-compliance footer cards. Affidavit page restructure. | (this commit) |
-| 7 | Wikipedia diff visualization (was iter-5) | https://en.wikipedia.org/wiki/Help:Diff | pending | — | — |
+| 7 | Wikipedia diff visualization (was iter-5) | https://en.wikipedia.org/wiki/Help:Diff | landed | Side-by-side line-number-anchored diff with color-coded additions/removals + per-revision metadata header. Forensically defensible: revision history IS the canonical "audit trail of changes" pattern. Resurrects the Expected vs Actual idea rejected in iter-2 in a domain-aligned way. | (this commit) |
 | 8 | NES.css legitimate examples (was iter-8) | https://nostalgic-css.github.io/NES.css/ | pending | — | — |
 | ~ | ~~Sigstore Rekor search~~ | ~~https://search.sigstore.dev/~~ | **DROPPED** | Same crypto-coding risk as mempool.space (transparency log for software-supply-chain attestation reads as "supply-chain dev tool" not "DFIR forensics"). Pattern of "minimalist log-entry detail view" can be re-derived from forensic tools (Autopsy event detail) instead. |
 | ~ | ~~The Pudding scrollytelling~~ | ~~https://pudding.cool~~ | **DROPPED** | Narrative-pattern reference no longer needed — Iter 1 (Replay.io annotations) already covers the storytelling gap; spec §4.1 has scrollable narrative via annotation pins. |
@@ -429,3 +429,100 @@ document" to "publicly inspectable verification report" — a
 stronger fit for a SANS judge skeptical of cryptographic claims.
 
 **Commit:** `docs(design): iter-6 — ProofSnap-aligned affidavit (5-card grid + standards-compliance + step-by-step + FAQ)`
+
+---
+
+### Iter 7 — Wikipedia diff visualization
+
+**References captured:**
+- `screenshots/iter-7/ref/wikipedia-diff.png` — Wikipedia revision-
+  history diff in side-by-side mode. Line-number anchors on each
+  side (line numbers don't have to match — a `+` marker appears
+  next to inserted lines), color-coded change indicators (grey
+  for unchanged context, green-tinted for additions, red-tinted
+  for removals — both with character-level inline highlighting
+  for partial changes), per-revision metadata header (timestamp,
+  author, edit summary), and a Visual/Wikitext/Inline mode toggle.
+
+**Forensic-alignment note:** Wikipedia diff is a domain-aligned
+reference, not a software-domain coincidence. Revision history is
+the canonical "audit trail of changes" pattern — the same shape
+git/SVN/Mercurial use, the same shape forensic-tool case-history
+panels use, the same shape discovery-document review tools use.
+Borrowing the Wikipedia diff UI is borrowing the *standard*
+forensic-evidence-comparison idiom, not a foreign aesthetic.
+
+**Ours:** dashboard baseline reused.
+
+**What ours does well:**
+- Spec §4.2 already describes a "diagnostic banner showing the
+  exact field that failed" — concept of surfacing the change is
+  there.
+
+**What ours does poorly vs reference:**
+
+1. **No side-by-side diff for the tamper flow.** The iter-2
+   "Expected vs Actual" idea (rejected because mempool.space was
+   the wrong domain reference) re-emerges here in a forensics-
+   defensible form. Add a side-by-side diff panel to the tamper
+   route showing the audit-chain content before/after the byte
+   flip:
+     - **Left column**: original audit.jsonl line at the affected
+       seq, with line number anchor, syntax-highlighted JSON
+     - **Right column**: tampered version with the changed bytes
+       highlighted character-level, line number anchor matching
+     - **Color coding**: red highlight on the flipped byte +
+       its containing field; green badge near "untouched" fields
+       (line_hash, prev_hash) showing they changed downstream
+       even though the judge didn't flip them — that's the
+       chain-propagation insight
+     - **`+` / `-` markers** at the line number on the side
+       where insertions/deletions land (when the tamper extends
+       to a multi-byte structural change)
+
+2. **No per-revision metadata header.** Wikipedia shows
+   timestamp + author + edit summary above each revision. For
+   the tamper flow: above each column show "Original (untouched)"
+   vs "Tampered (byte 0xN at offset 0xMMMM flipped from 0xAA to
+   0xBB at <wall-clock ts>)". Makes the tamper provenance
+   inspectable.
+
+3. **No diff mode toggle.** Wikipedia has Visual / Wikitext /
+   Inline. For us, the equivalent is **Side-by-side** /
+   **Unified** / **Field-only** modes — the judge picks how
+   verbose they want the diff. Field-only mode shows just the
+   structural fields that changed (line_hash, audit_chain_ok,
+   Merkle root, signature digest); Side-by-side shows the full
+   JSON; Unified shows a single column with `+`/`-` markers.
+
+4. **No "downstream effects" visualization.** When the judge
+   flips one byte, the verifier reports a chain failure that
+   propagates through MULTIPLE downstream fields (line_hash
+   changes → next prev_hash mismatches → Merkle root
+   mismatches → signature mismatches). Render this as a
+   **propagation chain visualization** alongside the diff:
+   small cascade showing the byte flip → which fields it broke
+   → which subsequent fields broke as a consequence. This is
+   forensically educational: judges who haven't worked with
+   hash chains see the cascading-failure property explicitly.
+
+**Improvements applied:**
+1. Spec §4.2 — replace the "diagnostic banner" with a
+   side-by-side diff panel + per-column metadata header +
+   propagation-chain cascade. Wikipedia-style line-number-
+   anchored layout with red/green/grey highlighting.
+2. Spec §3.1 — split TamperButton.tsx into
+   `TamperButton.tsx` (the byte-pick UI) +
+   `DiffPanel.tsx` (Wikipedia-style side-by-side renderer) +
+   `PropagationCascade.tsx` (the cascade visualization
+   showing which downstream fields broke).
+3. Spec §4.2 — add a diff-mode toggle: Side-by-side / Unified /
+   Field-only.
+
+**Decision:** Apply all three. The diff panel is the strongest
+single visual the tamper flow can land — the judge sees not just
+that the chain broke, but EXACTLY which bytes changed and how
+far the breakage propagated. That's more pedagogically
+powerful than a red badge with a sentence diagnostic.
+
+**Commit:** `docs(design): iter-7 — Wikipedia-style diff for the tamper flow`
