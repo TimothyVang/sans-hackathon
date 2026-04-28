@@ -61,9 +61,36 @@ The decay timer for `verdict` is the parent's responsibility, not the sprite's. 
 
 State derivation lives in `apps/web/lib/sprite-state.ts` (`deriveRoleStates`). **Don't propose changes there**; if the state vocabulary feels wrong, raise it as a question in the deliverables instead of editing.
 
-### 2.2 NES.css is the aesthetic anchor
+### 2.2 NES.css is the aesthetic anchor (for the `/` dashboard only)
 
 The placeholders use `<div className="nes-container with-title is-rounded">` wrappers. Final art must remain visually coherent with the NES.css component library already on the page (input box, buttons, badges all use NES.css). The sprite art itself can be richer than NES.css's flat 8-bit palette — borrowed motifs from 16-bit JRPGs are welcome — but the surrounding chrome shouldn't look out of place next to a `.nes-btn`.
+
+**Iter 8 / NES.css-derived component vocabulary** to use on the
+dashboard at `/` (canonical reference: showcase at
+`https://nostalgic-css.github.io/NES.css/`):
+
+- Containers: `.nes-container.with-title.is-rounded` for sprite
+  cards + sub-panels (already in placeholder)
+- Buttons: `.nes-btn` with variants `is-primary` / `is-success` /
+  `is-warning` / `is-error` (5-color palette; use
+  `is-success` sparingly — reserve for judge-relevant moments
+  like CONFIRMED finding emission)
+- Inputs: `.nes-input` for the case-path field
+- Progress bars: `.nes-progress` with `is-success` / `is-primary`
+  / `is-warning` / `is-error` — applicable for the verdict-flourish
+  decay or HashChainBadge breakdown
+- Badges/icons: `.nes-avatar` / `.nes-icon` family for tiny
+  status indicators
+- Dialog balloons: `.nes-balloon` (with `from-left` / `from-right`
+  variants) for agent-annotation popups when the analyst hovers
+  a sprite during an active step
+
+**Iter 3 / forensics-redirect cross-reference**: NES.css is the
+aesthetic for `/` only. The Judge Mode route at `/judge` adopts
+a forensic-tool aesthetic (Velociraptor + Timesketch references)
+distinct from `/` — see Judge Mode spec §0.1 for the full split.
+Sprite art designed under this brief lands on `/` and DOES NOT
+appear on the Judge Mode pages.
 
 ### 2.3 Frame format and asset path
 
