@@ -21,7 +21,7 @@ or more concrete improvements to the spec or brief.
 | 3 | Velociraptor + Timesketch (squarely DFIR) | https://docs.velociraptor.app + https://timesketch.org/ | landed | Multi-source pills + color-coded datetime + per-event annotation icons + tag chips. Maps directly to Judge Mode replay as a forensic notebook, not a video player. | (this commit) |
 | 4 | ~~Timesketch (split)~~ | ~~https://timesketch.org/~~ | **MERGED INTO ITER 3** | Timesketch was the natural co-reference with Velociraptor in iter-3; both DFIR timeline tools, complementary patterns. Splitting them was bookkeeping — they belong in the same comparison. |
 | 5 | Autopsy Timeline (new — replaces dropped Sigstore Rekor) | https://sleuthkit.org/autopsy/timeline.php | landed | Two display modes (summary stacked-histogram + detail) + clustering of similar events + filter sidebar (Hide Known Files etc.). | (this commit) |
-| 6 | ProofSnap evidence verification (was iter-4) | https://getproofsnap.com/verify/index.html | pending | — | — |
+| 6 | ProofSnap evidence verification (was iter-4) | https://getproofsnap.com/verify/index.html | landed | "What Gets Verified" 4-card grid + step-by-step verification flow + FRE 902 / eIDAS / ISO 27037 standards-compliance footer cards. Affidavit page restructure. | (this commit) |
 | 7 | Wikipedia diff visualization (was iter-5) | https://en.wikipedia.org/wiki/Help:Diff | pending | — | — |
 | 8 | NES.css legitimate examples (was iter-8) | https://nostalgic-css.github.io/NES.css/ | pending | — | — |
 | ~ | ~~Sigstore Rekor search~~ | ~~https://search.sigstore.dev/~~ | **DROPPED** | Same crypto-coding risk as mempool.space (transparency log for software-supply-chain attestation reads as "supply-chain dev tool" not "DFIR forensics"). Pattern of "minimalist log-entry detail view" can be re-derived from forensic tools (Autopsy event detail) instead. |
@@ -342,3 +342,90 @@ extension to Iter 3's NotebookView; none reorganize the
 architecture.
 
 **Commit:** `docs(design): iter-5 — Autopsy clustering + filter sidebar + dual display mode`
+
+---
+
+### Iter 6 — ProofSnap evidence verification
+
+**References captured:**
+- `screenshots/iter-6/ref/proofsnap-verify.png` — ProofSnap Trust
+  Verifier landing page. Hero: "Verify Digital Evidence Integrity
+  Online" with explicit "Court admissible under FRE 901/902 and
+  eIDAS Regulation 910/2014" subtitle. Three load-bearing patterns:
+  (a) "What Gets Verified" 4-card grid (Digital Signature /
+  SHA-256 / Blockchain Timestamp / eIDAS Timestamp), (b) "Chain
+  of Custody Verification" 3-card grid (Per-page, Per-step,
+  ISO/IEC 27037-2012), (c) "How to Verify" numbered 4-step flow
+  (Upload → Cryptographic Checks → Timestamp Verification →
+  Results Report).
+
+**Ours:** dashboard baseline reused.
+
+**What ours does well:**
+- Existing spec §4.3 affidavit flow already names the right
+  artifacts (sigstore cert + trusted-timestamp + Merkle root +
+  signature digest) and the right framing (FRE 902(14)).
+
+**What ours does poorly vs reference:**
+
+1. **No "What Gets Verified" card grid.** ProofSnap shows a 4-card
+   grid making each verification check inspectable as its own
+   visual unit. Our spec §4.3 lists the same artifacts as bullets
+   in a stamped document. Direct map: render the affidavit's "what
+   was verified" section as a **5-card grid** matching the five
+   chain links (sha256 image hash / audit prev_hash chain / Merkle
+   root / sigstore identity / trusted-timestamp anchor). Each card
+   has icon + title + checkmark/X badge + the actual digest/value
+   for the judge to inspect.
+
+2. **No standards-compliance card row.** ProofSnap's "Chain of
+   Custody Verification" row cites three specific standards (one
+   per card). Our spec mentions FRE 902(14) once. Add a
+   **standards-compliance row** to the affidavit footer with three
+   cards: FRE 902(14) self-authenticating evidence, ISO/IEC
+   27037:2012 digital evidence handling, NIST SP 800-86 forensic
+   integration into incident response. Each card cites the standard
+   and one-line explains how the manifest satisfies it. Adds
+   gravitas without pretending we're a certified forensic vendor.
+
+3. **No step-by-step verification flow.** ProofSnap's "How to
+   Verify Digital Evidence Online" walks through 4 numbered steps
+   with badges. Map directly: the the affidavit route page renders
+   a "How to verify this affidavit yourself" section with 4 steps:
+   (1) Download manifest+ots+sigstore-cert from page footer;
+   (2) `manifest_verify` via the MCP tool / the recipe in
+   `docs/cryptographic-attestation.md`; (3) `ots verify` against
+   the OpenTimestamps calendar (Bitcoin chain anchor); (4) compare
+   sigstore cert subject against expected identity. Each step
+   shows a numbered badge, the exact command to run, and the
+   expected output.
+
+4. **No FAQ section.** ProofSnap anticipates judge/regulator
+   questions inline. Add a brief FAQ to the affidavit page
+   answering: "Is this admissible?" / "Do I need internet to
+   verify?" (no, after manifest+ots+cert downloaded) / "What if
+   the OTS receipt isn't yet matured?" / "Can I tamper with the
+   manifest in this UI to demonstrate?" (yes — link to
+   the tamper route). Maybe 4-6 questions; brief, accessible
+   answers.
+
+**Improvements applied:**
+1. Spec §4.3 — replace the bulleted-list affidavit body with a
+   5-card "What Gets Verified" grid + a 3-card "Chain of Custody
+   Standards" footer row.
+2. Spec §4.3 — add a "How to verify yourself" 4-step section at
+   the bottom of the affidavit, pointing at the offline-
+   verification recipe in `docs/cryptographic-attestation.md`.
+3. Spec §4.3 — add a brief FAQ subsection (4-6 questions) at
+   the bottom.
+4. §3.1 — split AffidavitCard.tsx into `AffidavitCard.tsx`
+   (the 5-card grid) + `StandardsComplianceRow.tsx` +
+   `VerificationStepsList.tsx` + `AffidavitFAQ.tsx` so each
+   structural section is its own testable component.
+
+**Decision:** Apply all four. ProofSnap's structure is directly
+applicable; reusing it sharpens our affidavit from "stamped
+document" to "publicly inspectable verification report" — a
+stronger fit for a SANS judge skeptical of cryptographic claims.
+
+**Commit:** `docs(design): iter-6 — ProofSnap-aligned affidavit (5-card grid + standards-compliance + step-by-step + FAQ)`
