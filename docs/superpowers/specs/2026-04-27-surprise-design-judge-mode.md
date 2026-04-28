@@ -60,10 +60,21 @@ affidavit.*
 - Subroute `/judge/affidavit` — stamped affidavit view
 - New components under `apps/web/components/judge/`:
   - `Scrubber.tsx`
-  - `RubricAnnotation.tsx`
+  - `RubricAnnotation.tsx` — criterion-tagged overlay (the criteria #1-#6 ribbons)
+  - `AnnotationPin.tsx` — *agent-emitted* pin on the scrubber (Iter 1 / Replay.io-derived). The agent leaves these as it runs; the judge reads them while scrubbing. Distinct from RubricAnnotation, which is rubric-criterion-tagged.
   - `TamperButton.tsx`
   - `AffidavitCard.tsx`
   - `ReasoningSplit.tsx`
+
+**Agent annotation kinds (Iter 1 / Replay.io-derived):** during a run,
+the agent emits annotations as audit-chain records with `kind` in
+{`annotation_escalation`, `annotation_verifier_challenge`,
+`annotation_judge_merge`, `annotation_correlator_veto`}. The scrubber
+renders these as pins anchored to the seq number where they were
+emitted, with the markdown body shown in the side-panel on click. The
+agent prompts in `agent-config/AGENTS.md` will need a small addition
+to emit these during the corresponding decisions; out of scope for
+this spec but flagged as a downstream prompt-config change.
 - New API route `apps/web/app/api/judge/case/route.ts` — serves the curated case bundle
 - New API route `apps/web/app/api/judge/verify/route.ts` — runs `verify_manifest` + `audit_verify` server-side, returns structured result
 - One curated case dir at `goldens/judge-case/` containing a real audit.jsonl, run.manifest.json, sigstore cert, ots receipt — captured from a recent SRL-2018 fleet investigation
@@ -111,7 +122,16 @@ rubric criteria it lifts.
 - Each tool call shows a side-panel "rubric tag" (criterion N — short
   explanation) that fades after 4s
 - AuditBeadString grows left-to-right; current bead pulses
-- Pause anytime; deep-link via `?seq=N` parameter
+- **Annotation pins** (Iter 1 / Replay.io-derived): the agent emits
+  annotations as it runs (escalation rationale, verifier challenges,
+  judge merge decisions, correlator vetoes — see §3.1). The scrubber
+  renders them as pinned markers above the timeline; clicking a pin
+  pauses playback, opens the side-panel with the annotation's markdown
+  body, and highlights the cited audit records.
+- Pause anytime; deep-link via the URL grammar
+  `?seq=<n>&focus=<from>:<to>&pin=<annotation_id>` so a judge can
+  share an exact moment with the surrounding focus window restored
+  and the relevant pin pre-opened.
 
 ### 4.2 Tamper flow
 
@@ -153,8 +173,33 @@ interface ScrubberProps {
   events: AuditLine[];
   currentSeq: number;
   speed: 1 | 2 | 8 | "instant";
+  focus?: { from: number; to: number };  // optional zoom window
+  pinnedAnnotationId?: string;           // pre-open this pin if URL-deep-linked
   onSeqChange: (seq: number) => void;
   onPlayPauseToggle: () => void;
+  onFocusChange?: (focus: { from: number; to: number } | undefined) => void;
+  onPinClick?: (annotationId: string) => void;
+}
+
+// Iter 1 / Replay.io-derived. Distinct from RubricAnnotationProps —
+// rubric annotations are criterion-tagged ribbons; agent annotations
+// are pins the agent dropped during the run.
+interface AnnotationPin {
+  id: string;            // stable across reloads; e.g. annotation_<seq>_<hash[:8]>
+  seq: number;           // anchored at this audit-chain seq
+  kind:
+    | "annotation_escalation"
+    | "annotation_verifier_challenge"
+    | "annotation_judge_merge"
+    | "annotation_correlator_veto";
+  body: string;          // markdown
+  citedSeqs: number[];   // seq numbers of audit records the pin references
+}
+
+interface AnnotationPinProps {
+  pin: AnnotationPin;
+  isOpen: boolean;
+  onToggle: (id: string) => void;
 }
 
 interface RubricAnnotationProps {
