@@ -128,6 +128,8 @@ affidavit.*
   - `RubricAnnotation.tsx` — criterion-tagged overlay (the criteria #1-#6 ribbons), now also produces compact **inline tag chips** in the NotebookView's tag column (Iter 3 / Timesketch-derived).
   - `AnnotationPin.tsx` — *agent-emitted* pin (Iter 1 / Replay.io-derived). Renders as inline ★ / 💬 / 🔖 icons per row in the NotebookView (Iter 3 / Timesketch-derived) AND as a pin marker above the Scrubber.
   - `TimeGapMarker.tsx` — **inter-event gap indicator** (Iter 3 / Timesketch-derived). When seq jumps over a wall-clock gap > 30s, render a horizontal divider in the NotebookView showing the gap duration ("23 minutes", "2 days") so judges see pauses as forensic evidence in their own right.
+  - `FilterSidebar.tsx` — **left-rail forensic filters** (Iter 5 / Autopsy-derived). Multi-select toggle group: hide bookkeeping events, hide HYPOTHESIS-tier findings, filter by pool (A / B / merged), filter by MITRE technique, filter by tool name. Default-on filter "Hide low-value events" (named after Autopsy's "Hide Known Files" idiom) collapses bookkeeping + HYPOTHESIS so the judge sees only CONFIRMED + INFERRED findings on landing; one click expands to the full chain.
+  - `SummaryModeToggle.tsx` — **dual display mode** (Iter 5 / Autopsy-derived). Top-of-NotebookView segmented control: "Summary" (stacked-bar histogram of kind-density over seq buckets, color-coded by the §2.4 kind palette, click bar to zoom into that window in detail mode) | "Detail" (the per-row notebook view).
   - `TamperButton.tsx`
   - `AffidavitCard.tsx`
   - `ReasoningSplit.tsx`
@@ -200,7 +202,18 @@ rubric criteria it lifts.
 
 ### 4.1 Replay flow
 
-- Page opens with the scrubber at seq=0 + sprites all idle
+- Page opens with **Summary mode** as default (Iter 5 / Autopsy-
+  derived): stacked-bar histogram of audit-chain `kind` density over
+  seq-time buckets, color-coded by the §2.4 kind palette. The judge
+  sees the case-shape at-a-glance before drilling in. Click any bar
+  to zoom into that seq-window in Detail mode.
+- **Filter sidebar** (Iter 5 / Autopsy-derived) on the left rail
+  starts with "Hide low-value events" enabled — only CONFIRMED +
+  INFERRED findings + their tool_call anchors visible. Toggling
+  individual filters (bookkeeping, HYPOTHESIS, per-pool, per-MITRE
+  technique, per-tool-name) updates the notebook live.
+- Switch to **Detail mode**: scrubber at the top, NotebookView
+  populated with per-row events.
 - Judge presses Play (or selects 8× speed for 60-second replay)
 - As events play, sprites animate per existing `deriveRoleStates` logic
 - Each tool call shows a side-panel "rubric tag" (criterion N — short
