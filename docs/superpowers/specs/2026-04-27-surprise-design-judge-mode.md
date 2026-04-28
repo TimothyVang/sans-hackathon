@@ -45,6 +45,31 @@ not aesthetic preference. Iter 2 of the design-iteration loop
 (mempool.space) was rejected on exactly this ground — see
 `docs/design-briefs/surprise-design-iteration-log.md` Iter 2 entry.
 
+### 0.1 Two distinct aesthetics: `/` vs `/judge`
+
+The submission has two surfaces with deliberately different visual
+treatments — Iter 3 / Velociraptor + Timesketch-derived:
+
+- **Dashboard at `/`** keeps the NES.css pixel-art aesthetic per the
+  Phase 5/6 sprite brief. This is the *analyst playful surface*
+  showing the agent army at work in real time. Pixel-art is
+  decoration over structured data; the analyst is the home audience.
+
+- **Judge Mode at `/judge`** adopts a **forensic-tool aesthetic**
+  distinct from `/`. References: Velociraptor (light backgrounds,
+  monospace tables, practical action toolbars, retro-terminal
+  accents only for boot output) and Timesketch (DFIR-coded teal/
+  blue accent palette, color-coded datetime pills, multi-source
+  filter chips, per-row annotation icons, tag-chip columns). The
+  judge is a forensic professional; the route should feel like a
+  case-management notebook, not a dashboard.
+
+A judge clicking from `/` to `/judge` should perceive a deliberate
+context shift: the analyst tool steps aside, the courtroom evidence
+view takes its place. This is the same shift that happens when
+you move from Velociraptor's "Hunting" panel to its "Notebooks"
+panel — same data, different lens.
+
 ---
 
 ## 1. The pitch (90 seconds)
@@ -97,9 +122,12 @@ affidavit.*
 - Subroute `/judge/tamper` — byte-flip sandbox + re-verify
 - Subroute `/judge/affidavit` — stamped affidavit view
 - New components under `apps/web/components/judge/`:
-  - `Scrubber.tsx`
-  - `RubricAnnotation.tsx` — criterion-tagged overlay (the criteria #1-#6 ribbons)
-  - `AnnotationPin.tsx` — *agent-emitted* pin on the scrubber (Iter 1 / Replay.io-derived). The agent leaves these as it runs; the judge reads them while scrubbing. Distinct from RubricAnnotation, which is rubric-criterion-tagged.
+  - `Scrubber.tsx` — navigation widget at the top of the notebook view
+  - `NotebookView.tsx` — **forensic-notebook body** (Iter 3 / Velociraptor-derived). The route's main pane is a notebook of audit-chain rows, not a video player. Each row is a tool-call / finding / handoff event, rendered with inline annotation icons and a tag-chip column.
+  - `SourcePillFilter.tsx` — **role filter at top** (Iter 3 / Timesketch-derived). The five agent roles (Pool A, Pool B, Verifier, Judge, Correlator) render as filterable colored pills above the notebook. Clicking a pill filters the timeline to events emitted by that role; multi-select via shift-click for combined filters.
+  - `RubricAnnotation.tsx` — criterion-tagged overlay (the criteria #1-#6 ribbons), now also produces compact **inline tag chips** in the NotebookView's tag column (Iter 3 / Timesketch-derived).
+  - `AnnotationPin.tsx` — *agent-emitted* pin (Iter 1 / Replay.io-derived). Renders as inline ★ / 💬 / 🔖 icons per row in the NotebookView (Iter 3 / Timesketch-derived) AND as a pin marker above the Scrubber.
+  - `TimeGapMarker.tsx` — **inter-event gap indicator** (Iter 3 / Timesketch-derived). When seq jumps over a wall-clock gap > 30s, render a horizontal divider in the NotebookView showing the gap duration ("23 minutes", "2 days") so judges see pauses as forensic evidence in their own right.
   - `TamperButton.tsx`
   - `AffidavitCard.tsx`
   - `ReasoningSplit.tsx`
@@ -130,6 +158,24 @@ this spec but flagged as a downstream prompt-config change.
 - Authentication on `/judge` — the route is read-only against a curated
   case bundle; there is no privileged operation behind a login
 - New audit event types — replay drives off the existing JSONL schema
+
+**Deferred to v2 (Iter 3 / Timesketch-derived patterns identified but
+not landing in this spec):**
+
+- **Multi-select bulk operations on notebook rows.** Timesketch's
+  per-row checkboxes + bulk export / bulk tag is a power-user
+  affordance. v1 scope keeps the judge in a read-only walking-tour
+  mode; bulk ops belong with the analyst (`/`) when that surface
+  matures, not with the judge.
+- **Event-distribution histogram strip.** Timesketch's chart icon
+  opens a histogram showing event-count per time bucket. Useful
+  density-at-a-glance affordance for the scrubber, but the v1
+  scrubber relies on annotation pins for "interesting moments"
+  navigation; histogram becomes redundant at small case sizes.
+  Re-evaluate when curated case dirs grow past ~500 audit lines.
+- **Cross-case search.** Timesketch hosts multiple sketches and
+  searches across them. v1 Judge Mode serves one curated case;
+  cross-case is out of scope per A2 + A3.
 
 ## 4. User workflow
 
