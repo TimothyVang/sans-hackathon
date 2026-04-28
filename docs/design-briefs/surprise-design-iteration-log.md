@@ -19,8 +19,8 @@ or more concrete improvements to the spec or brief.
 | 1 | Replay.io scrubber | https://www.replay.io/ | landed | Annotations are first-class citizens, not viewer affordances. Re-design Scrubber.tsx as **annotation-first**. | (this commit) |
 | 2 | mempool.space block status | https://mempool.space | **REJECTED** | User redirect: "focus on forensics; if crypto-forensics is involved, label it." mempool.space reads as crypto-trading, not DFIR. Spec/brief edits reverted; Bitcoin-framing language rewritten as crypto-FORENSICS. | (redirect commit) |
 | 3 | Velociraptor + Timesketch (squarely DFIR) | https://docs.velociraptor.app + https://timesketch.org/ | landed | Multi-source pills + color-coded datetime + per-event annotation icons + tag chips. Maps directly to Judge Mode replay as a forensic notebook, not a video player. | (this commit) |
-| 4 | Timesketch (split from iter-6) | https://timesketch.org/ | pending | — | — |
-| 5 | Autopsy Timeline (new — replaces dropped Sigstore Rekor) | https://sleuthkit.org/autopsy/timeline.php | pending | — | — |
+| 4 | ~~Timesketch (split)~~ | ~~https://timesketch.org/~~ | **MERGED INTO ITER 3** | Timesketch was the natural co-reference with Velociraptor in iter-3; both DFIR timeline tools, complementary patterns. Splitting them was bookkeeping — they belong in the same comparison. |
+| 5 | Autopsy Timeline (new — replaces dropped Sigstore Rekor) | https://sleuthkit.org/autopsy/timeline.php | landed | Two display modes (summary stacked-histogram + detail) + clustering of similar events + filter sidebar (Hide Known Files etc.). | (this commit) |
 | 6 | ProofSnap evidence verification (was iter-4) | https://getproofsnap.com/verify/index.html | pending | — | — |
 | 7 | Wikipedia diff visualization (was iter-5) | https://en.wikipedia.org/wiki/Help:Diff | pending | — | — |
 | 8 | NES.css legitimate examples (was iter-8) | https://nostalgic-css.github.io/NES.css/ | pending | — | — |
@@ -261,3 +261,84 @@ walks through. This dual-aesthetic decision is documented in the
 spec for the Phase 5/6 design pass to honor.
 
 **Commit:** `docs(design): iter-3 — Velociraptor + Timesketch as forensic notebook reference`
+
+---
+
+### Iter 5 — Autopsy Timeline (Sleuth Kit Labs)
+
+**References captured:**
+- `screenshots/iter-5/ref/autopsy-timeline.png` — official Sleuth Kit
+  Labs Autopsy timeline page with embedded screenshots: stacked
+  bar-chart aggregate (color-coded by event type, 1997-2013 buckets),
+  detailed clustered view (with breadcrumb-style nested grouping
+  "img.zip vs.0,0/(vol_vol2)/Documents and Settings (33)"), and a
+  left-rail filter sidebar ("Hide-Known Files", "Type Filter", etc.)
+
+**Ours:** dashboard baseline reused.
+
+**What ours does well:**
+- Iter 3's NotebookView model is forensic-aligned (compatible with
+  Autopsy's detailed view).
+- Existing kind palette (per Phase 5/6 brief §2.4) maps to Autopsy's
+  stacked-bar event-type colors.
+
+**What ours does poorly vs reference (DFIR-canonical patterns):**
+
+1. **No dual display mode (summary vs detail).** Autopsy explicitly
+   ships TWO modes: bar-chart aggregate ("how much occurred when")
+   and detailed ("what happened"). Our spec §4.1 only describes the
+   detailed walk. Add a **summary mode toggle** to NotebookView: a
+   stacked-bar histogram of audit-chain `kind` density over seq-time
+   buckets, color-coded by kind. Click a bar to zoom into that
+   seq-window in detail mode. Same dual-mode shape forensic
+   investigators are already trained on.
+
+2. **No event-clustering for data overload.** Autopsy's load-bearing
+   insight: *"all files in the same folder are shown as a single
+   event and all URLs from the same domain are shown as a single
+   event. If the user wants to see more details about that folder
+   or domain, then they can zoom into it."* Direct map: collapse
+   successive `tool_call_start` / `tool_call_end` pairs of the
+   SAME tool name into a single row "vol_pslist × 7 (3.2s)" with
+   an expand chevron. Bookkeeping records (`audit_append`,
+   `chain_update`) collapse en masse into a single "+ 14
+   bookkeeping events (hidden)" stub.
+
+3. **No filter sidebar.** Autopsy's left-rail filter list ("Hide
+   Known Files", "Text Filter", "Type", "File Type", "Web
+   Activity") is the DFIR-canonical pattern. Add a **filter
+   sidebar** to `/judge` with the equivalents:
+     - Hide bookkeeping (audit_append, chain_update,
+       manifest_finalize, ots_stamp)
+     - Hide HYPOTHESIS-tier findings
+     - Filter by pool (Pool A / Pool B / merged)
+     - Filter by MITRE technique (T1014, T1055, …)
+     - Filter by tool name (vol_pslist, hayabusa_scan, …)
+   Multi-select with ctrl/shift; live update of the notebook view.
+
+4. **No "Hide Known Files" equivalent.** This is the most
+   forensically-iconic toggle — analysts hide whitelisted noise so
+   attacker signal stands out. For the audit chain: a "Hide low-
+   value events" master toggle that combines "hide bookkeeping"
+   + "hide HYPOTHESIS" + "hide annotation pins" — leaves only
+   the CONFIRMED + INFERRED findings + their `tool_call_start`
+   anchors. The judge starts in this filtered view; one click
+   reveals the full chain.
+
+**Improvements applied (concrete spec edits):**
+1. §4.1 — extend the replay flow to describe the **summary
+   mode toggle** (stacked-bar histogram view) alongside the
+   detailed walk.
+2. §3.1 — add `FilterSidebar.tsx` to the components list with
+   prop contract for the filter set; `NotebookView.tsx` props
+   gain optional `clusterSimilar: boolean` and
+   `filterSet: FilterSet` props.
+3. §3.1 — add a "Hide low-value events" default filter, named
+   explicitly after Autopsy's "Hide Known Files" idiom in a
+   comment.
+
+**Decision:** Apply all three. Each is a small, additive
+extension to Iter 3's NotebookView; none reorganize the
+architecture.
+
+**Commit:** `docs(design): iter-5 — Autopsy clustering + filter sidebar + dual display mode`
