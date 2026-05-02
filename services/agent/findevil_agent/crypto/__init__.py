@@ -1,6 +1,6 @@
 """M2 cryptographic chain-of-custody layer.
 
-Four tiers, each independently testable and composable:
+Three tiers, each independently testable and composable:
 
   * ``audit_log`` — hash-chained JSONL writer with ``prev_hash``
     linking every record to the previous line. Append-only. The
@@ -13,14 +13,15 @@ Four tiers, each independently testable and composable:
   * ``signer``   — sigstore-python keyless signing over each
     JCS-canonicalized tool-call/finding/manifest. Rekor inclusion
     proof goes in the Sigstore bundle.
-  * ``ots``      — opentimestamps-client wrapper. ``ots stamp`` on
-    the run manifest anchors the Merkle root to Bitcoin; ``ots
-    verify`` reproduces the chain offline with only a Bitcoin
-    header.
+
+The OpenTimestamps + Bitcoin anchoring tier was removed in
+Amendment A5; design rationale + downstream doc updates are
+tracked there. The other doc-surface references to a 4-tier /
+5-link chain are stale until that amendment lands.
 
 See ``docs/superpowers/specs/2026-04-25-the-product-design.md`` §7
-and ``memory/project_crypto_custody_stack.md`` for the full design
-rationale.
+and ``memory/project_crypto_custody_stack.md`` for the original
+4-tier rationale.
 """
 
 from findevil_agent.crypto.audit_log import (
