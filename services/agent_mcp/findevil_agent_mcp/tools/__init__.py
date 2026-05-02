@@ -20,8 +20,6 @@ _MODULES: tuple[str, ...] = (
     "audit_verify",
     "manifest_finalize",
     "manifest_verify",
-    "ots_stamp",
-    "ots_verify",
     "verify_finding",
     "detect_contradictions",
     "judge_findings",
