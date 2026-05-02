@@ -107,7 +107,7 @@ ALLOWED_FILES = {
     # Historical specs + plans (per CLAUDE.md "code wins" rule -
     # they were written pre-divergence and have top-of-doc
     # banner per commit 608f6b8).
-    "BUILD_PLAN_v2.md",
+    "docs/legacy/BUILD_PLAN_v2.md",
     "Find_Evil_Research_and_Build_Plan.docx",
     # The autonomous-queue file describes the audit history.
     "memory/project_autonomous_queue.md",

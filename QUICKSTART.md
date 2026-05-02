@@ -1,12 +1,10 @@
 # Find Evil! — Quickstart
 
-Three things to get you investigating evidence with the agent.
+Three things to get you investigating evidence with the agent. For the project pitch + claims, see [README.md](README.md). For the full doc map, see [`docs/README.md`](docs/README.md).
 
 ---
 
 ## 1. Pick your environment (one-time, ~15 min)
-
-Two paths. Pick whichever matches your situation.
 
 ### Path A — SIFT VM (recommended; matches the SANS judging environment)
 
@@ -17,6 +15,8 @@ bash scripts/sift-vm-bootstrap.sh
 ```
 
 This converts the OVA, boots the VM headless, installs Rust + DFIR tools inside, sets up the SSH transport, and rewrites `.mcp.json.sift` to point at the running VM. Runs ~15 min on first invocation; subsequent runs detect existing state and skip.
+
+> **Hypervisor note:** `scripts/find-evil-sift` is VMware-only today (uses `vmrun.exe`); a VirtualBox path is stubbed but not implemented (see `scripts/find-evil-sift` lines 10–12). If you only have VirtualBox, use Path B.
 
 ### Path B — Local Windows host (faster iteration)
 
@@ -32,7 +32,7 @@ winget install Velociraptor  # or github.com/Velocidex/velociraptor/releases
 
 ---
 
-## 2. Choose: interactive (Claude Code) or fully-automated (Tesla mode)
+## 2. Choose a run mode
 
 ### Option 2A — Interactive Claude Code session (best for exploration)
 
@@ -46,13 +46,13 @@ claude
 bash scripts/find-evil-sift
 ```
 
-`.mcp.json` (or `.mcp.json.sift`, swapped automatically) tells Claude Code to spawn both MCP servers — `findevil-mcp` (Rust, 12 typed DFIR tools) and `findevil-agent-mcp` (Python, 10 typed crypto/ACH tools). The agent now has its tool surface.
+`.mcp.json` (or `.mcp.json.sift`, swapped automatically) tells Claude Code to spawn both MCP servers — `findevil-mcp` (Rust, 12 typed DFIR tools) and `findevil-agent-mcp` (Python, 11 typed crypto/ACH/memory/ACP tools).
 
 In the session, prompt:
 
 > investigate `<path-to-evidence>`
 
-The agent reads `agent-config/SOUL.md` → `AGENTS.md` → `PLAYBOOK.md` → `TOOLS.md` → `MEMORY.md` → `HEARTBEAT.md` at session start, then drives the playbook tool sequence for that evidence type.
+The agent reads `agent-config/SOUL.md` → `AGENTS.md` → `PLAYBOOK.md` → `TOOLS.md` → `MEMORY.md` → `HEARTBEAT.md` → `JUDGING.md` at session start, then drives the playbook tool sequence for that evidence type.
 
 ### Option 2B — `find-evil-auto` (Tesla mode, single command, no human input)
 
@@ -79,87 +79,32 @@ What it does in one command (no interactive prompts):
 2. Opens both MCP servers inside the SIFT VM via SSH stdio
 3. case_open → tool sequence per type → audit chain → judge → correlator → manifest_finalize
 4. Synthesizes Pool A (persistence-biased) and Pool B (exfil-biased) findings deterministically from tool outputs
-5. Writes `verdict.json` with the verdict (`SUSPICIOUS` / `NO_EVIL` / `INDETERMINATE` — see [`docs/verdict-semantics.md`](docs/verdict-semantics.md) for the analyst triage flow)
-6. Generates a fully-templated PDF investigation report (figures + findings + chain-of-custody attestation; see [`docs/cryptographic-attestation.md`](docs/cryptographic-attestation.md) for offline-verification recipe)
+5. Writes `verdict.json` with the verdict (`SUSPICIOUS` / `NO_EVIL` / `INDETERMINATE` — see [`docs/verdict-semantics.md`](docs/verdict-semantics.md))
+6. Generates a fully-templated PDF investigation report (figures + findings + chain-of-custody attestation)
 
-Output (on host, host-local):
+Output (on host):
 ```
 tmp/auto-runs/auto-<uuid>/
 ├── audit.jsonl
 ├── run.manifest.json
 ├── verdict.json
-├── REPORT.md
-├── REPORT.html
-├── REPORT.pdf
+├── REPORT.md / .html / .pdf
 └── figures/
-    ├── chain_of_custody.png
-    ├── findings_table.png
-    └── psscan_timeline.png  (memory images only)
 ```
 
-Output (inside VM, agent's case dir):
-```
-/home/sansforensics/find-evil/tmp/auto-<uuid>/
-├── audit.jsonl
-├── run.manifest.json
-└── verdict.json
-```
-
-Run it with `--no-report` if you just want the verdict + manifest and skip PDF rendering (saves ~5 seconds).
+Run with `--no-report` to skip PDF rendering (saves ~5 seconds).
 
 ### Option 2C — Fleet investigation (entire host inventory)
 
-When the case is "we have N memory images, find all the evil," the
-fleet pipeline is the operator path. Three scripts compose:
+When the case is "we have N memory images, find all the evil," chain three scripts:
 
 ```bash
-# 1. Walk every .img under /mnt/hgfs/evidence/extracted/<host>/ and
-#    invoke find-evil-auto per host. Sequential by default to avoid
-#    VM RAM contention; vol3 keeps a symbol cache so per-image
-#    overhead drops after the first run.
 python scripts/fleet_investigate.py [--limit N] [--skip BASENAMES]
-
-# 2. Cross-host pattern detection: process names appearing on ≥2
-#    hosts, 60-second-window temporal clusters across hosts, MITRE
-#    technique density, Merkle-root uniqueness check.
 python scripts/fleet_correlate.py [tmp/fleet-runs/<fleet-id>]
-
-# 3. Render the fleet report — 4 matplotlib figures
-#    (verdict_distribution, mitre_density, cross_host_processes,
-#    temporal_clusters) + Markdown + HTML + PDF, same pandoc +
-#    Chrome-headless chain as the per-host reports.
 python scripts/render_fleet_report.py [tmp/fleet-runs/<fleet-id>]
 ```
 
-Output:
-```
-tmp/fleet-runs/fleet-<timestamp>/
-├── fleet.json                 — per-host verdict summary
-├── fleet-summary.md           — terse per-host rollup
-├── fleet_correlation.json     — cross-host findings (machine-readable)
-├── fleet_correlation.md       — cross-host findings (analyst summary)
-├── FLEET_REPORT.md/html/pdf   — final analyst-facing report
-└── figures/
-    ├── verdict_distribution.png
-    ├── mitre_density.png
-    ├── cross_host_processes.png
-    └── temporal_clusters.png
-```
-
-The headline visual is `temporal_clusters.png` — each row is a
-cluster of process creations across ≥2 hosts within 60 seconds,
-color-coded by host. The fingerprint of automated lateral-movement
-tradecraft (PsExec waves, WMI execution chains, scheduled-task
-pivots) reads off this chart immediately.
-
-Cross-host process correlations filter known-benign enterprise
-binaries (McAfee/Trellix endpoint stack, VMware Tools, Windows
-infrastructure, Microsoft Defender) via `COMMON_WIN_PROCS` in
-`scripts/fleet_correlate.py` — see `docs/false-positives.md`
-"Fleet cross-host correlation" for what is and isn't filtered and
-why. Sysinternals tools (Autorunsc, PsExec) are *not* filtered
-because cross-host runs of those are themselves a finding worth
-analyst attention.
+Output: `tmp/fleet-runs/fleet-<timestamp>/FLEET_REPORT.{md,html,pdf}` plus per-host artifacts and four matplotlib figures. Cross-host process correlation filters known-benign enterprise binaries via `COMMON_WIN_PROCS` in `scripts/fleet_correlate.py` — see [`docs/false-positives.md`](docs/false-positives.md) "Fleet cross-host correlation" for what is and isn't filtered.
 
 ---
 
@@ -176,22 +121,19 @@ You'll see:
 
 Output lands at `~/.findevil/cases/<case_id>/` (or inside the VM at `/home/sansforensics/find-evil/tmp/<case_id>/` in SIFT-VM mode).
 
+Verifying a manifest someone else produced: drive `manifest_verify` from the agent_mcp server, or call `findevil_agent.crypto.manifest.verify_manifest` directly. Recipe + expected output: [`docs/cryptographic-attestation.md`](docs/cryptographic-attestation.md) §"How a third party verifies offline."
+
 ---
 
-## Recommended reading order if anything goes wrong
+## Where to read next
 
-| Question | File to read |
-|---|---|
-| "How do I avoid false positives?" | `docs/false-positives.md` |
-| "What do SUSPICIOUS / INDETERMINATE / NO_EVIL actually mean — and which findings do I act on first?" | `docs/verdict-semantics.md` |
-| "What does the agent actually do during an investigation?" | `agent-config/PLAYBOOK.md` |
-| "What's the architecture?" | `docs/architecture.md` |
-| "How does the cryptographic chain-of-custody work end-to-end? What does FRE 902(14) require?" | `docs/cryptographic-attestation.md` |
-| "What evidence is available?" | `docs/DATASET.md` |
-| "What if a tool is missing?" | The agent will return `BinaryNotFound -32602`. Install the binary OR set the env var pointing at it (e.g. `VOLATILITY_BIN=/path/to/vol`). |
-| "How do I verify a manifest someone else produced?" | `manifest_verify` MCP tool — offline, no network, no third-party servers. |
-| "How do I extend the tool surface?" | Each new MCP wrapper takes ~30-60 minutes following the pattern at `services/mcp/src/tools/vol_pslist.rs`. See the existing 12 tools for templates. |
-| "I changed something — how do I confirm L1 will be happy without `docker compose up`?" | `bash scripts/run-all-smokes.sh` runs all 9 L1 smokes (rust-mcp + agent-mcp + verdict-policy + fleet-policy + demo-script + launcher + divergence + path-existence + smoke-regex-tests) plus the autonomous-loop directive's full verification spec (ruff check + ruff format --check + cargo fmt + cargo clippy + cargo test) — 14 entries in ~10s incremental (longer on a cold cargo cache). Set `SKIP_SLOW_RUST=1` to skip cargo test during fast iteration (drops to 13 entries). |
+For the full doc map (every file with status badge + one-line purpose), see [`docs/README.md`](docs/README.md). High-traffic entries when something goes wrong:
+
+- "How do I avoid false positives?" → [`docs/false-positives.md`](docs/false-positives.md)
+- "What does the agent actually do?" → [`agent-config/PLAYBOOK.md`](agent-config/PLAYBOOK.md)
+- "What evidence is available?" → [`docs/DATASET.md`](docs/DATASET.md)
+- "What if a tool is missing?" → The agent returns `BinaryNotFound -32602`. Install the binary OR set the env var pointing at it (e.g. `VOLATILITY_BIN=/path/to/vol`).
+- "I changed something — how do I confirm L1 will be happy?" → `bash scripts/run-all-smokes.sh` (14 smokes, ~10s incremental).
 
 ---
 
@@ -199,7 +141,7 @@ Output lands at `~/.findevil/cases/<case_id>/` (or inside the VM at `/home/sansf
 
 * **Don't** trust HYPOTHESIS-tier findings without verification. The agent prefixes them with the literal word "hypothesis:" — those are leads, not facts.
 * **Don't** skip the synthetic-benign baseline (`goldens/synthetic-benign/`) — running on benign data first calibrates your false-positive floor.
-* **Don't** modify evidence files. The chain-of-custody invariant (CLAUDE.md) is filesystem-enforced; any write to `/evidence/<case_id>/` from outside the agent invalidates the manifest's claims.
+* **Don't** modify evidence files. The chain-of-custody invariant is filesystem-enforced; any write to `/evidence/<case_id>/` from outside the agent invalidates the manifest's claims.
 * **Don't** add `execute_shell` or any tool that takes arbitrary commands. The "narrow typed surface" is the architectural pitch; widening it forfeits that.
 
 ---
@@ -211,6 +153,6 @@ Output lands at `~/.findevil/cases/<case_id>/` (or inside the VM at `/home/sansf
 3. [ ] Contradictions resolved or explicitly flagged in the report
 4. [ ] Cross-host corroboration done (if multi-host case)
 5. [ ] Synthetic-benign baseline run produced zero findings
-6. [ ] Report rendered to PDF (the agent can do this; see `docs/reports/2026-04-26-srl2018-dc-investigation.pdf` for an example)
+6. [ ] Report rendered to PDF (see [`docs/reports/2026-04-26-srl2018-dc-investigation.pdf`](docs/reports/2026-04-26-srl2018-dc-investigation.pdf) for an example)
 
 If all 6 are checked, you're done. If any are skipped, document the reason in the report's §8 (Limitations).

@@ -23,7 +23,6 @@ The authoritative *precedence* hierarchy (which spec overrides which) lives in `
 | `QUICKSTART.md` | **ACTIVE** | Three-step quickstart for impatient users. |
 | `SUBMISSION_NOTES.md` | **ACTIVE** | Judge-facing notes for the SANS Find Evil! submission. |
 | `CHANGELOG.md` | **ACTIVE** | Chronological project changelog. |
-| `BUILD_PLAN_v2.md` | **RESEARCH** | 9-week roadmap; partially superseded by Amendments A2 + A3 + A5 (see the "Superseded sections" warning at top). |
 
 ## `docs/` top level (analyst + judge facing)
 
@@ -119,7 +118,8 @@ All five plans shipped. Each carries a RETIRED banner naming where the live code
 
 | File | Status | Purpose |
 |---|---|---|
-| `Find_Evil_Research_and_Build_Plan-v1.docx` | **RETIRED** (binary) | Original 72KB research doc; relevant content was promoted into `BUILD_PLAN_v2.md` + the A1/A2/A3 amendments. Cannot carry a banner (binary). |
+| `BUILD_PLAN_v2.md` | **RETIRED** (moved 2026-05-02) | Pre-A2/A3/A5 9-week roadmap. Pitch surface consolidated into `README.md` + `SUBMISSION_NOTES.md` per Phase 3c of the doc reorg. Kept for git-log archaeology. |
+| `Find_Evil_Research_and_Build_Plan-v1.docx` | **RETIRED** (binary) | Original 72KB research doc; relevant content was promoted into BUILD_PLAN_v2 + the A1/A2/A3 amendments. Cannot carry a banner (binary). |
 
 ## `docs/reports/`
 
