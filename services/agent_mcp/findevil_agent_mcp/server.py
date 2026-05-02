@@ -65,9 +65,9 @@ def _configure_logging() -> structlog.BoundLogger:
 def _build_specs_index() -> dict[str, ToolSpec]:
     """Materialize the registry once at startup.
 
-    Importing the tool modules can be slow (sigstore, opentimestamps
-    are lazy but pydantic schema generation isn't); we pay that cost
-    once before list_tools is first called.
+    Importing the tool modules can be slow (sigstore is lazy but
+    pydantic schema generation isn't); we pay that cost once before
+    list_tools is first called.
     """
     return {spec.name: spec for spec in all_specs()}
 
