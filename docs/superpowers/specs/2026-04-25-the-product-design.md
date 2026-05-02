@@ -1,7 +1,9 @@
 # Spec #2 — The Product: FIND EVIL! Automated DFIR Pipeline
 
+> **Status: SHIPPED (with A2 + A5 amendments).** The 7-layer architecture, 12 typed Rust MCP tools, M2 crypto stack (3-tier post-A5), M4 ACH agent layer (Pool A/B + judge + verifier + correlator + contradiction node) all live. The pre-A2 LangGraph runtime + FastAPI service were never built (per A2). The Bitcoin/OpenTimestamps tier was removed (per A5). Live entry: `scripts/find-evil` / `scripts/find-evil-auto`.
+
 **Date:** 2026-04-25
-**Status:** Design — awaiting user approval (Gate 4)
+**Status (original):** Design — awaiting user approval (Gate 4) — superseded by status banner above
 **Deadline:** 2026-06-15 22:45 CDT
 **Parent:** `docs/superpowers/specs/2026-04-23-find-evil-automation-master-design.md`
 **Grounded in:** `BUILD_PLAN_v2.md` (DFIR fundamentals unchanged); memory files `project_dfir_tooling_picks`, `project_adversarial_agents_pattern`, `project_crypto_custody_stack`, `project_mcp_apps_readiness`, `project_judging_signals`

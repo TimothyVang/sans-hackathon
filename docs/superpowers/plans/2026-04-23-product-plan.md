@@ -1,5 +1,7 @@
 # Find Evil! Product Implementation Plan
 
+> **Status: RETIRED (with A2 + A5 carve-outs noted in the superseded-by banner below).** Shipped across `services/mcp/` (Rust DFIR), `services/agent/findevil_agent/{crypto,verifier,judge,contradiction,correlator,pools}.py` (M2 + M4), and `services/agent_mcp/` (the Python MCP wrapper that A2 introduced). Both MCP servers are auto-spawned by Claude Code via `.mcp.json`. Kept for git-log archaeology. **Do not execute as a TDD plan.**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **Superseded by Amendment A2 (2026-04-25):** Tasks that build the LangGraph runtime, FastAPI service, `graph.py` / `api.py` / `cli.py` / `supervisor.py`, or the `services/agent/specialists/` subagents are no longer the path forward. A2 drops the custom Python orchestrator — Claude Code IS the orchestrator, and the M2 + M4 stacks ship as a Python MCP server (`services/agent_mcp/`). The Rust MCP tool tasks, the M2 cryptographic chain-of-custody tasks, and the M4 ACH logic (verifier / pools / judge / contradictions / correlator) all stand and shipped. The Next.js SPA tasks are deferred to bonus polish. See `docs/superpowers/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md` for the current architecture.

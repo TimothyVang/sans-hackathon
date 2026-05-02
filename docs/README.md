@@ -1,38 +1,135 @@
-# docs/
+# docs/ — canonical index
 
-Index of project documentation. The authoritative *precedence* hierarchy lives in `CLAUDE.md` "Document hierarchy" — this file just makes the per-file purposes scannable for both humans and future Claude Code sessions navigating the tree.
+Read this first when navigating the documentation tree. Every markdown file in the project gets one row below with a **status** + a one-line purpose. Status legend:
 
-## Top-level docs (in `docs/`)
-
-| File | Purpose |
+| Badge | Meaning |
 |---|---|
-| `architecture.md` | Devpost Required Component #3. Trust-boundary diagram + runtime architecture under Amendment A2. The single page judges reach first. |
-| `cryptographic-attestation.md` | The five-link chain-of-custody story (rubric criterion #5). How `manifest_verify` + `ots_verify` produce FRE 902(14) self-authenticating evidence. |
-| `DATASET.md` | Devpost Required Component #5. Every fixture the agent was tested against, with SHA-256 + license + expected findings. |
-| `demo-script-a2.md` | 5-minute Devpost demo video script (A2 flow). Pre-flight checklist + per-beat narration + rubric mapping. Supersedes the pre-A2 demo flow in `BUILD_PLAN_v2.md §9`. |
-| `false-positives.md` | Operator's guide. Three architectural FP layers + four operational habits + per-tool FP risk table. |
-| `verdict-semantics.md` | Analyst-facing meaning of `SUSPICIOUS` / `INDETERMINATE` / `NO_EVIL`; mirrors `compute_verdict` in `scripts/find_evil_auto.py`. |
+| **SHIPPED** | The work this doc describes is built and live in code. The doc is still useful as architectural reference; don't re-execute it as a TDD plan. |
+| **ACTIVE** | Currently authoritative for ongoing work. Edit when the underlying surface changes. |
+| **RESEARCH** | Background, exploration, or external reference. Not load-bearing for the submission. |
+| **RETIRED** | Work shipped; doc is kept for git-log archaeology only. Each retired file carries a status banner naming where the live code lives. |
+| **REQUIRED** | Devpost / SANS rules require this doc; ships with the submission. |
 
-## Subfolders
+The authoritative *precedence* hierarchy (which spec overrides which) lives in `CLAUDE.md` "Document hierarchy" — this index just makes per-file purpose scannable.
 
-- **`superpowers/specs/`** — 8 specs: master design + Amendment A1 (Option B credentials) + Amendment A2 (Claude Code as primary interface) + Amendment A3 (agent army memory + ACP handoff + dashboard) + 4 numbered subsystem specs (sandbox, build-swarm, product, glue). Read `CLAUDE.md` "Document hierarchy" for precedence; later amendments override earlier specs only where explicitly noted.
-- **`superpowers/plans/`** — 5 TDD plans (one per subsystem spec, plus the A3 plan). Each task is a checkbox with the failing-test → implement → commit sequence.
-- **`runbooks/`** — three procedural runbooks:
-  - `ci-smoke-checklist.md` — end-to-end pipeline verification before submission
-  - `dockerfile-a2-decision.md` — **DECISION TAKEN** (PR #4, 2026-04-27, "Option B"): cut the in-container `find-evil` wrapper + `.deb` packaging entirely. Body retained as decision record for future re-evaluations.
-  - `github-remote-bootstrap.md` — pre-submission ops doc for setting up the public GitHub repo URL Devpost requires.
-- **`braindumps/`** — origin-of-feature scratch docs that spawned amendments. `2026-04-26-agent-army-and-dashboard.md` is the research-enriched braindump that became Amendment A3.
-- **`legacy/`** — superseded v1 docs preserved for archaeological reference. `Find_Evil_Research_and_Build_Plan-v1.docx` is the original 72KB research doc; everything still relevant has been promoted into `BUILD_PLAN_v2.md` + the A1/A2/A3 amendments.
-- **`templates/`** — `devpost-readme.md` (the README template that ships in the v-submit bundle, populated by release CI).
-- **`references/`** — `protocol-sift-integration-reference.md` (external Protocol SIFT material; not authoritative — see `CLAUDE.md` "External 'Protocol SIFT' reference" for the reconciled contradictions). Embedded screenshots live in `references/figures/`.
-- **`reports/`** — investigation reports + figures. Currently: `2026-04-26-srl2018-dc-investigation` (22-host fleet investigation, embedded `figures-2026-04-26/` set, .md + .html + .pdf renderings).
+---
 
-## Related docs outside `docs/`
+## Repo-root docs
 
-- `CLAUDE.md` (repo root) — agent instructions, document hierarchy, non-negotiable invariants, spec/code divergences. Always loaded.
-- `README.md` (repo root) — public-facing project landing page.
-- `QUICKSTART.md` (repo root) — three-step quickstart for impatient users.
-- `BUILD_PLAN_v2.md` (repo root) — 9-week roadmap; partially superseded by Amendments A2 + A3 (see the prominent "Superseded sections" warning at top).
-- `CHANGELOG.md` (repo root) — chronological project changelog.
-- `SUBMISSION_NOTES.md` (repo root) — stub; edit before cutting `v-submit` tag.
-- `agent-config/` (repo root) — runtime DFIR agent identity files (SOUL, AGENTS, TOOLS, MEMORY, HEARTBEAT, JUDGING, PLAYBOOK). Read by the agent at investigation start.
+| File | Status | Purpose |
+|---|---|---|
+| `CLAUDE.md` | **ACTIVE** | Agent instructions, document hierarchy, non-negotiable invariants, spec/code divergences. Always loaded into Claude Code sessions. |
+| `README.md` | **ACTIVE** | Public-facing project landing page. |
+| `QUICKSTART.md` | **ACTIVE** | Three-step quickstart for impatient users. |
+| `SUBMISSION_NOTES.md` | **ACTIVE** | Judge-facing notes for the SANS Find Evil! submission. |
+| `CHANGELOG.md` | **ACTIVE** | Chronological project changelog. |
+| `BUILD_PLAN_v2.md` | **RESEARCH** | 9-week roadmap; partially superseded by Amendments A2 + A3 + A5 (see the "Superseded sections" warning at top). |
+
+## `docs/` top level (analyst + judge facing)
+
+| File | Status | Purpose |
+|---|---|---|
+| `architecture.md` | **REQUIRED** | Devpost Required Component #3. Trust-boundary diagram + runtime architecture. The single page judges reach first. |
+| `cryptographic-attestation.md` | **REQUIRED** | Three-link chain-of-custody story (rubric criterion #5). How `manifest_verify` produces FRE 902(14) self-authenticating evidence post-A5. |
+| `DATASET.md` | **REQUIRED** | Devpost Required Component #5. Every fixture the agent was tested against, with SHA-256 + license + expected findings. |
+| `demo-script-a2.md` | **ACTIVE** | 5-minute Devpost demo video script (A2 flow). Pre-flight checklist + per-beat narration + rubric mapping. |
+| `false-positives.md` | **ACTIVE** | Operator's guide. Three architectural FP layers + four operational habits + per-tool FP risk table. |
+| `verdict-semantics.md` | **ACTIVE** | Analyst-facing meaning of `SUSPICIOUS` / `INDETERMINATE` / `NO_EVIL`; mirrors `compute_verdict` in `scripts/find_evil_auto.py`. |
+
+## `agent-config/` (runtime DFIR agent identity)
+
+These are read by the agent at investigation start (per CLAUDE.md "Agent investigation prompt").
+
+| File | Status | Purpose |
+|---|---|---|
+| `agent-config/SOUL.md` | **ACTIVE** | Mission + epistemic hierarchy (CONFIRMED > INFERRED > HYPOTHESIS) + FRE 902(14) stance + cross-artifact rule + no-attribution rule. |
+| `agent-config/AGENTS.md` | **ACTIVE** | Supervisor / Pool A / Pool B / judge / verifier / correlator role descriptions. |
+| `agent-config/PLAYBOOK.md` | **ACTIVE** | Tool sequences per evidence type (`.e01`, `.mem`, `.evtx`, Velociraptor `.zip`, mixed dirs). |
+| `agent-config/TOOLS.md` | **ACTIVE** | Typed tool surface — 12 Rust + 11 Python MCP tools. |
+| `agent-config/MEMORY.md` | **ACTIVE** | Tier-1 DFIR caveats (Amcache LastModified ≠ execution, ShimCache order changed at Win8.1, Logon Type 3 vs 10, etc.). |
+| `agent-config/HEARTBEAT.md` | **ACTIVE** | Per-iteration self-check loop. |
+| `agent-config/JUDGING.md` | **ACTIVE** | SANS Find Evil! 2026 rubric (6 criteria, verbatim) + end-of-investigation self-score checklist that emits `kind=judge_selfscore` audit records. |
+
+## `docs/superpowers/specs/` (architecture specs)
+
+Status-banner-prefixed within each file. Read in CLAUDE.md "Document hierarchy" precedence order.
+
+| File | Status | Purpose |
+|---|---|---|
+| `2026-04-23-find-evil-automation-master-design.md` | **SHIPPED** | Master design — 4-subsystem decomposition + 4 differentiators (M1 leaderboard, M2 crypto, M3 widgets, M4 ACH). |
+| `2026-04-23-amendment-option-b-claude-code-mode.md` (**A1**) | **SHIPPED** | Subscription-mode credentials for the swarm; LiteLLM proxy never built. |
+| `2026-04-25-amendment-a2-claude-code-primary-interface.md` (**A2**) | **SHIPPED** | Drops the custom Python orchestrator; Claude Code IS the orchestrator. |
+| `2026-04-26-amendment-a3-agent-army-and-dashboard.md` (**A3**) | **SHIPPED** (Phases 1-4) / **RESEARCH** (Phases 5-6) | Memory + ACP MCP tools + dashboard scaffold; sprite phases parked. |
+| `2026-04-27-amendment-a4-managed-agents-runtime.md` (**A4**) | **RESEARCH** | Future-deployment design for hosted Anthropic Managed Agents runtime. Not on the SANS critical path. |
+| `2026-04-23-layered-test-sandbox-design.md` (**Spec #3**) | **SHIPPED** | L0/L1/L2/L3 sandbox stack. L2 advisory only. |
+| `2026-04-24-autonomous-build-swarm-design.md` (**Spec #1**) | **ACTIVE** | Build swarm architecture (still authoritative reference for swarm extension). |
+| `2026-04-25-the-product-design.md` (**Spec #2**) | **SHIPPED** (with A2 + A5 amendments) | The DFIR tool the judges run. |
+| `2026-04-26-orchestration-glue-design.md` (**Spec #4**) | **SHIPPED** | Thin GHA CI pipeline. |
+
+(There is no Amendment A5 spec doc — A5 was a code-only amendment + this Phase-1 doc-amendment pass.)
+
+## `docs/superpowers/plans/` (TDD task lists)
+
+All five plans shipped. Each carries a RETIRED banner naming where the live code lives. Do not execute as TDD plans.
+
+| File | Status | Where it lives now |
+|---|---|---|
+| `2026-04-23-build-swarm-plan.md` | **RETIRED** | `services/swarm/`, `scripts/swarm-*.sh` |
+| `2026-04-23-orchestration-glue-plan.md` | **RETIRED** | `.github/workflows/`, `scripts/package-devpost.sh` |
+| `2026-04-23-product-plan.md` | **RETIRED** | `services/mcp/`, `services/agent/`, `services/agent_mcp/` (with A2 + A5 carve-outs) |
+| `2026-04-23-sandbox-plan.md` | **RETIRED** | `.github/workflows/l[0-3]-*.yml`, `docker/l1-compose.yml`, `packer/sift-microvm.pkr.hcl` |
+| `2026-04-26-amendment-a3-plan.md` | **RETIRED** (Phases 1-4) / **PARKED** (Phases 5-6) | `services/agent_mcp/findevil_agent_mcp/tools/`, `services/agent/findevil_agent/memory/`, `apps/web/` |
+
+## `docs/runbooks/` (operational procedures)
+
+| File | Status | Purpose |
+|---|---|---|
+| `ci-smoke-checklist.md` | **ACTIVE** | End-to-end pipeline verification before submission. |
+| `dockerfile-a2-decision.md` | **RESEARCH** (decision archive) | Cut the in-container `find-evil` wrapper + `.deb` packaging (PR #4, 2026-04-27, "Option B"). Body retained as decision record. |
+| `github-remote-bootstrap.md` | **ACTIVE** | Pre-submission ops doc for setting up the public GitHub repo URL Devpost requires. |
+
+## `docs/design-briefs/`
+
+| File | Status | Purpose |
+|---|---|---|
+| `phase-5-6-sprite-design-brief.md` | **RESEARCH** (parked) | Claude Design prototyping handoff for the 5 pixel-art sprites + AuditBeadString chrome. Gated on a separate prototyping pass. |
+
+(The earlier Judge Mode design briefs + 8-iteration screenshots were retired in commit `20013e4` along with the Judge Mode spec + plans.)
+
+## `docs/braindumps/`
+
+| File | Status | Purpose |
+|---|---|---|
+| `2026-04-26-agent-army-and-dashboard.md` | **RESEARCH** (origin doc) | Produced Amendment A3 — kept for original brainstorming context. |
+
+## `docs/references/`
+
+| File | Status | Purpose |
+|---|---|---|
+| `protocol-sift-integration-reference.md` | **RESEARCH** (external, NOT authoritative) | Where this disagrees with project specs, specs win — see CLAUDE.md "External 'Protocol SIFT' reference" for reconciled contradictions. |
+| `figures/` | **REFERENCE** | Embedded images for the Protocol SIFT doc. |
+
+## `docs/templates/`
+
+| File | Status | Purpose |
+|---|---|---|
+| `devpost-readme.md` | **ACTIVE** | README template that ships in the v-submit bundle (envsubst'd by `scripts/package-devpost.sh`). |
+
+## `docs/legacy/`
+
+| File | Status | Purpose |
+|---|---|---|
+| `Find_Evil_Research_and_Build_Plan-v1.docx` | **RETIRED** (binary) | Original 72KB research doc; relevant content was promoted into `BUILD_PLAN_v2.md` + the A1/A2/A3 amendments. Cannot carry a banner (binary). |
+
+## `docs/reports/`
+
+Investigation reports + their figures. Currently:
+
+- `docs/reports/2026-04-26-srl2018-dc-investigation.md` (+ `.html` + `.pdf` co-renderings) — 22-host SRL-2018 fleet investigation. Status: **REFERENCE** (showcase example referenced from CLAUDE.md + README).
+- `docs/reports/figures-2026-04-26/` — embedded report images.
+
+## What this index does NOT cover
+
+- User-level memory at `~/.claude/projects/.../memory/` — 22 files, see `MEMORY.md` index there. Not git-tracked.
+- Source code (`services/`, `apps/`, `scripts/`) — see CLAUDE.md "Repository layout" + per-service `README.md`.
+- External research clones (`git-hub-references/`, `openclaw/`, `hermes-agent/`, etc.) — see CLAUDE.md "External reference clones." Gitignored.

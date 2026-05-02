@@ -1,5 +1,7 @@
 # Amendment A4 — Managed Agents production runtime
 
+> **Status: RESEARCH (deferred).** Implementation deferred until post-submission adoption. PURELY ADDITIVE — A1/A2/A3 are unchanged. The SANS submission ships against the local Claude Code path (A2). A future contributor wanting hosted durability for an organization implements `services/mcp_http/` + `services/managed_agent/` + `scripts/find-evil-managed` per §4.5.
+
 **Status:** spec, future deployment work (not blocking the SANS submission). Origin: user redirect 2026-04-27 — *"Managed Agents is a fit for the SANS Find Evil! agent itself running in production. … that's a real future use case for the product."*
 
 **Composes with, does NOT replace:** Amendment A1 (subscription credential mode) and Amendment A2 (Claude Code as the primary interface). A4 introduces a **third deployment mode** alongside the existing two; the hackathon submission still ships against A1 + A2 + A3, and a SANS judge cloning the repo runs the existing `scripts/find-evil` / `scripts/find-evil-auto` paths unchanged.

@@ -1,6 +1,8 @@
 # Braindump — agent-army DFIR workflow (research-enriched)
 
-> Status: enriched from the original 20-line vision with verified citations + a survey of
+> **Status: RESEARCH (origin doc, superseded by Amendment A3).** This braindump produced Amendment A3 (`docs/superpowers/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md`), which is the canonical record of what was actually decided + shipped. Kept here for the original brainstorming context.
+
+> Status (original): enriched from the original 20-line vision with verified citations + a survey of
 > what's already cloned locally. Originals preserved in spirit; everything else has a URL or
 > a local file path behind it.
 

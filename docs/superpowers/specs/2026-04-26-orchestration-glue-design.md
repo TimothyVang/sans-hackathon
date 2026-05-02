@@ -1,5 +1,7 @@
 # Spec #4 — Orchestration Glue: CI Pipeline
 
+> **Status: SHIPPED.** Nine GHA workflows live in `.github/workflows/`. Branch protection, release pipeline (`release.yml` on `v*` tags), Devpost submission zip (`devpost-submit.yml` on `v-submit`), competitor watch, and the budget-guard (no-op under A1 unless `ANTHROPIC_API_KEY` is set) all wired. `scripts/build-deb.sh` was cut by A2 (PR #4 / `docs/runbooks/dockerfile-a2-decision.md`).
+
 **Date:** 2026-04-26
 **Status:** Design — awaiting user approval
 **Deadline:** 2026-06-15 22:45 CDT
