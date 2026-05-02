@@ -172,8 +172,7 @@ You'll see:
 3. Findings emerge tagged with `tool_call_id`, MITRE ATT&CK technique, and confidence (CONFIRMED / INFERRED / HYPOTHESIS)
 4. `detect_contradictions` surfaces Pool A vs Pool B disagreements **before** the judge merges
 5. `judge_findings` + `correlate_findings` apply credibility weighting + the SOUL.md ≥2 artifact-class rule
-6. `manifest_finalize` builds the Merkle tree, signs with sigstore, writes `run.manifest.json`
-7. (Optional) `ots_stamp` anchors the manifest to Bitcoin via OpenTimestamps for FRE 902(14) self-authentication
+6. `manifest_finalize` builds the Merkle tree, signs with sigstore (Rekor inclusion proof), writes `run.manifest.json` — terminal step under Amendment A5
 
 Output lands at `~/.findevil/cases/<case_id>/` (or inside the VM at `/home/sansforensics/find-evil/tmp/<case_id>/` in SIFT-VM mode).
 
@@ -190,7 +189,7 @@ Output lands at `~/.findevil/cases/<case_id>/` (or inside the VM at `/home/sansf
 | "How does the cryptographic chain-of-custody work end-to-end? What does FRE 902(14) require?" | `docs/cryptographic-attestation.md` |
 | "What evidence is available?" | `docs/DATASET.md` |
 | "What if a tool is missing?" | The agent will return `BinaryNotFound -32602`. Install the binary OR set the env var pointing at it (e.g. `VOLATILITY_BIN=/path/to/vol`). |
-| "How do I verify a manifest someone else produced?" | `manifest_verify` MCP tool. Or `ots verify run.manifest.ots` for the Bitcoin anchor. |
+| "How do I verify a manifest someone else produced?" | `manifest_verify` MCP tool — offline, no network, no third-party servers. |
 | "How do I extend the tool surface?" | Each new MCP wrapper takes ~30-60 minutes following the pattern at `services/mcp/src/tools/vol_pslist.rs`. See the existing 12 tools for templates. |
 | "I changed something — how do I confirm L1 will be happy without `docker compose up`?" | `bash scripts/run-all-smokes.sh` runs all 9 L1 smokes (rust-mcp + agent-mcp + verdict-policy + fleet-policy + demo-script + launcher + divergence + path-existence + smoke-regex-tests) plus the autonomous-loop directive's full verification spec (ruff check + ruff format --check + cargo fmt + cargo clippy + cargo test) — 14 entries in ~10s incremental (longer on a cold cargo cache). Set `SKIP_SLOW_RUST=1` to skip cargo test during fast iteration (drops to 13 entries). |
 
@@ -212,7 +211,6 @@ Output lands at `~/.findevil/cases/<case_id>/` (or inside the VM at `/home/sansf
 3. [ ] Contradictions resolved or explicitly flagged in the report
 4. [ ] Cross-host corroboration done (if multi-host case)
 5. [ ] Synthetic-benign baseline run produced zero findings
-6. [ ] `ots_stamp` Bitcoin anchor receipt obtained (if outbound network available)
-7. [ ] Report rendered to PDF (the agent can do this; see `docs/reports/2026-04-26-srl2018-dc-investigation.pdf` for an example)
+6. [ ] Report rendered to PDF (the agent can do this; see `docs/reports/2026-04-26-srl2018-dc-investigation.pdf` for an example)
 
-If all 7 are checked, you're done. If any are skipped, document the reason in the report's §8 (Limitations).
+If all 6 are checked, you're done. If any are skipped, document the reason in the report's §8 (Limitations).

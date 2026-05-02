@@ -11,6 +11,41 @@ once the first `v0.x` is cut on the `v-submit` tag.
 
 ## [Unreleased]
 
+### Removed — Amendment A5 (2026-04-30 → 2026-05-01)
+
+- **OpenTimestamps + Bitcoin tier of the cryptographic chain-of-custody.**
+  The two MCP tools `ots_stamp` and `ots_verify` (commits `773bf6d`
+  through `2b59572`), the `services/agent/findevil_agent/crypto/ots.py`
+  implementation module + its 9 unit tests, and the
+  `opentimestamps-client==0.7.2` dependency are all deleted. The
+  five-link chain (sha256 → audit prev_hash → rs_merkle → sigstore →
+  OpenTimestamps → Bitcoin) collapses to three composed primitives
+  (audit prev_hash → rs_merkle → sigstore), now expressed as a 4-row
+  primitive table in `docs/cryptographic-attestation.md`. The
+  Python MCP server tool count drops 13 → 11; the total MCP tool
+  count drops 25 → 23 (12 Rust + 11 Python).
+- **BREAKING CHANGE in the cryptographic-attestation contract.**
+  Old runs that produced `*.ots` receipts remain valid (the
+  receipts are self-contained Bitcoin proofs and don't depend on
+  the agent for verification). New runs will not produce them.
+  Any external consumer that polled for `run.manifest.ots`
+  alongside `run.manifest.json` needs to drop that expectation.
+- **FRE 902(14) self-authenticating-evidence claim is weaker but
+  still defensible.** Pre-A5, prong (b) of FRE 902(14) ("trusted
+  timestamp from independent third party") was satisfied by the
+  Bitcoin proof-of-work chain (zero trusted parties). Post-A5,
+  prong (b) is satisfied by Sigstore's Rekor transparency log
+  (one trusted party — the Linux Foundation operates the log).
+  Honest disclaimer is in `docs/cryptographic-attestation.md`'s
+  "What FRE 902(14) requires" section.
+- **Why this happened:** the OpenTimestamps anchor required network
+  reach to a calendar server plus a multi-hour wait for the
+  Bitcoin attestation to mature. SANS judges scoring offline can
+  exercise neither. The orchestrator never called `ots_stamp` in
+  the first place — it was listed as "(Optional) Step 10" in
+  `find_evil_auto.py`'s docstring but no code path invoked it.
+  Removal changes documentation more than runtime behavior.
+
 ### Added — automation surface
 
 - **`scripts/find-evil-auto`** Tesla-mode single-command orchestrator
