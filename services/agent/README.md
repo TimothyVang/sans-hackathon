@@ -28,7 +28,7 @@ under Amendment A2.
 | `crypto/audit_log.py` hash-chained JSONL writer | ✅ |
 | `crypto/merkle.py` rs_merkle Merkle tree builder | ✅ |
 | `crypto/manifest.py` build + write `run.manifest.json` | ✅ |
-| `crypto/ots.py` OpenTimestamps Bitcoin anchor | ✅ |
+| ~~`crypto/ots.py` OpenTimestamps Bitcoin anchor~~ | dropped per A5 |
 | `verifier.py` re-execute cited tool calls + veto | ✅ |
 | `pools/persistence.py` + `pools/exfil.py` (Pool A + Pool B) | ✅ |
 | `judge.py` credibility-weighted merge | ✅ |
@@ -92,7 +92,6 @@ Key pins:
 - `langgraph-checkpoint-sqlite >=2.0,<3.0`  *(Product uses Sqlite; Swarm uses Postgres)*
 - `anthropic >=0.45,<1.0`
 - `sigstore ==3.*`
-- `opentimestamps-client ==0.7.2`
 - `fastapi >=0.115,<1.0`
 - `pydantic >=2.7,<3.0`
 - `mitreattack-python >=5.4,<6.0`
