@@ -6,6 +6,19 @@
 **Parent:** `docs/superpowers/specs/2026-04-23-find-evil-automation-master-design.md`
 **Grounded in:** `BUILD_PLAN_v2.md` (DFIR fundamentals unchanged); memory files `project_dfir_tooling_picks`, `project_adversarial_agents_pattern`, `project_crypto_custody_stack`, `project_mcp_apps_readiness`, `project_judging_signals`
 
+> **Amendment A5 (2026-05-01) supersedes the OpenTimestamps + Bitcoin
+> tier of the M2 cryptographic chain-of-custody.** The "Bitcoin
+> anchor" subsection of §7, acceptance criterion AC-05, the
+> `opentimestamps-client` pin row in §16, and the `crypto/ots.py`
+> file-tree entry in §4 are all removed in this revision. The
+> `ots_pending` field on `RunVerdict` (§5) is left in place as a
+> deferred wire-format decision per the A5 plan §6. The chain is
+> now three composed primitives (audit prev_hash → rs_merkle →
+> sigstore); the FRE 902(14) prong (b) is satisfied by Rekor
+> transparency-log inclusion rather than Bitcoin proof-of-work.
+> See `docs/cryptographic-attestation.md` for the honest trade-off
+> on the legal claim.
+
 ---
 
 ## 1. Problem Statement
@@ -16,7 +29,7 @@ SANS Find Evil! judges run a SIFT VM with Windows host evidence in `.e01` format
 
 **Evidence traceability.** Published DFIR agent tools (Dropzone, Prophet, competitor `findevil`) either emit findings without citations or cite tool output at the prose level only. The SANS rubric explicitly penalizes unlinked inferences. Every finding in this product carries a `tool_call_id` + SHA-256 that is visible in the UI chip, in the CLI output, and in the audit JSONL.
 
-**Courtroom portability.** No existing DFIR agent tool produces cryptographically self-authenticating findings under FRE 902(14). This product signs every MCP tool call with `sigstore-python`, roots findings in an `rs_merkle` Merkle tree, and anchors the root to Bitcoin via `opentimestamps-client`. Any party can verify the entire run offline without trusting the tool author.
+**Courtroom portability.** No existing DFIR agent tool produces cryptographically self-authenticating findings under FRE 902(14). This product signs every MCP tool call with `sigstore-python` (recorded in the public Rekor transparency log) and roots findings in an `rs_merkle` Merkle tree. Any party can verify the entire run offline without trusting the tool author. (Pre-A5 the chain also anchored the Merkle root to Bitcoin via `opentimestamps-client`; that tier was cut — see the A5 banner above.)
 
 The product does NOT replace the analyst. It is framed throughout as "an orchestrator that reduces friction" (Rob Lee's non-negotiable, per `project_judging_signals.md`). Unattended mode is a CI/batch capability, not the primary interaction model.
 
@@ -257,8 +270,9 @@ services/mcp/
 services/agent/
 ├── pyproject.toml                  # langgraph>=1.0 (pin exact), anthropic>=0.45,
 │                                   # fastapi>=0.115, uvicorn, sigstore==3.x,
-│                                   # opentimestamps-client==0.7.2, pydantic>=2.7,
-│                                   # duckdb>=0.10, mitreattack-python
+│                                   # pydantic>=2.7, duckdb>=0.10,
+│                                   # mitreattack-python  (opentimestamps-client
+│                                   # was removed under Amendment A5)
 ├── config.py                       # MODEL constant (one value for both pools);
 │                                   # tool binary paths; budget ceiling; flags
 ├── graph.py                        # LangGraph StateGraph; SqliteSaver.from_conn_string;
@@ -314,8 +328,7 @@ services/agent/
 │   ├── __init__.py
 │   ├── signer.py                   # sigstore 3.x keyless sign per tool call;
 │   │                               # one Fulcio cert per run; async Rekor batch
-│   ├── ots.py                      # opentimestamps-client subprocess wrapper;
-│   │                               # ots stamp + background ots upgrade
+│   │                               # (ots.py was removed under Amendment A5)
 │   └── audit_log.py                # M2 JSONL writer; hash-chain via prev_hash field
 ├── cli.py                          # find-evil CLI:
 │                                   #   serve — FastAPI + Next.js + MCP subprocess
@@ -576,9 +589,7 @@ One ephemeral Fulcio certificate is obtained per run (not per tool call). Rekor 
 
 Each tool call output hash is appended as a leaf immediately after it is computed. The tree is strictly append-only. After the verifier node approves the final finding list, the supervisor invokes `manifest_finalize` which: appends all approved finding hashes as terminal leaves; computes the Merkle root; serializes `RunManifest` as JCS-canonicalized JSON to `~/.findevil/cases/<id>/run.manifest.json`. O(log n) inclusion proofs are stored per leaf in the manifest.
 
-**Bitcoin anchor — `opentimestamps-client` 0.7.2 (`services/agent/crypto/ots.py`)**
-
-`ots stamp run.manifest.json` is invoked as a subprocess immediately after manifest finalization. Produces `run.manifest.ots`. Bitcoin confirmation is async (~1–2 hours); `ots_pending: True` in `RunVerdict` until a background poll via `ots upgrade` succeeds. OTS receipt is not on the critical path to verdict — it is the long-term tamper-evidence layer.
+**(Removed under Amendment A5 — was: Bitcoin anchor via `opentimestamps-client` 0.7.2.)** The `crypto/ots.py` module, the `ots_stamp` and `ots_verify` MCP tool wrappers, and the `opentimestamps-client` dependency were all deleted. The `ots_pending` field on `RunVerdict` (§5) is left in place pending a follow-up wire-format decision per the A5 plan; today it is always `False` because nothing sets it to `True`.
 
 **M2 crypto-audit JSONL — `~/.findevil/cases/<id>/audit.jsonl`**
 
@@ -594,11 +605,8 @@ Re-hashes all leaves from `run.manifest.json`; recomputes root; compares to stor
 **Step 2 — Sigstore bundle verification (~10s, network):**
 `cosign verify-blob --bundle <bundle>` against cached Rekor checkpoint. Confirms each tool call's input+output was signed at time of execution by a key with a valid Fulcio certificate.
 
-**Step 3 — OTS verification (~5s, network, optional):**
-`ots verify run.manifest.ots` → "this manifest hash existed before Bitcoin block N." No trusted third party required.
-
-**Step 4 — Receipt output:**
-One-page PDF or ANSI terminal block citing FRE 902(14) verbatim. Green "VERIFIED" or red "TAMPERED" with per-step breakdown.
+**Step 3 — Receipt output:**
+One-page PDF or ANSI terminal block citing FRE 902(14) verbatim. Green "VERIFIED" or red "TAMPERED" with per-step breakdown. (The pre-A5 design had a separate Step 3 "OTS verification" before this output step; removed under A5 along with the Bitcoin tier — see the banner at top.)
 
 WASM web verifier (`apps/web/public/verifier.wasm`): week-7 stretch goal — judge pastes manifest JSON into a static page; WASM replays Merkle root offline. Not AC-gated for the 2026-06-15 deadline.
 
@@ -885,7 +893,7 @@ All 15 criteria run in the L3 golden-run job (`.github/workflows/l3-sift-goldens
 - [ ] **AC-02 — Correct verdict:** Run produces `verdict: CONFIRMED_EVIL`. At least 10 of the 14 canonical findings in `goldens/nist-hacking-case.findings.json` appear in the output (≥71% recall).
 - [ ] **AC-03 — No uncited findings:** Every `Finding` in the output carries a `tool_call_id` that appears in `audit.jsonl`. Zero uncited findings in the run.
 - [ ] **AC-04 — Crypto manifest offline verify:** `find-evil verify run.manifest.json` exits 0 (Steps 1–2, offline) in under 60 seconds.
-- [ ] **AC-05 — OTS receipt present:** `run.manifest.ots` exists at run completion. `ots upgrade run.manifest.ots` succeeds after Bitcoin confirmation.
+- [ ] ~~**AC-05 — OTS receipt present:**~~ **REMOVED under Amendment A5** (Bitcoin/OTS tier deleted; no `run.manifest.ots` is produced).
 - [ ] **AC-06 — Merkle inclusion proofs:** Spot-check 3 randomly selected leaves from `run.manifest.json`. `find-evil verify --check-leaf <index>` returns VALID for each.
 - [ ] **AC-07 — Kill/resume:** SIGKILL the Python process mid-run. Restart with `find-evil run --case ... --resume`. Final verdict matches an uninterrupted run on the same fixture.
 - [ ] **AC-08 — Contradiction surface:** The NIST Hacking Case run produces at least 1 `ContradictionFound` event, verifiable in `audit.jsonl`.
@@ -960,7 +968,7 @@ Aligns to master design `§7` revised 8-week schedule.
 | `anthropic` (Claude Agent SDK) | >=0.45 | MIT | Python subagents |
 | `fastapi` | >=0.115 | MIT | Python web server |
 | `sigstore` | 3.x | Apache-2.0 | Python M2 signing |
-| `opentimestamps-client` | 0.7.2 | LGPL-3.0 (subprocess only) | Python M2 OTS anchor |
+| ~~`opentimestamps-client`~~ | ~~0.7.2~~ | ~~LGPL-3.0~~ | **REMOVED under Amendment A5** (Bitcoin/OTS tier deleted from the chain). |
 | `pydantic` | >=2.7 | MIT | Python event schema |
 | `mitreattack-python` | latest Apache-2.0 | Apache-2.0 | ATT&CK ID lookup |
 | `next` | 15.x | MIT | Web app |
@@ -974,7 +982,7 @@ Aligns to master design `§7` revised 8-week schedule.
 | Velociraptor | 0.7.x (subprocess) | AGPL-3.0 | Artifact collection |
 | YARA Forge Core | weekly tarball | Mixed (Core tier) | YARA rules |
 
-**License compliance:** AGPL/GPL tools are subprocess-only; zero AGPL/GPL code is linked into the Rust binary or the Python agent. Submission repository license: MIT. `opentimestamps-client` LGPL-3.0 is invoked as a CLI subprocess (`ots` binary), not linked — acceptable under LGPL.
+**License compliance:** AGPL/GPL tools are subprocess-only; zero AGPL/GPL code is linked into the Rust binary or the Python agent. Submission repository license: MIT.
 
 ---
 
