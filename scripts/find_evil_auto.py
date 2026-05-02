@@ -18,9 +18,8 @@ What it does:
        agent-config/JUDGING.md). Lands in the chain BEFORE finalize so
        the score is part of the cryptographic attestation.
     9. manifest_finalize: Merkle tree + sigstore signature
-    10. (Optional) ots_stamp Bitcoin anchor
-    11. Writes verdict.json + (optional) PDF report (the report
-        surfaces the selfscore table from the audit chain).
+   10. Writes verdict.json + (optional) PDF report (the report
+       surfaces the selfscore table from the audit chain).
 
 This is the "Tesla mode" entrypoint — point at evidence, get a signed
 verdict. No interactive Claude Code session required.
