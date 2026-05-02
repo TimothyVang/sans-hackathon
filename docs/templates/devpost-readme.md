@@ -16,7 +16,7 @@
 
 Find Evil! investigates Windows host evidence (`.e01` disk images, memory captures, EVTX logs) end-to-end and produces findings with:
 
-1. **Cryptographic chain-of-custody** — every MCP tool call is signed with `sigstore`, every finding is rooted in an `rs_merkle` append-only tree, and the per-run manifest is anchored to Bitcoin via OpenTimestamps. Any party can verify the full run offline in under 60 seconds via the `manifest_verify` + `ots_verify` MCP tools (or the third-party `ots verify` CLI), producing FRE 902(14) self-authenticating receipts.
+1. **Cryptographic chain-of-custody** — every MCP tool call is signed with `sigstore` (Rekor transparency-log inclusion proof), every finding is rooted in an `rs_merkle` append-only tree, and the per-run manifest is hash-chained record-by-record. Any party can verify the full run offline in under 60 seconds via the `manifest_verify` MCP tool — no network, no third-party servers — supporting a FRE 902(14) self-authenticating-evidence claim. (The OpenTimestamps + Bitcoin anchor that strengthened this story was removed under Amendment A5; see `docs/cryptographic-attestation.md` for the honest trade-off.)
 
 2. **LLM-powered Analysis of Competing Hypotheses (ACH)** — two agent pools investigate the same evidence in parallel with opposing priors (persistence-biased vs. exfiltration-biased). A `ContradictionFound` event emits BEFORE reconciliation, surfacing real disagreements to the analyst instead of hiding them in a consensus-seeking single-agent output. Credibility-weighted judge merges at the end. This is Heuer's 1970s intelligence-analysis framework applied as live agent architecture.
 
@@ -33,10 +33,10 @@ Evidence vault (read-only .e01)
   → SIFT tool subprocesses (unprivileged, sandboxed)
   → Two typed MCP servers
       • findevil-mcp (Rust)        — 12 DFIR tools, no execute_shell
-      • findevil-agent-mcp (Python) — 10 crypto/ACH tools
+      • findevil-agent-mcp (Python) — 11 crypto/ACH/memory/ACP tools
   → Claude Code agent loop (supervisor + forked Pool A/B subagents
     + verifier + judge + correlator + contradiction surface)
-  → Crypto chain-of-custody (sigstore + rs_merkle + OpenTimestamps)
+  → Crypto chain-of-custody (audit hash chain + rs_merkle + sigstore)
 ```
 
 **Architectural approach per SANS rules:** **Direct Agent Extension (§1) + Custom MCP Server (§2).** Claude Code IS the agent; the typed MCP surface is the only verb set it has. There is no execute_shell, anywhere. (Optional Next.js SPA + MCP Apps widgets are scheduled as a week-7 polish bonus per Amendment A2 §2.1, not on the critical path.)
@@ -77,15 +77,14 @@ claude
 # Then prompt the agent, e.g.:
 #   "investigate fixtures/nist-hacking-case/SCHARDT.001"
 # It will call case_open → fork Pool A/B subagents → run DFIR tools →
-# detect_contradictions → judge → correlate → manifest_finalize → ots_stamp.
+# detect_contradictions → judge → correlate → manifest_finalize.
 
-# Verify a completed run's cryptographic chain-of-custody offline
-# (the agent calls these MCP tools; CLI fallback drives them directly):
-ots verify run.manifest.ots
-# → green/red receipt citing FRE 902(14), plus Bitcoin block inclusion proof.
-# manifest_verify (audit chain + Merkle root + signature) is exposed as
-# an MCP tool from findevil-agent-mcp; any MCP client (Claude Desktop,
-# Claude Code, ChatGPT) can drive it offline.
+# Verify a completed run's cryptographic chain-of-custody offline.
+# manifest_verify (audit chain + Merkle root + sigstore signature) is
+# exposed as an MCP tool from findevil-agent-mcp; any MCP client
+# (Claude Desktop, Claude Code, ChatGPT) can drive it. No network,
+# no third-party servers — supports a FRE 902(14) self-authenticating
+# claim per docs/cryptographic-attestation.md.
 ```
 
 ## Accuracy report
@@ -106,8 +105,8 @@ See `goldens/<fixture>/expected-findings.json` for the ground-truth declarations
 3. Run `scripts/install.sh` (handles credential detection — three modes accepted).
 4. Run `scripts/fetch-fixtures.sh` (pulls NIST + OTRF + Volatility samples).
 5. Run `scripts/find-evil` (opens a Claude Code session with both MCP servers auto-spawned via `.mcp.json`).
-6. In the session, prompt: *"investigate fixtures/nist-hacking-case/SCHARDT.001"*. The agent drives the full pipeline end-to-end and writes `run.manifest.json` + `run.manifest.ots`.
-7. Run `ots verify run.manifest.ots` to see the Bitcoin-anchored receipt; the agent's `manifest_verify` MCP tool replays the audit chain + Merkle root offline.
+6. In the session, prompt: *"investigate fixtures/nist-hacking-case/SCHARDT.001"*. The agent drives the full pipeline end-to-end and writes `run.manifest.json`.
+7. Drive the agent's `manifest_verify` MCP tool against `run.manifest.json` to replay the audit chain + Merkle root + sigstore signature offline (no network).
 
 ## What we learned
 
