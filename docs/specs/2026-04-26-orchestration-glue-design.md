@@ -5,7 +5,7 @@
 **Date:** 2026-04-26
 **Status:** Design — awaiting user approval
 **Deadline:** 2026-06-15 22:45 CDT
-**Parent:** `docs/superpowers/specs/2026-04-23-find-evil-automation-master-design.md`
+**Parent:** `docs/specs/2026-04-23-find-evil-automation-master-design.md`
 **Depends on:** Spec #3 (Sandbox), Spec #1 (Build Swarm), Spec #2 (Product)
 
 This spec is thin glue. It does not redefine the sandbox layers (Spec #3 §4), the swarm internals (Spec #1), or the Product's agent graph (Spec #2). It defines only the GHA workflows, branch protection rules, release pipeline, leaderboard push contract, competitor monitoring, and Devpost submission automation that bind all three together.

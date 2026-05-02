@@ -74,12 +74,13 @@ EXCLUDED_PATH_PARTS = (
     # Generated artifacts (PDFs, HTML have embedded assets that
     # can grep-match the wrong-pattern coincidentally).
     "tmp",
-    # Historical specs + plans per CLAUDE.md "code wins" rule.
-    # The pre-A2 plans contain the bad patterns by design (they
-    # were written assuming the now-dropped modules); each has a
-    # top-of-doc banner per commit 608f6b8 marking superseded
-    # sections.
-    "superpowers",
+    # Pre-Phase-2 (2026-05-02), the historical specs + plans lived
+    # at docs/superpowers/{specs,plans}/ and were excluded via the
+    # generic "superpowers" path-component match. Phase 2 moved them
+    # to docs/{specs,plans}/, where the path-component name "specs"
+    # or "plans" is too generic to exclude wholesale (would risk
+    # masking unrelated future dirs of the same name). The historical
+    # spec + plan files are now listed individually in ALLOWED_FILES.
 )
 
 # Files specifically allow-listed even though they live in an
@@ -113,6 +114,28 @@ ALLOWED_FILES = {
     # Decision-helper runbooks deliberately quote both halves
     # of a divergence to lay out tradeoffs side by side.
     "docs/runbooks/dockerfile-a2-decision.md",
+    # Historical specs + plans per CLAUDE.md "code wins" rule.
+    # The pre-A2 plans contain the bad patterns by design (they
+    # were written assuming the now-dropped modules); each carries
+    # a top-of-doc status banner per Phase 1 of the doc reorg
+    # (commit d1d60d7) marking SHIPPED / RETIRED state. Pre-Phase-2
+    # these were excluded via the "superpowers" path-component
+    # match; Phase 2 moved them to docs/{specs,plans}/ and they're
+    # now listed individually here.
+    "docs/specs/2026-04-23-find-evil-automation-master-design.md",
+    "docs/specs/2026-04-23-amendment-option-b-claude-code-mode.md",
+    "docs/specs/2026-04-23-layered-test-sandbox-design.md",
+    "docs/specs/2026-04-24-autonomous-build-swarm-design.md",
+    "docs/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md",
+    "docs/specs/2026-04-25-the-product-design.md",
+    "docs/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md",
+    "docs/specs/2026-04-26-orchestration-glue-design.md",
+    "docs/specs/2026-04-27-amendment-a4-managed-agents-runtime.md",
+    "docs/plans/2026-04-23-build-swarm-plan.md",
+    "docs/plans/2026-04-23-orchestration-glue-plan.md",
+    "docs/plans/2026-04-23-product-plan.md",
+    "docs/plans/2026-04-23-sandbox-plan.md",
+    "docs/plans/2026-04-26-amendment-a3-plan.md",
 }
 
 

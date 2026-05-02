@@ -102,7 +102,7 @@ The handoff artifact for this gate is [`docs/design-briefs/phase-5-6-sprite-desi
 
 | Capability | Status |
 |---|---|
-| 5 pixel-art agent sprites (Pool A / Pool B / Verifier / Judge / Correlator) | Component contracts + state-derivation are scaffolded in `apps/web/components/sprites/`; visuals will swap in during the Claude Design pass per [Amendment A3](docs/superpowers/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md) §3. Brief: §1 narrative + §2.1-2.3 sprite contract + §4.1-4.2 deliverables. |
+| 5 pixel-art agent sprites (Pool A / Pool B / Verifier / Judge / Correlator) | Component contracts + state-derivation are scaffolded in `apps/web/components/sprites/`; visuals will swap in during the Claude Design pass per [Amendment A3](docs/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md) §3. Brief: §1 narrative + §2.1-2.3 sprite contract + §4.1-4.2 deliverables. |
 | AuditBeadString chrome polish | Same — bead state derives from the SSE audit stream today; the NES.css visual treatment lands in Phase 5/6. Brief: §2.4 + §4.3. |
 | HashChainBadge + FindingChip chrome | Net-new components landing in Phase 6. Brief: §2.5 + §2.6 + §4.3. |
 
@@ -112,7 +112,7 @@ The handoff artifact for this gate is [`docs/design-briefs/phase-5-6-sprite-desi
 |---|---|
 | `apps/mcp-widgets/` (M3 Anthropic MCP App widgets) | Deferred per A2 §2.1; A3 §2.1 promotes only `apps/web/` back onto the critical path |
 | Pre-A2 in-container `find-evil` CLI + `.deb` package | Cut by PR #4 (2026-04-27); see [`docs/runbooks/dockerfile-a2-decision.md`](docs/runbooks/dockerfile-a2-decision.md) "DECISION TAKEN — Option B" header. Claude Code IS the orchestrator under A2, so the in-container wrapper had no runtime to invoke |
-| Networked IBM-ACP HTTP transport | A3 records ACP handoffs to `audit.jsonl` only; HTTP transport for fleet/multi-host is out of scope for the submission ([A3 §2.3](docs/superpowers/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md)) |
+| Networked IBM-ACP HTTP transport | A3 records ACP handoffs to `audit.jsonl` only; HTTP transport for fleet/multi-host is out of scope for the submission ([A3 §2.3](docs/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md)) |
 | Hermes runtime sidecar | Deferred per A2; A3 ports the FTS5 cross-case-memory pattern into `services/agent_mcp/` directly without the runtime dep |
 
 ---
@@ -293,7 +293,7 @@ artifacts live under `tmp/fleet-runs/fleet-20260426T055440Z/`.
 Component contracts and state derivation are scaffolded in
 [`apps/web/components/sprites/`](apps/web/components/sprites/);
 the pixel-art visuals are gated on the Claude Design pass
-called out in [Amendment A3](docs/superpowers/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md)
+called out in [Amendment A3](docs/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md)
 Phase 5/6. The audit-bead string and hash-chain badge already
 update live from the SSE stream
 ([`apps/web/lib/audit-tail.ts`](apps/web/lib/audit-tail.ts) +
@@ -309,7 +309,7 @@ platform does not need DFIR tools installed.
 
 **"Where's the LangGraph supervisor / FastAPI service /
 in-container CLI?"**
-Dropped per [Amendment A2](docs/superpowers/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md)
+Dropped per [Amendment A2](docs/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md)
 §2.1. Claude Code IS the orchestrator; the streaming UX is
 Claude Code's terminal; the entry point is `scripts/find-evil`
 (or `claude` directly). The dropped pre-A2 modules are

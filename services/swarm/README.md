@@ -3,10 +3,10 @@
 Autonomous build swarm that drives Claude Code subagents to execute `BUILD_PLAN_v2.md` week by week.
 
 **Read first:**
-- `docs/superpowers/specs/2026-04-24-autonomous-build-swarm-design.md` — authoritative design (Spec #1)
-- `docs/superpowers/specs/2026-04-23-amendment-option-b-claude-code-mode.md` — **Amendment A1, active** — overrides Spec #1's LiteLLM / USD-budget sections. Workers use the user's Claude Code subscription via local `claude` CLI; `session_guard.py` halts cleanly on rate-limit signals.
-- `docs/superpowers/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md` — **Amendment A2, active** — affects the *build target*, not the swarm itself. The swarm should NOT generate `services/agent/findevil_agent/graph.py`, `api.py`, `cli.py`, `supervisor.py`, or `specialists/` — Claude Code IS the orchestrator. Generate `services/agent_mcp/` tool wrappers instead when extending the M2/M4 surfaces.
-- `docs/superpowers/plans/2026-04-23-build-swarm-plan.md` — 21 TDD tasks, execute in order.
+- `docs/specs/2026-04-24-autonomous-build-swarm-design.md` — authoritative design (Spec #1)
+- `docs/specs/2026-04-23-amendment-option-b-claude-code-mode.md` — **Amendment A1, active** — overrides Spec #1's LiteLLM / USD-budget sections. Workers use the user's Claude Code subscription via local `claude` CLI; `session_guard.py` halts cleanly on rate-limit signals.
+- `docs/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md` — **Amendment A2, active** — affects the *build target*, not the swarm itself. The swarm should NOT generate `services/agent/findevil_agent/graph.py`, `api.py`, `cli.py`, `supervisor.py`, or `specialists/` — Claude Code IS the orchestrator. Generate `services/agent_mcp/` tool wrappers instead when extending the M2/M4 surfaces.
+- `docs/plans/2026-04-23-build-swarm-plan.md` — 21 TDD tasks, execute in order.
 
 **One-sentence summary:** a nightly-cron LangGraph supervisor forks per-language Claude Code subagents into git worktrees, each subagent writes one PR-sized chunk of code, a critic subagent gates every output, and draft PRs open against `main` for morning human triage.
 

@@ -1,8 +1,8 @@
 """Find Evil! agent runtime — LangGraph ACH graph + FastAPI SSE.
 
 See:
-  - ``docs/superpowers/specs/2026-04-25-the-product-design.md`` — Spec #2
-  - ``docs/superpowers/specs/2026-04-23-amendment-option-b-claude-code-mode.md``
+  - ``docs/specs/2026-04-25-the-product-design.md`` — Spec #2
+  - ``docs/specs/2026-04-23-amendment-option-b-claude-code-mode.md``
     — credential modes (CLAUDE_CODE_OAUTH_TOKEN, interactive session,
     ANTHROPIC_API_KEY)
 """

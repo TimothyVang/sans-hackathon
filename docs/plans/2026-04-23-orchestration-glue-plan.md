@@ -1,6 +1,6 @@
 # Orchestration Glue Implementation Plan
 
-> **Status: RETIRED.** The work this plan tracked shipped in `.github/workflows/` (l0/l1/l2/l3 + release + competitor-watch + devpost-submit + budget-guard) plus `scripts/package-devpost.sh`. The `scripts/build-deb.sh` task was cut by Amendment A2 (PR #4). Kept for git-log archaeology. **Do not execute as a TDD plan.** If extending CI, work against the live workflow YAMLs and the spec at `docs/superpowers/specs/2026-04-26-orchestration-glue-design.md`.
+> **Status: RETIRED.** The work this plan tracked shipped in `.github/workflows/` (l0/l1/l2/l3 + release + competitor-watch + devpost-submit + budget-guard) plus `scripts/package-devpost.sh`. The `scripts/build-deb.sh` task was cut by Amendment A2 (PR #4). Kept for git-log archaeology. **Do not execute as a TDD plan.** If extending CI, work against the live workflow YAMLs and the spec at `docs/specs/2026-04-26-orchestration-glue-design.md`.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -16,9 +16,9 @@
 
 Before starting any task, read these in order:
 
-1. `docs/superpowers/specs/2026-04-26-orchestration-glue-design.md` — Spec #4 (authoritative for this plan)
-2. `docs/superpowers/specs/2026-04-23-amendment-option-b-claude-code-mode.md` — Amendment A1 §5 governs Task 10 (budget-guard is no-op unless `ANTHROPIC_API_KEY` repo secret is set)
-3. `docs/superpowers/specs/2026-04-23-layered-test-sandbox-design.md` — Spec #3 §4.4 is the contract for `scripts/l3-run-goldens.sh` consumed by Task 2
+1. `docs/specs/2026-04-26-orchestration-glue-design.md` — Spec #4 (authoritative for this plan)
+2. `docs/specs/2026-04-23-amendment-option-b-claude-code-mode.md` — Amendment A1 §5 governs Task 10 (budget-guard is no-op unless `ANTHROPIC_API_KEY` repo secret is set)
+3. `docs/specs/2026-04-23-layered-test-sandbox-design.md` — Spec #3 §4.4 is the contract for `scripts/l3-run-goldens.sh` consumed by Task 2
 
 **Option-B invariants for this plan:**
 - Task 10 (`budget-guard.yml`) MUST short-circuit to exit 0 with message `"Option B mode — no metered API in use"` when the `ANTHROPIC_API_KEY` repo secret is absent.
@@ -513,7 +513,7 @@ Before starting any task, read these in order:
 
 ## Task 17: End-to-end verification + manual smoke-test checklist
 
-**Files touched:** `docs/superpowers/checklists/2026-04-23-orchestration-smoke-test.md` (new), `tests/orchestration/test_e2e_dry_run.sh` (new)
+**Files touched:** `docs/checklists/2026-04-23-orchestration-smoke-test.md` (new), `tests/orchestration/test_e2e_dry_run.sh` (new)
 
 **Goal:** Prove the full swarm PR → L0+L1 gate → merge → L3 nightly → release tag → Devpost zip chain works by running every script against local fixtures. Production GHA runs are verified manually per the checklist.
 
@@ -524,7 +524,7 @@ Before starting any task, read these in order:
     - Simulates the leaderboard path: run `scripts/push-leaderboard-score.sh` with stubbed `curl` for both `release=false` and `release=true`.
     - Simulates competitor-watch deltas path: `scripts/competitor-watch.sh` with stubbed gh + curl.
 - [ ] **17.2 Run test — expect RED initially.** Run `bash tests/orchestration/test_e2e_dry_run.sh`. Expected failure identifies the first missing integration (most likely a script path ordering issue) — document and fix. Re-run until GREEN. Expected final line: `PASS: E2E dry run — 9 workflows, 10 scripts, 7-file zip assembled`. Exit: `0`.
-- [ ] **17.3 Write manual smoke-test checklist** at `docs/superpowers/checklists/2026-04-23-orchestration-smoke-test.md`:
+- [ ] **17.3 Write manual smoke-test checklist** at `docs/checklists/2026-04-23-orchestration-smoke-test.md`:
     - [ ] Open a dummy swarm PR from a branch → L0 + L1 checks appear as required statuses within 5 minutes (AC Spec §11).
     - [ ] L2 appears as advisory (non-blocking).
     - [ ] Merge via `gh pr merge --squash` → `main` push triggers `l3-nightly.yml`.
@@ -539,7 +539,7 @@ Before starting any task, read these in order:
     - [ ] `budget-guard.yml` daily: confirm log shows `"Option B mode — no metered API in use"` when no `ANTHROPIC_API_KEY` secret; add the secret and confirm metered branch queries Anthropic usage API.
     - [ ] `gh variable set DEMO_VIDEO_URL --body 'https://youtu.be/smoke'`, then `git tag v-submit-smoke && git push origin v-submit-smoke` → `devpost-submit.yml` runs, uploads `find-evil-submission.zip` with exactly 7 files, posts to `#releases`.
     - [ ] Unzipped `README-submission.md` contains no unresolved `${...}` placeholders.
-- [ ] **17.4 Commit.** `git add tests/orchestration/test_e2e_dry_run.sh docs/superpowers/checklists/2026-04-23-orchestration-smoke-test.md && git commit -m "test(orchestration): add E2E dry run and manual smoke-test checklist"`.
+- [ ] **17.4 Commit.** `git add tests/orchestration/test_e2e_dry_run.sh docs/checklists/2026-04-23-orchestration-smoke-test.md && git commit -m "test(orchestration): add E2E dry run and manual smoke-test checklist"`.
 
 ---
 
@@ -552,7 +552,7 @@ Before declaring this plan complete:
 - [ ] `git log --oneline` shows 17 commits from this plan, one per task.
 - [ ] Repo root contains: `LICENSE`, `Dockerfile`, `.dockerignore`, `SUBMISSION_NOTES.md`.
 - [ ] `scripts/` contains: `push-leaderboard-score.sh`, `build-deb.sh`, `competitor-watch.sh`, `package-devpost.sh`, `json-to-benchmark-csv.py`, `setup-branch-protection.sh` (all `chmod +x` where applicable).
-- [ ] `docs/templates/devpost-readme.md` and `docs/superpowers/checklists/2026-04-23-orchestration-smoke-test.md` exist.
+- [ ] `docs/templates/devpost-readme.md` and `docs/checklists/2026-04-23-orchestration-smoke-test.md` exist.
 - [ ] Manual smoke-test checklist (Task 17.3) executed against a real GitHub org/repo at least once before the first `v<N>` tag is cut.
 
 ---

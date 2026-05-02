@@ -10,7 +10,7 @@
 
 **Tech Stack:** Python 3.11 + uv + pytest + pydantic 2.x + sqlite3 (stdlib, FTS5 enabled) + the existing `mcp` Anthropic SDK; Next.js 15 + React 19 + Tailwind v4 + nes.css 2.3.x + chokidar (file watching) + ws (WebSocket server) + pydantic-to-typescript (event-type codegen).
 
-**Spec:** `docs/superpowers/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md`.
+**Spec:** `docs/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md`.
 
 ---
 

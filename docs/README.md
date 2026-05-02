@@ -50,7 +50,7 @@ These are read by the agent at investigation start (per CLAUDE.md "Agent investi
 | `agent-config/HEARTBEAT.md` | **ACTIVE** | Per-iteration self-check loop. |
 | `agent-config/JUDGING.md` | **ACTIVE** | SANS Find Evil! 2026 rubric (6 criteria, verbatim) + end-of-investigation self-score checklist that emits `kind=judge_selfscore` audit records. |
 
-## `docs/superpowers/specs/` (architecture specs)
+## `docs/specs/` (architecture specs)
 
 Status-banner-prefixed within each file. Read in CLAUDE.md "Document hierarchy" precedence order.
 
@@ -68,7 +68,7 @@ Status-banner-prefixed within each file. Read in CLAUDE.md "Document hierarchy" 
 
 (There is no Amendment A5 spec doc — A5 was a code-only amendment + this Phase-1 doc-amendment pass.)
 
-## `docs/superpowers/plans/` (TDD task lists)
+## `docs/plans/` (TDD task lists)
 
 All five plans shipped. Each carries a RETIRED banner naming where the live code lives. Do not execute as TDD plans.
 

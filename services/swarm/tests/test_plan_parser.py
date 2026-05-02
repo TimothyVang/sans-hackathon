@@ -1,6 +1,6 @@
 """Tests for findevil_swarm.plan_parser.
 
-Spec #1 §3.1 + §11 AC — the parser reads ``docs/superpowers/plans/*.md``
+Spec #1 §3.1 + §11 AC — the parser reads ``docs/plans/*.md``
 (or ``BUILD_PLAN_v2.md``) and emits ordered ``PRSpec`` lists keyed to
 the week that dispatched it.
 
@@ -28,8 +28,8 @@ from findevil_swarm.plan_parser import (
 from findevil_swarm.state import PRSpec
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SANDBOX_PLAN = REPO_ROOT / "docs/superpowers/plans/2026-04-23-sandbox-plan.md"
-SWARM_PLAN = REPO_ROOT / "docs/superpowers/plans/2026-04-23-build-swarm-plan.md"
+SANDBOX_PLAN = REPO_ROOT / "docs/plans/2026-04-23-sandbox-plan.md"
+SWARM_PLAN = REPO_ROOT / "docs/plans/2026-04-23-build-swarm-plan.md"
 
 
 class TestDetectLanguage:
@@ -140,7 +140,7 @@ class TestParsePlanFile:
 
 class TestParseWeek:
     def test_week_1_yields_prspec_list(self) -> None:
-        specs = parse_week(week=1, plans_dir=REPO_ROOT / "docs/superpowers/plans")
+        specs = parse_week(week=1, plans_dir=REPO_ROOT / "docs/plans")
         assert len(specs) >= 1
         assert all(isinstance(s, PRSpec) for s in specs)
         assert all(s.week == 1 for s in specs)
@@ -149,7 +149,7 @@ class TestParseWeek:
         # Weeks beyond 8 or below 1 should raise; unknown weeks never
         # silently return nothing in production paths.
         with pytest.raises(ValueError):
-            parse_week(week=99, plans_dir=REPO_ROOT / "docs/superpowers/plans")
+            parse_week(week=99, plans_dir=REPO_ROOT / "docs/plans")
 
     def test_week_map_covers_1_through_8(self) -> None:
         # Implementation contract: every week 1-8 resolves to ≥1 plan.
@@ -158,7 +158,7 @@ class TestParseWeek:
             assert len(WEEK_TO_PLANS[w]) >= 1
 
     def test_parsed_prspecs_are_frozen(self) -> None:
-        specs = parse_week(week=1, plans_dir=REPO_ROOT / "docs/superpowers/plans")
+        specs = parse_week(week=1, plans_dir=REPO_ROOT / "docs/plans")
         if specs:
             # PRSpec is Pydantic-frozen; attempted mutation raises.
             import pydantic

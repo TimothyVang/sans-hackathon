@@ -49,7 +49,7 @@ from findevil_swarm.workers.base_worker import BaseWorker
 # ---------------------------------------------------------------------------
 
 DEFAULT_LOGS_DIR = Path("logs/swarm")
-DEFAULT_PLANS_DIR = Path("docs/superpowers/plans")
+DEFAULT_PLANS_DIR = Path("docs/plans")
 DEFAULT_POSTGRES_CONN = "postgresql://swarm:swarm-local-only@localhost:5432/swarm"
 
 
