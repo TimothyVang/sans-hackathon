@@ -2,8 +2,7 @@
 
 Wraps :func:`findevil_agent.crypto.manifest.verify_manifest`. Runs
 the audit-chain replay, the Merkle-root rebuild, the leaf-count
-sanity check, and the signature presence check. ``ots verify`` is
-the separate ``ots_verify`` tool — this one stays offline.
+sanity check, and the signature presence check. Stays offline.
 """
 
 from __future__ import annotations
@@ -79,7 +78,6 @@ SPEC = ToolSpec(
         "merkle_root_hex; (3) leaf_count_ok — sanity check on the leaves array length; "
         "(4) signature_present — confirms a sigstore/stub bundle is attached (validity "
         "of the bundle itself is signer-specific). overall=True only if all four pass. "
-        "The Bitcoin-anchor (OTS) check is separate — call ots_verify for that. "
         "If the manifest was moved/renamed, pass audit_log_path explicitly to override "
         "the path embedded in the manifest. "
         "On verify failure: the per-field detail string identifies which check failed "
