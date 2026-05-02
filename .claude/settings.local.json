@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m 'docs\\(design\\): bootstrap autonomous iteration loop scaffold *)",
+      "Bash(git commit -m ' *)",
+      "mcp__playwright__browser_resize",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_take_screenshot",
+      "Bash(SKIP_SLOW_RUST=1 bash scripts/run-all-smokes.sh)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "findevil-mcp",
+    "findevil-agent-mcp"
+  ],
+  "enableAllProjectMcpServers": true
+}
