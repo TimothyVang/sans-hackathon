@@ -14,8 +14,6 @@ EXPECTED_TOOL_NAMES = {
     "audit_verify",
     "manifest_finalize",
     "manifest_verify",
-    "ots_stamp",
-    "ots_verify",
     "verify_finding",
     "detect_contradictions",
     "judge_findings",
@@ -27,9 +25,9 @@ EXPECTED_TOOL_NAMES = {
 
 
 class TestRegistry:
-    def test_all_specs_returns_thirteen_tools(self) -> None:
+    def test_all_specs_returns_eleven_tools(self) -> None:
         specs = all_specs()
-        assert len(specs) == 13
+        assert len(specs) == 11
 
     def test_all_specs_returns_only_tool_specs(self) -> None:
         specs = all_specs()
