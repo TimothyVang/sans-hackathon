@@ -56,7 +56,7 @@ Headless single-shot:
 bash scripts/find-evil-auto /mnt/hgfs/evidence/extracted/<host>/<host>-memory.img --unattended
 ```
 
-Per-mode walkthrough + SIFT-VM setup recipe lives in [QUICKSTART.md](QUICKSTART.md). Trust-boundary diagrams in [docs/architecture.md](docs/architecture.md). For judges: [SUBMISSION_NOTES.md](SUBMISSION_NOTES.md).
+Per-mode walkthrough + SIFT-VM setup recipe lives in [QUICKSTART.md](QUICKSTART.md). Trust-boundary diagrams in [docs/architecture.md](docs/architecture.md). Pre-emptive judge Q&A is the [Anticipated questions](#anticipated-questions) section below.
 
 ---
 
@@ -88,6 +88,28 @@ Per-mode walkthrough + SIFT-VM setup recipe lives in [QUICKSTART.md](QUICKSTART.
 │   └── plans/                — 5 retired TDD plans (kept for git-log archaeology)
 └── .mcp.json                 — Claude Code auto-spawn registry for both MCP servers
 ```
+
+---
+
+## Anticipated questions
+
+**"Why no real-world end-to-end run in the demo video?"**
+The demo video shows a Tesla-mode investigation against a real memory image (Beat 3 of [`docs/demo-script-a2.md`](docs/demo-script-a2.md)) and a 22-host fleet rollup against the SANS HACKATHON-2026 SRL-2018 dataset (Beat 6). Full report: [`docs/reports/2026-04-26-srl2018-dc-investigation.md`](docs/reports/2026-04-26-srl2018-dc-investigation.md) (PDF: 1.3 MB; fleet rollup at §9.1). Fleet artifacts: `tmp/fleet-runs/fleet-20260426T055440Z/`.
+
+**"Why doesn't the dashboard have real sprites?"**
+Component contracts and state derivation are scaffolded in [`apps/web/components/sprites/`](apps/web/components/sprites/); the pixel-art visuals are gated on the Claude Design pass per [Amendment A3](docs/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md) Phase 5/6. The audit-bead string and hash-chain badge already update live from the SSE stream.
+
+**"What happens if I install on Windows?"**
+Windows-friendly throughout. Smoke runner gates ANSI colors on `[ -t 1 ]` so Windows `cmd` without VT escapes stays plain ASCII. The `find-evil` family of launchers is bash, runs cleanly under Git Bash / WSL. The Tesla-mode orchestrator SSHes into a SIFT VM regardless of host OS, so the host platform does not need DFIR tools installed. Hypervisor: VMware Workstation only today (`scripts/find-evil-sift` lines 10–12).
+
+**"Where's the LangGraph supervisor / FastAPI service / in-container CLI?"**
+Dropped per [Amendment A2](docs/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md) §2.1. Claude Code IS the orchestrator; the streaming UX is Claude Code's terminal; the entry point is `scripts/find-evil` (or `claude` directly). Re-introduction guarded by the L0 `amendment-a2-guard` GHA job.
+
+**"Why no Bitcoin anchor on the crypto chain?"**
+Removed under Amendment A5 (2026-04-30). The pre-A5 design tail-anchored to Bitcoin via OpenTimestamps; that tier required network reach to a calendar server plus a multi-hour wait for Bitcoin attestation maturation, neither of which a judge scoring offline can exercise. The orchestrator never called `ots_stamp` in the first place — it was listed as "(Optional) Step 10" in `find_evil_auto.py`'s docstring with no code path invoking it. FRE 902(14) prong (b) is now satisfied by Sigstore's Rekor transparency log instead. Trade-off: [`docs/cryptographic-attestation.md`](docs/cryptographic-attestation.md) §"What FRE 902(14) requires."
+
+**"`Cargo.lock` is committed — is that a mistake?"**
+No — `findevil-mcp` ships as a binary (not a library), so the lockfile is committed deliberately. [`.gitignore`](.gitignore) carries an explicit comment to that effect; documented in [`CLAUDE.md`](CLAUDE.md) §"Spec/code divergences."
 
 ---
 

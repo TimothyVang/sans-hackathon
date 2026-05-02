@@ -9,8 +9,7 @@
 #   - release-assets/ containing .deb + report.html (from
 #     `gh release download`)
 #   - benchmark-results.csv at cwd (produced by json-to-benchmark-csv.py)
-#   - LICENSE + SUBMISSION_NOTES.md + docs/templates/devpost-readme.md
-#     from the repo
+#   - LICENSE + docs/templates/devpost-readme.md from the repo
 
 set -euo pipefail
 
@@ -93,12 +92,12 @@ else
 fi
 
 # ---------------------------------------------------------------------
-# 7. SUBMISSION_NOTES.md (may be the stub; that's fine).
-# ---------------------------------------------------------------------
-cp SUBMISSION_NOTES.md "${STAGE_DIR}/SUBMISSION_NOTES.md"
-
-# ---------------------------------------------------------------------
 # Integrity check per Spec #4 §9 step 6.
+# (SUBMISSION_NOTES.md was a 7th required entry pre-Phase-3d; deleted
+# 2026-05-02 along with the file at repo root. The judge-facing Q&A
+# that was its only unique content lives at README.md "Anticipated
+# questions" — and README-submission.md is generated from
+# docs/templates/devpost-readme.md, which echoes the canonical pitch.)
 # ---------------------------------------------------------------------
 required=(
   "README-submission.md"
@@ -106,7 +105,6 @@ required=(
   "demo-video-link.txt"
   "LICENSE"
   "report.html"
-  "SUBMISSION_NOTES.md"
 )
 # .deb is conditional — only required when release-assets had one.
 if [[ -n "${deb:-}" ]]; then

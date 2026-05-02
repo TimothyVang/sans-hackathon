@@ -85,7 +85,7 @@ gh variable set DEMO_VIDEO_URL --body "https://youtu.be/<id>"
       - Downloads release artifacts + latest weekly L3 verdicts.
       - Runs `scripts/json-to-benchmark-csv.py` → `benchmark-results.csv`.
       - Runs `scripts/package-devpost.sh` → `find-evil-submission.zip`.
-      - Integrity-checks the zip contents: `README-submission.md`, `benchmark-results.csv`, `demo-video-link.txt`, `LICENSE`, `report.html`, `SUBMISSION_NOTES.md`, and (when present) the `.deb`.
+      - Integrity-checks the zip contents: `README-submission.md`, `benchmark-results.csv`, `demo-video-link.txt`, `LICENSE`, `report.html`, and (when present) the `.deb`. (Pre-Phase-3d also `SUBMISSION_NOTES.md`; deleted 2026-05-02.)
       - Uploads the zip to the GH Release under the `v-submit` tag.
 - [ ] Slack `#releases` posts the "Devpost package ready" message.
 
