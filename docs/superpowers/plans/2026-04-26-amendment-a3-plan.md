@@ -1,5 +1,7 @@
 # Amendment A3 Implementation Plan — Agent-Army Bridge + Cross-Case Memory + NES.css Dashboard
 
+> **Status: RETIRED (Phases 1-4 SHIPPED, Phases 5-6 PARKED).** The three Python MCP tools (`memory_remember`, `memory_recall`, `pool_handoff`) shipped in `services/agent_mcp/findevil_agent_mcp/tools/`. The FTS5 memory store shipped in `services/agent/findevil_agent/memory/store.py`. The `apps/web/` dashboard scaffold shipped (SSE audit-tail at `/api/audit`, `/debug` viewer; SSE chosen over WebSocket — see CLAUDE.md "Spec/code divergences"). Phase 5 (5 pixel-art sprite components) and Phase 6 (AuditBeadString chrome) are parked, gated on a Claude Design prototyping pass — see `docs/design-briefs/phase-5-6-sprite-design-brief.md`. **Do not execute Phases 1-4 as a TDD plan; they're done.**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement Amendment A3 — three new Python MCP tools (`memory_remember`, `memory_recall`, `pool_handoff`) inside `services/agent_mcp/`, plus a NES.css live dashboard at `apps/web/` reading the audit JSONL hash chain over WebSocket.

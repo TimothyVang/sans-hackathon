@@ -1,5 +1,7 @@
 # Spec #1 — Autonomous Build Swarm
 
+> **Status: ACTIVE (shipped + still authoritative).** The swarm shipped per Amendment A1 (Option B / subscription mode) — package `findevil_swarm` at `services/swarm/`, invoked via `bash scripts/swarm-start.sh`. This spec is still the canonical reference for swarm architecture; if extending it, work against this doc + the live code, not the retired `2026-04-23-build-swarm-plan.md` (the TDD task list, now done).
+
 **Date:** 2026-04-24
 **Status:** Design — awaiting user approval
 **Depends on:** `2026-04-23-layered-test-sandbox-design.md` (Spec #3 must be approved first)

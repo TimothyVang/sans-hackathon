@@ -1,5 +1,7 @@
 # Find Evil! — Automation Master Design (v1)
 
+> **Status: SHIPPED.** The 4-subsystem decomposition described here (Sandbox, Build Swarm, Product, Orchestration Glue) all exist and CI is green. Subsequent amendments A1, A2, A3, A5 modified what's actually built — read those after this. A4 adds a future-deployment mode (not on the SANS critical path).
+
 **Date:** 2026-04-23
 **Submission deadline:** 2026-06-15 22:45 CDT (53 days out)
 **Supersedes:** `BUILD_PLAN_v2.md` is still the source of truth for DFIR fundamentals; this document layers research-validated automation + differentiators on top.

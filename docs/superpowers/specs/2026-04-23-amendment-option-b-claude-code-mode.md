@@ -1,5 +1,7 @@
 # Amendment A1 — Option B: Claude Code Subscription Mode
 
+> **Status: SHIPPED.** The Product accepts three credential modes (`CLAUDE_CODE_OAUTH_TOKEN`, interactive `~/.claude/`, `ANTHROPIC_API_KEY`); the build swarm uses the user's subscription via the `claude` CLI. LiteLLM proxy + `services/swarm/budget.py` were never built (per A1). Live wiring lives in `scripts/install.sh` + `services/swarm/findevil_swarm/session_guard.py`.
+
 **Date:** 2026-04-23
 **Status:** Active — supersedes affected sections of Spec #1 and Spec #2
 **Scope:** Swarm invocation + Product runtime credentials

@@ -1,5 +1,7 @@
 # Amendment A2 — Claude Code as Primary Interface
 
+> **Status: SHIPPED.** The custom Python orchestrator (`graph.py`, `api.py`, `cli.py`, `supervisor.py`, `specialists/`) was dropped; Claude Code is the orchestrator. `services/agent_mcp/` shipped as the Python MCP wrapper around M2 + M4. `.mcp.json` at repo root auto-spawns both MCP servers. The L0 `amendment-a2-guard` GHA job fails CI if any of the dropped modules reappears. Live entry points: `scripts/find-evil`, `scripts/find-evil-auto`, `scripts/find-evil-sift`.
+
 **Date:** 2026-04-25
 **Status:** Active — supersedes affected sections of Spec #2 (The Product)
 **Scope:** Product runtime + entry points + UI + Python agent service composition

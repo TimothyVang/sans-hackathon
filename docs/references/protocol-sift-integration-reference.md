@@ -1,5 +1,7 @@
 # Protocol SIFT Integration Reference
 
+> **Status: RESEARCH (external reference, NOT authoritative).** Where this doc disagrees with the project's own specs/plans, the specs win — see CLAUDE.md "External 'Protocol SIFT' reference" for the three known reconciled contradictions. Kept for background reading only.
+
 **Status:** Reference material — NOT authoritative for the Find Evil! submission.
 **Source:** Protocol SIFT's recommended Claude Code integration pattern (external project).
 **Use:** Read for context on how upstream Protocol SIFT configures Claude Code, not as instructions for our submission. Where this material conflicts with our specs/plans, our specs/plans win.

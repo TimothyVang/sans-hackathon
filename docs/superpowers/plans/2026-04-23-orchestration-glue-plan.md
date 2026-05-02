@@ -1,5 +1,7 @@
 # Orchestration Glue Implementation Plan
 
+> **Status: RETIRED.** The work this plan tracked shipped in `.github/workflows/` (l0/l1/l2/l3 + release + competitor-watch + devpost-submit + budget-guard) plus `scripts/package-devpost.sh`. The `scripts/build-deb.sh` task was cut by Amendment A2 (PR #4). Kept for git-log archaeology. **Do not execute as a TDD plan.** If extending CI, work against the live workflow YAMLs and the spec at `docs/superpowers/specs/2026-04-26-orchestration-glue-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the thin CI pipeline that ties the build swarm, the Product, and the test sandbox together — nightly L3 golden runs, weekly releases, competitor monitoring, Devpost submission automation.

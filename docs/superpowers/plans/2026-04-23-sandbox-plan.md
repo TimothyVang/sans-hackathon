@@ -1,5 +1,7 @@
 # Layered Test Sandbox Implementation Plan
 
+> **Status: RETIRED.** L0/L1/L3 layers shipped in `.github/workflows/` + `docker/l1-compose.yml` + `packer/sift-microvm.pkr.hcl`. L2 Sysbox is advisory only (per CLAUDE.md). Kept for git-log archaeology. **Do not execute as a TDD plan.** If extending the sandbox, work against the live YAMLs/Dockerfiles and the spec at `docs/superpowers/specs/2026-04-23-layered-test-sandbox-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the L0-L3 layered test sandbox so the build swarm and the Product can self-validate.
