@@ -36,14 +36,14 @@ Ship an automated DFIR tool — runnable via OpenClaw or Claude Code on the SIFT
 
 Sandbox blocks everything (swarm needs it to self-validate; Product needs it for CI). Orchestration glue comes last (thin layer once others exist).
 
-## 5. The 4 moonshots (kept) and where they attach
+## 5. The 4 differentiators and where they attach
 
-| Moonshot | Attaches to | Why it wins |
+| ID | Attaches to | What it provides |
 |---|---|---|
-| **M1 — Public Leaderboard** (`findevil-bench.dev`) | External service, scores #2 Product | Judges' #1 Google result for "Find Evil agent benchmark" is us |
-| **M2 — Cryptographic Chain-of-Custody** (sigstore + rs-merkle + OpenTimestamps) | Inside #2 Product | FRE 902(14) self-authenticating findings; no DFIR competitor ships this |
-| **M3 — MCP Apps widgets** (timeline, heatmap, evidence-diff) | Inside #2 Product UI layer | Works in Claude Desktop / ChatGPT / Cursor / custom — zero-friction for any judge |
-| **M4 — LLM-powered ACH** (Analysis of Competing Hypotheses, Heuer 1970s) | Inside #2 Product agent layer | Rob Lee legitimacy lift; visible self-correction as architecture, not hope |
+| **M1 — Public Leaderboard** (`findevil-bench.dev`) | External service, scores #2 Product | Published DFIR-Metric benchmark scoring; lets judges look up performance numbers without running the tool |
+| **M2 — Cryptographic Chain-of-Custody** (audit hash chain + rs-merkle + sigstore Rekor) | Inside #2 Product | Supports a FRE 902(14) self-authenticating-evidence claim. Pre-A5 also tail-anchored to Bitcoin via OpenTimestamps; that tier was removed — see CLAUDE.md "Spec/code divergences" + Amendment A5 |
+| **M3 — MCP Apps widgets** (timeline, heatmap, evidence-diff) | Inside #2 Product UI layer | Works in Claude Desktop / ChatGPT / Cursor / custom — zero-friction for any MCP-compatible client |
+| **M4 — LLM-powered ACH** (Analysis of Competing Hypotheses, Heuer 1970s) | Inside #2 Product agent layer | Visible self-correction as architecture: two pools investigate the same evidence with opposing priors, contradictions surface as first-class output before judge reconciliation |
 
 **Cut:** M5 (Reversible Verification) — judging risk + unvalidated + expensive sandbox-in-forensic-tool engineering.
 
@@ -131,20 +131,20 @@ Full spec: `2026-04-25-the-product-design.md` (after Sandbox + Build Swarm appro
 
 Full spec: `2026-04-26-orchestration-glue-design.md` (last).
 
-## 7. Revised 8-week schedule (moonshots integrated)
+## 7. Revised 8-week schedule
 
-| Week | Dates | Focus | Moonshot integration |
+| Week | Dates | Focus | Differentiator shipped |
 |---|---|---|---|
 | 1 | Apr 22-28 | **Spec #3 + #1 + #2 + #4** (all 4 written), Week-1 skeleton from v2 §10, Packer L3 build | — |
 | 2 | Apr 29-May 5 | Rust MCP scaffold + 3 tools (`case_open`, `mft_timeline`, `evtx_query`). **M2 skeleton** — sigstore-signed tool calls | **M2** start |
-| 3 | May 6-12 | Remaining 7 MCP tools + Hayabusa/Chainsaw subprocess wrappers. **M2 complete** (rs-merkle + OTS + verify) | **M2** ship |
+| 3 | May 6-12 | Remaining 7 MCP tools + Hayabusa/Chainsaw subprocess wrappers. **M2 complete** (rs-merkle + sigstore + verify; original plan included OTS, removed under A5) | **M2** ship |
 | 4 | May 13-19 | LangGraph graph + verifier. **M4 ACH pattern** scaffolded (supervisor + 2 pools + judge + contradiction node) | **M4** start |
 | 5 | May 20-26 | Multi-source correlator. **M4 complete**. Hypothesis board UI with MITRE deltas | **M4** ship |
-| 6 | May 27-Jun 2 | Benchmark harness (DFIR-Metric). **M1 leaderboard online** — scores us + 3 competitors nightly | **M1** ship |
-| 7 | Jun 3-9 | **Lovable polish sprint**: Plan Mode UI, DFIR vocab audit, guardrails-as-chrome, verifier animations, verdict card, `notify-send`/Slack. **M3 MCP Apps widgets** (3: timeline, heatmap, evidence-diff) | **M3** ship |
+| 6 | May 27-Jun 2 | Benchmark harness (DFIR-Metric). **M1 leaderboard online** — scores us + 3 reference DFIR agents nightly | **M1** ship |
+| 7 | Jun 3-9 | **Polish sprint**: Plan Mode UI, DFIR vocab audit, guardrails-as-chrome, verifier animations, verdict card, `notify-send`/Slack. **M3 MCP Apps widgets** (3: timeline, heatmap, evidence-diff) | **M3** ship |
 | 8 | Jun 10-15 | Demo record (target Lee's 14:27 template), Devpost submission, benchmark paper, video | — |
 
-**Buffer:** week-7 dog-leg — if polish runs over, cut M3 widgets (cheapest moonshot to drop) before cutting M1 leaderboard or DFIR vocab audit.
+**Buffer:** week-7 dog-leg — if polish runs over, cut M3 widgets (cheapest of the four to drop) before cutting M1 leaderboard or DFIR vocab audit.
 
 ## 8. Budget estimate (53 days)
 
@@ -167,7 +167,7 @@ Full spec: `2026-04-26-orchestration-glue-design.md` (last).
 | R27 | ACH agents disagree forever (infinite debate) | Single-round hard cap; judge node always emits decision within 2 min wall clock |
 | R28 | OpenClaw runtime changes break our entry point | Pin OpenClaw version in `setup.sh`; keep Claude Code as fallback |
 | R29 | SIFT VM updates during hackathon | Pin SIFT version `sift-2026.03.24.ova`; note in README; judges run same VM |
-| R30 | Competitor ships equivalent crypto chain-of-custody in final week | Unlikely given library specificity, but monitor yushin-dfir + dhyabi2 commits weekly |
+| R30 | Another submission ships equivalent crypto chain-of-custody before deadline | Unlikely given library specificity; if it happens our differentiator collapses to ACH + benchmark + selfscore. No active surveillance — risk is acknowledged, not monitored. |
 
 ## 10. Approval gates (brainstorming skill compliant)
 
