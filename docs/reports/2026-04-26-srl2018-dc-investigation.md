@@ -197,7 +197,7 @@ The cryptographic attestation is the differentiator that places Find Evil! ahead
 
 3. **Sigstore-keyless signature** (Fulcio + Rekor) over the canonicalized manifest body. The signature is independently verifiable against the Rekor transparency log. (For this run, the `StubSigner` produced a deterministic signature — the production submission uses real Fulcio sigstore.)
 
-A future addition (`ots_stamp` MCP tool) anchors the manifest to Bitcoin via the OpenTimestamps protocol, producing an FRE 902(14) [^fre-902-14] self-authenticating receipt that any third party can verify without trusting the agent's host environment.
+The Sigstore signature's Rekor inclusion proof serves as the independent third-party time attestation supporting an FRE 902(14) [^fre-902-14] self-authenticating-evidence claim that any third party can verify without trusting the agent's host environment. (An earlier design also tail-anchored the manifest to Bitcoin via OpenTimestamps; that tier was removed under Amendment A5 — see `docs/cryptographic-attestation.md` for the trade-off.)
 
 ---
 
@@ -244,7 +244,7 @@ The narrow tool surface is **architecturally deliberate** [§2] — the typed MC
 
 **8.2 Single-host investigation.** This report covers the Domain Controller memory image only. The other 21 memory captures and 4 disk images remain unanalyzed. A complete investigation would lateralize across all hosts to identify the attack's full footprint.
 
-**8.3 No Internet-connected verification.** The `ots_stamp` step (OpenTimestamps Bitcoin anchoring) was not exercised in this run because the SIFT VM has no outbound network configured. The signature in this manifest is valid but does not yet have a Bitcoin attestation; that would be added in a production run.
+**8.3** *(Reserved — was: "No Internet-connected verification" caveat about `ots_stamp` not running. The OpenTimestamps + Bitcoin tier was removed under Amendment A5; this caveat is no longer applicable.)*
 
 **8.4 The DKOM finding is observational, not attributional.** Section 4.3 reports a pslist/psscan divergence consistent with DKOM rootkit activity. Find Evil! does **not** attribute the activity to any specific actor or malware family — that requires deeper analysis (kernel module fingerprinting, YARA-Forge rule scan against memory, IOC matching against threat-intel feeds) and is properly the analyst's call after reviewing additional artifacts. The non-attribution stance is a SOUL.md non-negotiable invariant.
 
@@ -316,8 +316,6 @@ The DC analyzed in this document is one of the 11 T1014 hosts; the other 10 shou
 [^nist-sp-800-86]: Kent, K.; Chevalier, S.; Grance, T.; Dang, H. (2006). *NIST Special Publication 800-86: Guide to Integrating Forensic Techniques into Incident Response*. National Institute of Standards and Technology. <https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-86.pdf>
 
 [^sigstore-spec]: Cooper, D. (2023). *sigstore — Software Signing for Everybody*. <https://www.sigstore.dev/> and the academic paper: Newman, Z.; Meyers, J. S.; Torres-Arias, S. (2022). "Sigstore: Software Signing for Everybody." *ACM Conference on Computer and Communications Security (CCS)*.
-
-[^opentimestamps]: Todd, P.; OpenTimestamps Working Group. (2016+). *OpenTimestamps protocol specification*. <https://opentimestamps.org/> and BIP-0173 reference implementation.
 
 [^soul-md]: Find Evil! project. `agent-config/SOUL.md` — agent identity document, defining the epistemic hierarchy (CONFIRMED > INFERRED > HYPOTHESIS), the FRE 902(14) self-authenticating-evidence stance, the strict cross-artifact rule for execution claims, and the no-attribution invariant.
 
