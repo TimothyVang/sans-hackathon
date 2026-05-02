@@ -278,6 +278,5 @@ When the design pass is complete:
 1. Re-record demo video Beat 4 ("the agent army at work") against the final art.
 2. Update `apps/web/README.md` Status block: change "5 sprite components — pending Claude Design pass (Phase 5)" → ✓ shipped; same for Phase 6 chrome.
 3. Drop the placeholder footer note in `apps/web/app/page.tsx`: "Sprites are placeholder NES.css visuals; final art lands with the Claude Design pass (A3 §1.2)."
-4. Remove the "Gated on Claude Design pass" row from `SUBMISSION_NOTES.md`.
 
 The submission timeline (deadline 2026-06-15) leaves comfortable runway. Earlier is better — re-recording the demo video is the only downstream task, and the script (`docs/demo-script-a2.md`) is already locked, so post-design work is just one recording session plus minor doc updates.

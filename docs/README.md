@@ -21,7 +21,6 @@ The authoritative *precedence* hierarchy (which spec overrides which) lives in `
 | `CLAUDE.md` | **ACTIVE** | Agent instructions, document hierarchy, non-negotiable invariants, spec/code divergences. Always loaded into Claude Code sessions. |
 | `README.md` | **ACTIVE** | Public-facing project landing page. |
 | `QUICKSTART.md` | **ACTIVE** | Three-step quickstart for impatient users. |
-| `SUBMISSION_NOTES.md` | **ACTIVE** | Judge-facing notes for the SANS Find Evil! submission. |
 | `CHANGELOG.md` | **ACTIVE** | Chronological project changelog. |
 
 ## `docs/` top level (analyst + judge facing)
@@ -118,7 +117,7 @@ All five plans shipped. Each carries a RETIRED banner naming where the live code
 
 | File | Status | Purpose |
 |---|---|---|
-| `BUILD_PLAN_v2.md` | **RETIRED** (moved 2026-05-02) | Pre-A2/A3/A5 9-week roadmap. Pitch surface consolidated into `README.md` + `SUBMISSION_NOTES.md` per Phase 3c of the doc reorg. Kept for git-log archaeology. |
+| `BUILD_PLAN_v2.md` | **RETIRED** (moved 2026-05-02) | Pre-A2/A3/A5 9-week roadmap. Pitch surface consolidated into `README.md` per Phase 3c+3d of the doc reorg (SUBMISSION_NOTES.md was deleted in 3d; judge Q&A migrated to README "Anticipated questions"). Kept for git-log archaeology. |
 | `Find_Evil_Research_and_Build_Plan-v1.docx` | **RETIRED** (binary) | Original 72KB research doc; relevant content was promoted into BUILD_PLAN_v2 + the A1/A2/A3 amendments. Cannot carry a banner (binary). |
 
 ## `docs/reports/`

@@ -75,7 +75,7 @@ Read these in precedence order. Later documents override earlier ones only where
    - `2026-04-25-the-product-design.md` — Spec #2 (the DFIR tool judges run).
    - `2026-04-26-orchestration-glue-design.md` — Spec #4 (GHA CI; `budget-guard.yml` is a no-op under A1 unless `ANTHROPIC_API_KEY` is set).
 8. **Implementation plans** (in `docs/plans/`) — one per spec, each step written as a TDD checkbox with the exact failing test → implement → commit sequence.
-9. ~~**`BUILD_PLAN_v2.md`**~~ — moved to `docs/legacy/BUILD_PLAN_v2.md` 2026-05-02 (pre-A2/A3/A5 research artifact; pitch surface consolidated into `README.md` + `SUBMISSION_NOTES.md` per Phase 3c of the doc reorg). Kept in legacy for git-log archaeology; do not read it for current architecture.
+9. ~~**`BUILD_PLAN_v2.md`**~~ — moved to `docs/legacy/BUILD_PLAN_v2.md` 2026-05-02 (pre-A2/A3/A5 research artifact; pitch surface consolidated into `README.md` per Phase 3c+3d of the doc reorg — SUBMISSION_NOTES.md was deleted in 3d, judge Q&A migrated to README "Anticipated questions"). Kept in legacy for git-log archaeology; do not read it for current architecture.
 10. **`Find_Evil_Research_and_Build_Plan.docx`** — v1 research doc; authoritative only for what v2 doesn't contradict.
 
 ## Repository layout (current)
@@ -88,7 +88,6 @@ Shipped tree — these are the directories that end up in the submission:
 ├── Dockerfile                                      # Production multi-stage image → ghcr.io/find-evil/find-evil:v<N>
 ├── LICENSE                                         # Apache-2.0
 │                                                   # (pre-A2/A3/A5 research artifacts — BUILD_PLAN_v2 + v1 .docx — both at docs/legacy/)
-├── SUBMISSION_NOTES.md                             # Stub; edit before cutting v-submit
 ├── sift-2026.03.24.ova                             # 9.3 GB SIFT VM image — Packer input; gitignored (*.ova)
 ├── agent-config/                                   # Runtime DFIR agent identity (SOUL/AGENTS/TOOLS/MEMORY/HEARTBEAT/JUDGING/PLAYBOOK)
 ├── docs/specs/ + plans/                # 8 specs (incl. A1 + A2 + A3 amendments) + 5 TDD plans

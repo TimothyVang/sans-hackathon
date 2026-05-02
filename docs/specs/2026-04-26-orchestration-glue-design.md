@@ -335,7 +335,6 @@ Full report: <link to GHA run>
 1. Demo video recorded and uploaded externally (YouTube, etc.).
 2. `gh variable set DEMO_VIDEO_URL --body "https://youtu.be/<id>"` — sets the Actions variable.
 3. `v8` release green (or equivalent final week tag).
-4. Optionally edit `SUBMISSION_NOTES.md` at repo root with any judge-facing notes.
 
 ### `devpost-submit.yml` job sequence
 
@@ -357,9 +356,8 @@ Full report: <link to GHA run>
      - `LICENSE` (Apache-2.0, from repo root)
      - `find-evil_v-submit_amd64.deb`
      - `report.html`
-     - `SUBMISSION_NOTES.md`
 
-6. **Integrity check.** Script verifies zip contains all 7 expected files; exits 1 if any missing.
+6. **Integrity check.** Script verifies zip contains all 6 expected files (5 + the conditional .deb when present); exits 1 if any missing. (Pre-Phase-3d the list included a 7th, `SUBMISSION_NOTES.md`; that file was deleted 2026-05-02 — judge-facing Q&A migrated to README.md "Anticipated questions.")
 
 7. **Upload.** `gh release upload v-submit find-evil-submission.zip`.
 
@@ -374,7 +372,6 @@ Full report: <link to GHA run>
 | `scripts/json-to-benchmark-csv.py` | Converts `run.log` JSON to `benchmark-results.csv` |
 | `docs/templates/devpost-readme.md` | README template; placeholders: `${DEMO_VIDEO_URL}`, `${RELEASE_TAG}`, `${ACCURACY}`, `${DATE}` |
 | `LICENSE` | Apache-2.0 full text; committed at repo root from week 1 |
-| `SUBMISSION_NOTES.md` | Optional judge notes; committed before tag cut (empty file is acceptable) |
 
 Note: Devpost form submission is a manual human step. The zip is staged in the GH Release. The user downloads it, opens the Devpost project page, and attaches it. This is intentional — no external API dependency on deadline night.
 
@@ -438,7 +435,7 @@ No Block Kit. Plain text only. Keeps webhook implementation trivially simple and
 ### Devpost package ready by 2026-06-14
 
 - [ ] By 2026-06-14 23:59 CDT: `v-submit` tag exists on `main` and `devpost-submit.yml` completed successfully.
-- [ ] `find-evil-submission.zip` is attached to the GH Release for `v-submit` and contains exactly: `README-submission.md`, `benchmark-results.csv`, `demo-video-link.txt`, `LICENSE`, `find-evil_v-submit_amd64.deb`, `report.html`, `SUBMISSION_NOTES.md`.
+- [ ] `find-evil-submission.zip` is attached to the GH Release for `v-submit` and contains exactly: `README-submission.md`, `benchmark-results.csv`, `demo-video-link.txt`, `LICENSE`, `find-evil_v-submit_amd64.deb`, `report.html`. (Pre-Phase-3d also `SUBMISSION_NOTES.md`; deleted 2026-05-02.)
 - [ ] `demo-video-link.txt` contains a non-placeholder URL (not empty, not a template variable).
 - [ ] `LICENSE` contains the full Apache-2.0 text.
 - [ ] `benchmark-results.csv` has at least one row with `fixture=nist-hacking-case` and `findings_matched` > 0.
