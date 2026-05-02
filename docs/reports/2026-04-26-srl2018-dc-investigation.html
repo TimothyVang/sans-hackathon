@@ -21,7 +21,28 @@ vertical-align: middle;
 }
 .display.math{display: block; text-align: center; margin: 0.5rem auto;}
 </style>
-  <style type="text/css">body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;max-width: 980px; margin: 2em auto; padding: 0 2.5em; line-height: 1.65;color: #222; background: #fafafa; }h1 { color: #1565c0; border-bottom: 3px solid #1565c0; padding-bottom: 0.4em; font-size: 2em; }h2 { color: #1565c0; border-bottom: 1px solid #ccc; padding-bottom: 0.25em; margin-top: 2.5em; font-size: 1.4em; }h3 { color: #6a1b9a; margin-top: 1.6em; font-size: 1.15em; }img { max-width: 100%; display: block; margin: 2em auto; border: 1px solid #ddd;box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-radius: 4px;background: white; padding: 8px; }code { background: #eef2f5; padding: 0.1em 0.4em; border-radius: 3px;font-family: "Consolas", monospace; font-size: 0.92em; color: #c62828; }pre { background: #2c3e50; color: #ecf0f1; padding: 1em 1.4em; border-radius: 4px; overflow-x: auto; }pre code { background: none; padding: 0; color: inherit; }blockquote { border-left: 4px solid #1565c0; padding: 0.7em 1.2em; margin: 1.2em 0;background: #e3f2fd; border-radius: 0 4px 4px 0; }table { border-collapse: collapse; margin: 1.2em 0; width: 100%; }th, td { padding: 0.55em 0.9em; border: 1px solid #ddd; text-align: left; }th { background: #1565c0; color: white; font-weight: 600; }tr:nth-child(even) td { background: #f5f7fa; }strong { color: #1565c0; }</style>
+  <style type="text/css">
+body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+max-width: 980px; margin: 2em auto; padding: 0 2.5em; line-height: 1.65;
+color: #222; background: #fafafa; }
+h1 { color: #1565c0; border-bottom: 3px solid #1565c0; padding-bottom: 0.4em; font-size: 2em; }
+h2 { color: #1565c0; border-bottom: 1px solid #ccc; padding-bottom: 0.25em; margin-top: 2.5em; font-size: 1.4em; }
+h3 { color: #6a1b9a; margin-top: 1.6em; font-size: 1.15em; }
+img { max-width: 100%; display: block; margin: 2em auto; border: 1px solid #ddd;
+box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-radius: 4px;
+background: white; padding: 8px; }
+code { background: #eef2f5; padding: 0.1em 0.4em; border-radius: 3px;
+font-family: "Consolas", monospace; font-size: 0.92em; color: #c62828; }
+pre { background: #2c3e50; color: #ecf0f1; padding: 1em 1.4em; border-radius: 4px; overflow-x: auto; }
+pre code { background: none; padding: 0; color: inherit; }
+blockquote { border-left: 4px solid #1565c0; padding: 0.7em 1.2em; margin: 1.2em 0;
+background: #e3f2fd; border-radius: 0 4px 4px 0; }
+table { border-collapse: collapse; margin: 1.2em 0; width: 100%; }
+th, td { padding: 0.55em 0.9em; border: 1px solid #ddd; text-align: left; }
+th { background: #1565c0; color: white; font-weight: 600; }
+tr:nth-child(even) td { background: #f5f7fa; }
+strong { color: #1565c0; }
+</style>
 </head>
 <body>
 <h1 id="find-evil-forensic-investigation-report">Find Evil! — Forensic
@@ -395,11 +416,13 @@ verifiable against the Rekor transparency log. (For this run, the
 <code>StubSigner</code> produced a deterministic signature — the
 production submission uses real Fulcio sigstore.)</p></li>
 </ol>
-<p>A future addition (<code>ots_stamp</code> MCP tool) anchors the
-manifest to Bitcoin via the OpenTimestamps protocol, producing an FRE
-902(14) <a href="#fn13" class="footnote-ref" id="fnref13" role="doc-noteref"><sup>13</sup></a> self-authenticating receipt that
-any third party can verify without trusting the agent’s host
-environment.</p>
+<p>The Sigstore signature’s Rekor inclusion proof serves as the
+independent third-party time attestation supporting an FRE 902(14) <a href="#fn13" class="footnote-ref" id="fnref13" role="doc-noteref"><sup>13</sup></a> self-authenticating-evidence claim
+that any third party can verify without trusting the agent’s host
+environment. (An earlier design also tail-anchored the manifest to
+Bitcoin via OpenTimestamps; that tier was removed under Amendment A5 —
+see <code>docs/cryptographic-attestation.md</code> for the
+trade-off.)</p>
 <hr />
 <h2 id="tamper-detection-live-demonstration">7. Tamper detection — live
 demonstration</h2>
@@ -464,11 +487,10 @@ the safety/auditability claim.</p>
 the Domain Controller memory image only. The other 21 memory captures
 and 4 disk images remain unanalyzed. A complete investigation would
 lateralize across all hosts to identify the attack’s full footprint.</p>
-<p><strong>8.3 No Internet-connected verification.</strong> The
-<code>ots_stamp</code> step (OpenTimestamps Bitcoin anchoring) was not
-exercised in this run because the SIFT VM has no outbound network
-configured. The signature in this manifest is valid but does not yet
-have a Bitcoin attestation; that would be added in a production run.</p>
+<p><strong>8.3</strong> <em>(Reserved — was: “No Internet-connected
+verification” caveat about <code>ots_stamp</code> not running. The
+OpenTimestamps + Bitcoin tier was removed under Amendment A5; this
+caveat is no longer applicable.)</em></p>
 <p><strong>8.4 The DKOM finding is observational, not
 attributional.</strong> Section 4.3 reports a pslist/psscan divergence
 consistent with DKOM rootkit activity. Find Evil! does

@@ -18,8 +18,9 @@
 Workstation that takes a memory image, EVTX log, or disk image
 and produces a signed verdict — `SUSPICIOUS`,
 `INDETERMINATE`, or `NO_EVIL` — with the full reasoning trace
-cryptographically attested through a five-link chain ending in
-the Bitcoin blockchain. Two adversarial agent pools (Pool A
+cryptographically attested through a three-link chain (audit
+hash chain → rs_merkle root → sigstore signature with Rekor
+inclusion proof). Two adversarial agent pools (Pool A
 persistence-biased, Pool B exfil-biased) investigate the same
 evidence in parallel; the contradiction surface is itself a
 first-class output. (Source: [README.md](README.md) §"What it
@@ -34,7 +35,7 @@ is" + §"What's distinctive".)
 | 1 | [`README.md`](README.md) | ~2 min | Project framing, the five distinctive claims, repo layout |
 | 2 | [`agent-config/JUDGING.md`](agent-config/JUDGING.md) | ~3 min | The SANS 6-criterion rubric verbatim + the agent's own self-score checklist (the agent is graded against this and `grep`-able from the audit chain — see [Tiebreaker](#tiebreaker-self-score) below) |
 | 3 | [`docs/demo-script-a2.md`](docs/demo-script-a2.md) | ~5 min | The 5-minute Devpost video walkthrough, beat-by-beat with rubric mapping |
-| 4 | [`docs/cryptographic-attestation.md`](docs/cryptographic-attestation.md) | ~5 min | The five-link chain, FRE 902(14) prong-by-prong analysis, third-party offline-verification recipe (rubric criterion 5) |
+| 4 | [`docs/cryptographic-attestation.md`](docs/cryptographic-attestation.md) | ~5 min | The three-link chain, FRE 902(14) prong-by-prong analysis (with the honest A5 trade-off on prong b), third-party offline-verification recipe (rubric criterion 5) |
 | 5 | [`docs/false-positives.md`](docs/false-positives.md) | ~3 min | Three architectural FP layers + four operational habits (rubric criterion 2) |
 | 6 | [`CLAUDE.md`](CLAUDE.md) §"Project state" + §"Document hierarchy" + §"Spec/code divergences" | ~5 min | Current shipped state, document precedence, 7 documented divergences (all downstream-clean — see [Divergences](#documented-speccode-divergences) below) |
 
@@ -122,7 +123,7 @@ The load-bearing claim: **a third party can verify any
 submitted manifest offline, three years from now, without
 trusting Find Evil! or the analyst.**
 
-The five-link chain (full detail:
+The three-link chain (full detail:
 [`docs/cryptographic-attestation.md`](docs/cryptographic-attestation.md)):
 
 ```
@@ -131,10 +132,15 @@ evidence file
 audit.jsonl with prev_hash chain        ← link 2: append-only, tamper-evident
    ↓ rs_merkle tree over canonical-JSON ← link 3: set membership of records
 manifest body
-   ↓ sigstore (Fulcio cert + Rekor)     ← link 4: non-repudiable identity
-signature
-   ↓ opentimestamps (calendar → BTC)    ← link 5: independent time attestation
+   ↓ sigstore (Fulcio cert + Rekor)     ← link 4: non-repudiable identity +
+signature                                  Rekor transparency-log inclusion proof
+                                           (independent third-party time attestation)
 ```
+
+(Pre-A5 the chain had a fifth link: OpenTimestamps → Bitcoin.
+Removed — see [`docs/cryptographic-attestation.md`](docs/cryptographic-attestation.md)
+"Amendment A5" callout for the trade-off on prong (b) of the
+FRE 902(14) claim.)
 
 **How a judge verifies offline** (no MCP plumbing needed; direct
 library call):
@@ -155,15 +161,9 @@ Returns a `ManifestVerification` with `audit_chain_ok`,
 failure, naming the precise reason (e.g. `"audit chain seq=4
 prev_hash mismatch"`).
 
-For the Bitcoin anchor (mature ~1 hour after `ots_stamp`):
-
-```bash
-ots verify run.manifest.ots
-```
-
-The MCP-tool path (`manifest_verify` + `ots_verify`) is the
-same logic exposed through the Python MCP server — equivalent
-output, useful for in-session verification by the agent itself.
+The MCP-tool path (`manifest_verify`) is the same logic
+exposed through the Python MCP server — equivalent output,
+useful for in-session verification by the agent itself.
 Both paths are exercised on every L1 CI build via
 [`scripts/agent-mcp-smoke.py`](scripts/agent-mcp-smoke.py)
 (including a deliberate negative test that tampers with a
@@ -171,9 +171,10 @@ manifest field and confirms verification fails with the exact
 diagnostic).
 
 **Why this matches FRE 902(14)** (self-authenticating
-electronic evidence): typed-surface accuracy + Bitcoin-anchored
-trusted-timestamp = both prongs satisfied. Prong-by-prong
-analysis in
+electronic evidence): typed-surface accuracy (prong a) +
+Sigstore/Rekor transparency-log inclusion as the independent
+third-party timestamp (prong b). Prong-by-prong analysis,
+including the honest A5 trade-off on prong (b), in
 [`docs/cryptographic-attestation.md`](docs/cryptographic-attestation.md)
 §"What FRE 902(14) requires and why this meets it".
 

@@ -10,10 +10,10 @@ narrowly-scoped system prompt.
 Owns the investigation plan. Reads `agent-config/PLAYBOOK.md` to pick
 the per-evidence-type tool sequence, decomposes goals into sub-tasks
 across Pool A and Pool B, dispatches the pools in parallel, then
-calls verifier → judge → correlator → manifest_finalize → ots_stamp.
-Never touches evidence directly; only dispatches and merges.
-Emits the six `kind=judge_selfscore` audit records before
-`manifest_finalize` per `agent-config/JUDGING.md`.
+calls verifier → judge → correlator → manifest_finalize (terminal
+step under Amendment A5). Never touches evidence directly; only
+dispatches and merges. Emits the six `kind=judge_selfscore` audit
+records before `manifest_finalize` per `agent-config/JUDGING.md`.
 
 **Memory-store path resolution (do this once at session start, before
 forking subagents):** the cross-case memory SQLite file lives at

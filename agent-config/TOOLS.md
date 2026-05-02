@@ -5,7 +5,7 @@ The agent has access to two MCP servers, both auto-spawned by Claude Code via `.
 | Server | Lang | Tools |
 |---|---|---|
 | `findevil-mcp` | Rust (`services/mcp/`) | 12 typed DFIR tools |
-| `findevil-agent-mcp` | Python (`services/agent_mcp/`) | 13 crypto + ACH + memory + ACP tools |
+| `findevil-agent-mcp` | Python (`services/agent_mcp/`) | 11 crypto + ACH + memory + ACP tools (post-A5; the `ots_stamp` + `ots_verify` pair was removed) |
 
 Every successful tool call carries `_meta.output_sha256` (hex SHA-256 of the canonical JSON output). Findings cite tool calls by `tool_call_id`. The verifier vetoes any finding that doesn't.
 
@@ -90,22 +90,12 @@ Use when: replaying an audit chain to confirm integrity. Walk every `prev_hash` 
 ### manifest_finalize
 Args: `{case_id, run_id, started_at, audit_log_path, output_path, signer, extra?}`
 Returns: `{leaf_count, merkle_root_hex, signature_payload_sha256}` — the on-disk manifest also has `signature.cert_fingerprint`, `leaves[]`, `finalized_at`
-Use when: closing a case. Builds the rs_merkle tree over every audit-log leaf, signs with sigstore (or `signer="stub"` in dev), writes `run.manifest.json`. Must run BEFORE `ots_stamp`.
+Use when: closing a case. Builds the rs_merkle tree over every audit-log leaf, signs with sigstore (or `signer="stub"` in dev), writes `run.manifest.json`. Terminal crypto-custody step under Amendment A5 (the OpenTimestamps + Bitcoin anchor that previously followed was removed — see `docs/cryptographic-attestation.md` for the FRE 902(14) trade-off).
 
 ### manifest_verify
 Args: `{manifest_path}`
 Returns: `{overall: bool, audit_chain_ok, merkle_root_ok, signature_present, ...}`
 Use when: any third party wants offline verification. Replays the audit chain → recomputes the Merkle root from `leaves[]` → checks signature presence. Tampering with `merkle_root_hex` produces a precise diagnostic naming both the declared and rebuilt roots.
-
-### ots_stamp
-Args: `{manifest_path}`
-Returns: `{ots_path, calendar_servers}`
-Use when: anchoring a manifest to Bitcoin via OpenTimestamps. Network-required; emits `<manifest>.ots`. Demonstrates FRE 902(14) self-authenticating evidence — the proof matures over ~1 hour as Bitcoin confirms the calendar's batch root.
-
-### ots_verify
-Args: `{ots_path, manifest_path}`
-Returns: `{ok: bool, attested_at?, block_height?, calendar_attestations[]}`
-Use when: confirming the Bitcoin anchor. Offline once the proof has matured (cached in the `.ots` file).
 
 ### verify_finding
 Args: `{finding, tool_call_index, findevil_mcp_command: list[str]}`

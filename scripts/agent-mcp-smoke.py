@@ -5,13 +5,13 @@ Two modes:
 
 **Synthetic** (default): spawns the server as a subprocess (matching
 the ``.mcp.json`` boot recipe) and drives a full investigation
-through 10 of 13 MCP tools with hand-crafted Findings. This is the
+through 10 of 11 MCP tools with hand-crafted Findings. This is the
 demo flow under Amendment A2/A3 minus the actual SCHARDT.001 disk
 image — exercises the same crypto/ACH/memory/ACP paths the live demo
-will. Skipped: ``ots_stamp`` + ``ots_verify`` (need network) and
-``verify_finding`` (needs the Rust DFIR MCP server). The A3 additions
-(``memory_remember`` + ``memory_recall`` cold→warm transition,
-``pool_handoff`` IBM-ACP envelope) are exercised in steps 4a-4f.
+will. Skipped: ``verify_finding`` (needs the Rust DFIR MCP server).
+The A3 additions (``memory_remember`` + ``memory_recall`` cold→warm
+transition, ``pool_handoff`` IBM-ACP envelope) are exercised in
+steps 4a-4f.
 
 **Real-evidence** (``--real-evidence [<auto-run-dir>]``): replays a
 real ``find-evil-auto`` case directory through the agent_mcp surface.
@@ -20,10 +20,9 @@ splits findings by ``pool_origin``, and pushes them through the
 ACH stack (audit_verify → manifest_verify → detect_contradictions
 → judge_findings → correlate_findings). The point is regression
 coverage: prove the agent_mcp tools still parse production output
-shape after any schema change. ``verify_finding`` and ``ots_stamp``
-are skipped — the former needs the Rust DFIR server, the latter
-needs network access. If no path is given, the latest dir under
-``tmp/auto-runs/`` is used.
+shape after any schema change. ``verify_finding`` is skipped — it
+needs the Rust DFIR server. If no path is given, the latest dir
+under ``tmp/auto-runs/`` is used.
 
 Usage::
 
@@ -214,8 +213,8 @@ def latest_auto_run() -> Path | None:
 def real_evidence_flow(client: StdioClient, case_dir: Path) -> int:
     """Drive the agent_mcp surface against a real find-evil-auto case dir.
 
-    Skips verify_finding (needs Rust DFIR server) and ots_stamp (needs
-    network) — both are demonstrated in the synthetic flow's siblings.
+    Skips verify_finding (needs Rust DFIR server) — demonstrated in
+    the synthetic flow's siblings.
     """
     audit_path = case_dir / "audit.jsonl"
     manifest_path = case_dir / "run.manifest.json"
@@ -708,13 +707,11 @@ def main() -> int:
         names = sorted(t["name"] for t in tools_resp["tools"])
         expected = sorted(
             [
-                # A2 baseline (10 tools)
+                # A2 baseline minus the OTS pair removed under A5 (8 tools)
                 "audit_append",
                 "audit_verify",
                 "manifest_finalize",
                 "manifest_verify",
-                "ots_stamp",
-                "ots_verify",
                 "verify_finding",
                 "detect_contradictions",
                 "judge_findings",

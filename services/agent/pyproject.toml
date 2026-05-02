@@ -36,8 +36,9 @@ dependencies = [
 
   # M2 cryptographic chain-of-custody stack per
   # project_crypto_custody_stack.md. Pinned per Spec #2 §16.
+  # opentimestamps-client was removed in Amendment A5 along with
+  # the OpenTimestamps + Bitcoin tier of the custody chain.
   "sigstore==3.*",
-  "opentimestamps-client==0.7.2",
 
   # L1 DuckDB per case.
   "duckdb>=0.10",

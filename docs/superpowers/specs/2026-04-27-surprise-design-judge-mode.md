@@ -11,6 +11,22 @@ experience that surprise the judges" (2026-04-27).
 `docs/design-briefs/phase-5-6-sprite-design-brief.md`. Judge Mode is a new
 route under `/judge` that re-uses the same SSE + audit-chain primitives.
 
+> **Amendment A5 caveat (2026-05-01):** this spec was written before A5
+> cut the OpenTimestamps + Bitcoin tier of the cryptographic chain of
+> custody. Multiple sections below (notably §0 forensic framing, the
+> tamper-cascade design, and the affidavit-mode FRE 902(14) framing)
+> use Bitcoin / OpenTimestamps as load-bearing visual + narrative
+> devices. Those sections are factually stale: the Product no longer
+> produces `*.ots` receipts and the FRE 902(14) prong-(b) claim now
+> rests on Sigstore's Rekor transparency log, not a Bitcoin proof-of-
+> work anchor. **A follow-up amendment to THIS spec is required**
+> before Judge Mode implementation begins — the visual cascade design,
+> the affidavit standards-compliance citations, and any UI surface
+> referencing a `.ots` file all need rework. The body of this spec is
+> NOT edited in place because Judge Mode hasn't been implemented yet,
+> so re-litigating the design wholesale will be cheaper than patching.
+> See `docs/cryptographic-attestation.md` for the new chain shape.
+
 ---
 
 ## 0. Forensic framing (read first)
