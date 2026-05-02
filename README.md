@@ -1,6 +1,6 @@
 # Find Evil!
 
-**SANS Find Evil! 2026 hackathon submission** — a cryptographically-verifiable DFIR agent that investigates Windows host evidence end-to-end and produces a Bitcoin-anchored signature on every finding.
+**SANS Find Evil! 2026 hackathon submission** — a cryptographically-verifiable DFIR agent that investigates Windows host evidence end-to-end and produces a sigstore-signed, Rekor-logged audit chain on every finding (verifiable offline).
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 ![Status: pre-submission](https://img.shields.io/badge/status-pre--submission-orange.svg)
@@ -38,11 +38,11 @@ $ bash scripts/find-evil-auto /mnt/hgfs/evidence/extracted/<host>/<host>-memory.
 `docs/reports/2026-04-26-srl2018-dc-investigation.md` + the embedded
 `figures-2026-04-26/` set + `tmp/fleet-runs/fleet-20260426T055440Z/`.)
 
-The chain of custody: `dc3dd` → `sha256sum` (analyst receipt) → `case_open` SHA-256 (Rust `sha2`, in-process) → audit-log `prev_hash` chain → `rs_merkle` Merkle leaf → sigstore signature → OpenTimestamps Bitcoin anchor. Any third party verifies the run offline via the `manifest_verify` + `ots_verify` MCP tools.
+The chain of custody: `dc3dd` → `sha256sum` (analyst receipt) → `case_open` SHA-256 (Rust `sha2`, in-process) → audit-log `prev_hash` chain → `rs_merkle` Merkle leaf → sigstore signature (Rekor transparency-log inclusion proof). Any third party verifies the run offline via the `manifest_verify` MCP tool. (Pre-A5 the chain also tail-anchored to Bitcoin via OpenTimestamps; that tier was removed — see `docs/cryptographic-attestation.md` for the trade-off.)
 
 ## What's distinctive
 
-1. **Cryptographic chain-of-custody at every link.** sigstore + rs_merkle + OpenTimestamps. The submission is FRE 902(14) self-authenticating evidence — a court-of-law bar, not just a CI green check.
+1. **Cryptographic chain-of-custody at every link.** Hash-chained audit log + rs_merkle root + sigstore signature (Rekor inclusion proof). Supports a FRE 902(14) self-authenticating-evidence claim — a court-of-law bar, not just a CI green check.
 
 2. **ACH dual-pool architecture.** Two agent pools investigate the same evidence in parallel with opposing priors (persistence vs exfil). Contradictions surface BEFORE the judge merges, in the audit chain. Heuer's intelligence-analysis framework applied as live agent topology — not a rebrand of consensus-seeking.
 
@@ -96,7 +96,7 @@ See [QUICKSTART.md](QUICKSTART.md) for the full per-mode walkthrough and [docs/a
 ├── agent-config/             — runtime DFIR agent identity
 │                               (SOUL/AGENTS/PLAYBOOK/TOOLS/MEMORY/HEARTBEAT/JUDGING)
 ├── services/mcp/             — Rust MCP server (12 typed DFIR tools)
-├── services/agent_mcp/       — Python MCP server (10 crypto/ACH tools)
+├── services/agent_mcp/       — Python MCP server (11 crypto/ACH/memory/ACP tools)
 ├── services/agent/           — findevil_agent package (M2 crypto + M4 ACH primitives)
 ├── services/swarm/           — overnight build swarm (Option B per Amendment A1)
 ├── scripts/
@@ -113,7 +113,7 @@ See [QUICKSTART.md](QUICKSTART.md) for the full per-mode walkthrough and [docs/a
 ├── docker/                   — L1/L2 sandbox: docker compose specs + Dockerfiles
 ├── docs/
 │   ├── architecture.md       — five trust boundaries + Mermaid diagrams
-│   ├── cryptographic-attestation.md — the five-link chain (audit → Merkle → sigstore → OTS → FRE 902(14))
+│   ├── cryptographic-attestation.md — the three-link chain (audit → Merkle → sigstore → FRE 902(14))
 │   ├── verdict-semantics.md  — what SUSPICIOUS / INDETERMINATE / NO_EVIL mean + triage flow
 │   ├── false-positives.md    — three architectural FP layers + four operational habits
 │   ├── demo-script-a2.md     — 5-minute Devpost video script (per-beat narration)

@@ -11,7 +11,7 @@ When the analyst says **"investigate &lt;path&gt;"**, **"find evil in &lt;path&g
 1. Call `case_open` with the path. Read the returned `image_hash`, `image_size_bytes`, and `id` (the case_id you'll use everywhere).
 2. Inspect the path's extension and the case-open size to pick a playbook below.
 3. Fork **two subagents** with `CLAUDE_CODE_FORK_SUBAGENT=1` — one with the Pool A persistence prompt, one with Pool B exfil prompt (see `AGENTS.md`). Each pool reads this file and runs its biased-but-still-overlapping tool sequence.
-4. After both pools return Findings, run `detect_contradictions` → resolve (or auto-pass under `--unattended`) → `judge_findings` → `verify_finding` per Finding → `correlate_findings` → **emit 6 `kind=judge_selfscore` audit records** (one per SANS rubric criterion per `agent-config/JUDGING.md`) → `manifest_finalize` → `ots_stamp`. The selfscore lands in the audit chain BEFORE finalize so it's part of the cryptographic attestation — the agent doesn't get to revise it after seeing the score it actually got.
+4. After both pools return Findings, run `detect_contradictions` → resolve (or auto-pass under `--unattended`) → `judge_findings` → `verify_finding` per Finding → `correlate_findings` → **emit 6 `kind=judge_selfscore` audit records** (one per SANS rubric criterion per `agent-config/JUDGING.md`) → `manifest_finalize` (terminal step under Amendment A5; the prior `ots_stamp` Bitcoin anchor was removed). The selfscore lands in the audit chain BEFORE finalize so it's part of the cryptographic attestation — the agent doesn't get to revise it after seeing the score it actually got.
 5. Render the verdict + manifest path.
 
 ---
@@ -109,7 +109,7 @@ When the analyst is not present (CI runs, batch processing, demo recordings):
 
 - **Contradictions** are auto-resolved by trusting the higher-credibility pool, and the auto-trust decision is logged with `approved_by: "auto"` in the audit chain. This is auditable; it is not a free pass.
 - **HYPOTHESIS-tier Findings are kept** rather than dropped — the verifier vetoes only Findings without a `tool_call_id`.
-- **Network-touching tools** (`vel_collect` artifacts that hit external systems; `ots_stamp`) still run. If network is unreachable, log the failure to the audit chain and continue; don't abort the manifest.
+- **Network-touching tools** (`vel_collect` artifacts that hit external systems; sigstore Rekor submission inside `manifest_finalize`) still run. If network is unreachable, log the failure to the audit chain and continue; don't abort the manifest. (Pre-A5 this list also included `ots_stamp`; that tool was removed.)
 - **Final verdict** is rendered to stdout AND written to `$FINDEVIL_HOME/cases/<id>/verdict.json` so a downstream process can read it without re-parsing terminal output.
 
 In attended mode, the supervisor pauses at:
