@@ -102,7 +102,7 @@ unblocked item is:
 Your job, end-to-end, in this one session:
 
 1. Read CLAUDE.md and the relevant per-subsystem spec/plan in
-   docs/superpowers/.  Apply Karpathy's 4 principles in CLAUDE.md.
+   docs/.  Apply Karpathy's 4 principles in CLAUDE.md.
 2. Implement the item.  TDD where applicable.  Surgical changes only.
 3. Verify: `cargo test --workspace --locked` + `cargo clippy
    --workspace --all-targets --locked -- -D warnings` + `ruff check .`

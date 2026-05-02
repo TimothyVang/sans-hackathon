@@ -1,6 +1,6 @@
 # Braindump — agent-army DFIR workflow (research-enriched)
 
-> **Status: RESEARCH (origin doc, superseded by Amendment A3).** This braindump produced Amendment A3 (`docs/superpowers/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md`), which is the canonical record of what was actually decided + shipped. Kept here for the original brainstorming context.
+> **Status: RESEARCH (origin doc, superseded by Amendment A3).** This braindump produced Amendment A3 (`docs/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md`), which is the canonical record of what was actually decided + shipped. Kept here for the original brainstorming context.
 
 > Status (original): enriched from the original 20-line vision with verified citations + a survey of
 > what's already cloned locally. Originals preserved in spirit; everything else has a URL or
@@ -173,7 +173,7 @@ The "agent army" largely exists — it just isn't dressed in sprites yet:
   Announcement: <https://www.anthropic.com/news/claude-design-anthropic-labs> ·
   Get-started: <https://support.claude.com/en/articles/14604416-get-started-with-claude-design>.
 - **Architectural cost**: this overrides Amendment A2 §2.1, which deferred `apps/web/` to a
-  week-7 bonus. We need an **Amendment A3** in `docs/superpowers/specs/` to make that
+  week-7 bonus. We need an **Amendment A3** in `docs/specs/` to make that
   override official. Out of scope for this braindump pass — but flagged so we don't do it
   silently.
 
@@ -215,7 +215,7 @@ already cloned under `git-hub-references/`:
    Greenfield reading (a) is consistent with this; reading (b) would re-open it.
 
 3. **`apps/web/` deferral (A2 §2.1)**. *You opted to re-open.* Action item, not done here:
-   write **Amendment A3** in `docs/superpowers/specs/` before touching `apps/web/` so the
+   write **Amendment A3** in `docs/specs/` before touching `apps/web/` so the
    override is documented, not silent.
 
 4. **"Agent army" specificity**. Two readings:

@@ -2,7 +2,7 @@
 
 Spec #1 §3.1 task: read the plan markdown(s) for a given week and emit
 an ordered ``PRSpec`` list that ``dispatch_node`` hands off to the
-workers. Plans live at ``docs/superpowers/plans/*.md`` and follow the
+workers. Plans live at ``docs/plans/*.md`` and follow the
 format described by ``superpowers:writing-plans``:
 
     ## Task N: <title>
@@ -240,7 +240,7 @@ def _task_to_prspec(task: ParsedTask, week: int, plan_file: str) -> PRSpec:
     """Build a ``PRSpec`` from a ``ParsedTask``. Never invents fields."""
     pr_id = f"week{week}-{task.language}-{_slugify(task.title)}-t{task.task_number}"
     description = (
-        f"**From:** `docs/superpowers/plans/{plan_file}` Task {task.task_number}\n\n"
+        f"**From:** `docs/plans/{plan_file}` Task {task.task_number}\n\n"
         f"{task.body.strip()[:4000]}"
     )
     return PRSpec(

@@ -5,7 +5,7 @@
 **Date:** 2026-04-25
 **Status (original):** Design — awaiting user approval (Gate 4) — superseded by status banner above
 **Deadline:** 2026-06-15 22:45 CDT
-**Parent:** `docs/superpowers/specs/2026-04-23-find-evil-automation-master-design.md`
+**Parent:** `docs/specs/2026-04-23-find-evil-automation-master-design.md`
 **Grounded in:** `BUILD_PLAN_v2.md` (DFIR fundamentals unchanged); memory files `project_dfir_tooling_picks`, `project_adversarial_agents_pattern`, `project_crypto_custody_stack`, `project_mcp_apps_readiness`, `project_judging_signals`
 
 > **Amendment A5 (2026-05-01) supersedes the OpenTimestamps + Bitcoin
@@ -991,7 +991,7 @@ Aligns to master design `§7` revised 8-week schedule.
 ## 17. Source of Truth
 
 - **This document** — Product (#2) implementation spec; authoritative for all Product architecture decisions.
-- `docs/superpowers/specs/2026-04-23-find-evil-automation-master-design.md` — 4-subsystem master design; supersedes this document on scope, budget, and moonshot decisions.
+- `docs/specs/2026-04-23-find-evil-automation-master-design.md` — 4-subsystem master design; supersedes this document on scope, budget, and moonshot decisions.
 - `BUILD_PLAN_v2.md` — DFIR fundamentals, stack picks, differentiator ranking; authoritative where not contradicted here.
 - `agent-config/SOUL.md`, `AGENTS.md`, `TOOLS.md`, `MEMORY.md`, `HEARTBEAT.md` — agent identity, epistemic hierarchy, tool surface, artifact semantics, liveness rules.
 - Memory files in `C:/Users/newbi/.claude/projects/C--Users-newbi-Desktop-PUG-Projects-SANS-Hackathon/memory/` — `project_dfir_tooling_picks`, `project_adversarial_agents_pattern`, `project_crypto_custody_stack`, `project_mcp_apps_readiness`, `project_judging_signals` — research-validated decisions; apply without re-litigating.

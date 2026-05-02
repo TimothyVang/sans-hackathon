@@ -132,7 +132,7 @@ ALLOW_PATTERNS: tuple[re.Pattern[str], ...] = (
     # Future-deployment paths from Amendment A4 (Managed Agents
     # production runtime).  A4 is purely additive future work,
     # not on the hackathon critical path - the spec at
-    # docs/superpowers/specs/2026-04-27-amendment-a4-managed-
+    # docs/specs/2026-04-27-amendment-a4-managed-
     # agents-runtime.md documents these as paths the implementation
     # WILL create when adopted by an organization wanting hosted
     # durability.  See A4 §4.5 for the full file structure.

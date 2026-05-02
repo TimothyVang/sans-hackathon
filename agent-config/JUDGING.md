@@ -82,7 +82,7 @@ chain was removed under Amendment A5; see
 `scripts/find-evil-sift` (SIFT-VM SSH-bridge mode), `scripts/install.sh`
 (three credential paths per Amendment A1), the Apache-2.0 license,
 the published accuracy-benchmark repo (BUILD_PLAN_v2 §differentiator
-10), and the four spec/plan documents (`docs/superpowers/`). A judge
+10), and the four spec/plan documents (`docs/`). A judge
 who clones the repo and runs `scripts/find-evil` should reach a
 working investigation in <5 minutes; a developer should be able to
 add a new MCP tool by following the pattern in `services/mcp/src/

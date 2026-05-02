@@ -116,7 +116,7 @@ See `goldens/<fixture>/expected-findings.json` for the ground-truth declarations
 
 ## What's next
 
-- Expand to macOS/Linux evidence (deferred per `docs/superpowers/specs/2026-04-25-the-product-design.md` §14).
+- Expand to macOS/Linux evidence (deferred per `docs/specs/2026-04-25-the-product-design.md` §14).
 - Live network-capture ingestion.
 - ACH pool strength tuning (multi-round debate is cost-prohibitive today).
 - Community contributions to the DFIR-Metric benchmark to sharpen the leaderboard.
@@ -126,7 +126,7 @@ See `goldens/<fixture>/expected-findings.json` for the ground-truth declarations
 - Repository: https://github.com/<OWNER>/<REPO>
 - Public benchmark: https://findevil-bench.dev/
 - Architecture deep-dive: [`docs/architecture.md`](docs/architecture.md)
-- Design specs: [`docs/superpowers/specs/`](docs/superpowers/specs/)
+- Design specs: [`docs/specs/`](docs/specs/)
 - Dataset documentation: [`docs/DATASET.md`](docs/DATASET.md)
 
 ## License

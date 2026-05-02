@@ -1,6 +1,6 @@
 # Autonomous Build Swarm Implementation Plan (Option B — Claude Code Subscription Mode)
 
-> **Status: RETIRED.** The work this plan tracked shipped in `services/swarm/` (package `findevil_swarm`, invoked via `bash scripts/swarm-start.sh`). All TDD tasks below are done — see `git log -- services/swarm scripts/swarm-*.sh`. Kept for git-log archaeology + the original task decomposition. **Do not execute as a TDD plan.** If extending the swarm, work against the live code and the spec at `docs/superpowers/specs/2026-04-24-autonomous-build-swarm-design.md`.
+> **Status: RETIRED.** The work this plan tracked shipped in `services/swarm/` (package `findevil_swarm`, invoked via `bash scripts/swarm-start.sh`). All TDD tasks below are done — see `git log -- services/swarm scripts/swarm-*.sh`. Kept for git-log archaeology + the original task decomposition. **Do not execute as a TDD plan.** If extending the swarm, work against the live code and the spec at `docs/specs/2026-04-24-autonomous-build-swarm-design.md`.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

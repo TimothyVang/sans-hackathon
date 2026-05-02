@@ -2,8 +2,8 @@
 
 **Status:** Scaffold (Phase 4 Task 4.1). Subsequent PRs add the audit-log tail (4.2), the audit event-type codegen (4.3), the five pixel-art sprites for Pool A / Pool B / verifier / judge / correlator (Phase 5), and the AuditBeadString + HashChainBadge + FindingChip chrome (Phase 6).
 
-**Spec:** `docs/superpowers/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md` §2.2 (apps/web/).
-**Plan:** `docs/superpowers/plans/2026-04-26-amendment-a3-plan.md` Phase 4.
+**Spec:** `docs/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md` §2.2 (apps/web/).
+**Plan:** `docs/plans/2026-04-26-amendment-a3-plan.md` Phase 4.
 
 ## Run locally
 

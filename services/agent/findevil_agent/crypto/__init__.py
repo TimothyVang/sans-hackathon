@@ -19,7 +19,7 @@ Amendment A5; design rationale + downstream doc updates are
 tracked there. The other doc-surface references to a 4-tier /
 5-link chain are stale until that amendment lands.
 
-See ``docs/superpowers/specs/2026-04-25-the-product-design.md`` §7
+See ``docs/specs/2026-04-25-the-product-design.md`` §7
 and ``memory/project_crypto_custody_stack.md`` for the original
 4-tier rationale.
 """
