@@ -77,9 +77,5 @@
       "Bash(git commit --amend:*)",
       "Bash(dd:*)"
     ]
-  },
-
-  "hooks": {
-    "_comment": "Audit logging during an investigation is handled by the audit_append MCP tool from findevil-agent-mcp (hash-chained JSONL with prev_hash linking — see CLAUDE.md non-negotiable invariant). Adding a Claude Code Stop hook here would create a parallel, unverified log; intentionally omitted."
   }
 }
