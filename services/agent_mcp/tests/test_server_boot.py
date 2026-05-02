@@ -21,9 +21,9 @@ from findevil_agent_mcp.tools.audit_verify import AuditVerifyOutput
 
 
 class TestBuildServer:
-    def test_returns_thirteen_specs(self) -> None:
+    def test_returns_eleven_specs(self) -> None:
         _server, specs = build_server()
-        assert len(specs) == 13
+        assert len(specs) == 11
 
     def test_server_name_constant(self) -> None:
         assert SERVER_NAME == "findevil-agent-mcp"
