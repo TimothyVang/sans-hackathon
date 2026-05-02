@@ -66,11 +66,14 @@ score lower than typed-surface enforcement.
 
 **Demonstrate via:** Finding → `tool_call_id` → JSONL audit record →
 SHA-256 of the tool's stdout → `manifest_finalize` Merkle root →
-`ots_stamp` Bitcoin anchor. The chain is verifiable offline by the
-`manifest_verify` + `ots_verify` MCP tools — judges run these against
-the submitted run manifest and reach the underlying tool execution
-with one path. M2 crypto stack is the load-bearing answer; FRE
-902(14) self-authenticating is the framing.
+sigstore signature with Rekor transparency-log inclusion proof.
+The chain is verifiable offline by the `manifest_verify` MCP tool —
+judges run it against the submitted run manifest and reach the
+underlying tool execution with one path. M2 crypto stack is the
+load-bearing answer; FRE 902(14) self-authenticating is the framing.
+(The OpenTimestamps + Bitcoin anchor that previously closed this
+chain was removed under Amendment A5; see
+`docs/cryptographic-attestation.md` for the trade-off on prong (b).)
 
 ## 6. Usability and Documentation
 > Can another practitioner deploy and build on this?

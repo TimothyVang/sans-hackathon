@@ -431,8 +431,6 @@ verify offline:
 ```bash
 manifest_verify <run.manifest.json>
 # → returns overall=True if audit chain + Merkle root + signature all valid
-ots verify <run.manifest.ots>
-# → confirms Bitcoin-anchor attestation (when ots_stamp was run)
 ```
 
 The verifier rebuilds:

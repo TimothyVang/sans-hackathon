@@ -25,8 +25,9 @@ Before recording:
    subsequent runs are <30s. Don't make a judge wait for symbol downloads.
 3. **Open three terminal tabs** in advance: one with `claude`
    running (the official Claude Code CLI; opens in cwd), one with
-   `bash scripts/find-evil-auto <evidence>`, one with
-   `ots verify run.manifest.ots`. Tab-switching mid-take wastes seconds.
+   `bash scripts/find-evil-auto <evidence>`, one ready to drive
+   `manifest_verify` via the MCP smoke harness. Tab-switching
+   mid-take wastes seconds.
 4. **Pre-render `FLEET_REPORT.pdf`** from a recent fleet run and have
    it open in a PDF viewer offscreen. The video shows it; we don't
    wait for matplotlib + pandoc + Chrome to render in 5 minutes.
@@ -66,12 +67,12 @@ A Cryptographically-Verifiable DFIR Agent"*.
 > dwell time is now measured in hours, not days. The SANS Find Evil!
 > hackathon asks one question: can an agent reproduce a forensic
 > investigator's work, fast enough to keep up — and prove what it
-> did. Our submission says yes, and gives the analyst a Bitcoin-
-> anchored signature on every finding.
+> did. Our submission says yes, and gives the analyst a sigstore-
+> backed signature on every finding, verifiable offline.
 
 **Notes:**
-- Deliver this dry, not breathless. The crypto-anchoring claim is
-  the differentiator; lead with it, but don't oversell.
+- Deliver this dry, not breathless. The cryptographic-attestation
+  claim is the differentiator; lead with it, but don't oversell.
 
 ---
 
@@ -150,25 +151,34 @@ credibility-weighted merge selects Pool A's framing.
 ## Beat 5 — Crypto chain-of-custody (2:35–3:10)
 
 **On-screen:** Terminal showing `manifest_finalize` running, output
-shows the Merkle root. Cut to a second terminal running `ots verify
-run.manifest.ots`, output shows "Success! Bitcoin block 850123
-attests data existed as of 2026-06-15 18:42:11 UTC".
+shows the Merkle root. Cut to a second terminal driving
+`manifest_verify` against the same case dir, output shows
+`overall=True, audit_chain_ok=True, merkle_root_ok=True,
+signature_present=True`. Then on-screen: a one-byte tamper of
+the Merkle root in `run.manifest.json`, re-run `manifest_verify`,
+output flips to `overall=False` with a precise diagnostic naming
+the field that diverged.
 
 **Voice-over:**
 
 > Every audit record, every tool output, every Finding — all
-> hash-chained. At investigation end, we Merkle-tree the chain,
-> sign the root with sigstore, and anchor that signature in
-> Bitcoin via OpenTimestamps. The result is FRE 902(14) self-
-> authenticating evidence. A judge — a literal judge in a literal
-> court — can verify this submission's integrity from the
-> manifest alone, three years from now, without trusting us.
+> hash-chained. At investigation end, we Merkle-tree the chain
+> and sign the root with sigstore, whose Rekor transparency log
+> records the signature as an independent third party. This
+> supports a FRE 902(14) self-authenticating-evidence claim.
+> A judge — a literal judge in a literal court — can verify
+> this submission's integrity from the manifest alone, three
+> years from now, without trusting us. Tamper a single byte and
+> the verifier names the byte that moved.
 
 **Notes:**
 - "FRE 902(14)" is the legal cite for self-authenticating
   electronic evidence — pronounce it "Federal Rule of Evidence
   nine-oh-two-fourteen". Drop the cite confidently; do not
   apologize for the legal jargon.
+- The live tamper-and-fail demo is the load-bearing replacement
+  for the pre-A5 Bitcoin-block visual. It shows the chain works,
+  not just that we claim it does.
 
 ---
 
@@ -244,11 +254,10 @@ attestation."
 > One last thing. The agent self-scores against the SANS rubric
 > and writes that grade into the audit chain — before
 > manifest_finalize. So the score itself is signed by the same
-> sigstore signature, anchored by the same Merkle root, attested
-> by the same OpenTimestamps proof. Judges grep one line, see
-> the agent's own assessment of how it did against the same
-> rubric they're using, and know we couldn't have revised it
-> after the fact.
+> sigstore signature and rooted in the same Merkle tree as every
+> other finding. Judges grep one line, see the agent's own
+> assessment of how it did against the same rubric they're using,
+> and know we couldn't have revised it after the fact.
 
 **Notes:**
 - This is a tiebreaker move — most submissions won't include it.

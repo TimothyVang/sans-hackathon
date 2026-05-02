@@ -110,8 +110,8 @@ SPEC = ToolSpec(
         "computing the SHA-256 root, (4) signing the canonicalized body. "
         "signer='stub' for offline/test runs (deterministic, no network); "
         "signer='sigstore' for production (keyless Fulcio/Rekor — requires "
-        "$SIGSTORE_ID_TOKEN). After this returns, call ots_stamp on the manifest_path "
-        "to Bitcoin-anchor the root. "
+        "$SIGSTORE_ID_TOKEN). This is the terminal step — once the manifest is signed "
+        "the run is closed. "
         "On error: most common cause is the audit_log_path doesn't exist or has been "
         "tampered with — run audit_verify first to confirm the chain is clean."
     ),

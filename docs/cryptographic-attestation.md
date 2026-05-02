@@ -10,16 +10,25 @@ file collects the load-bearing claims in one place.
 > ("Audit Trail Quality") asks whether the agent's findings are
 > independently verifiable by a third party with no trust in the
 > agent itself. Find Evil's answer is "yes, by `manifest_verify`
-> alone, plus optionally Bitcoin via `ots_verify` for time
-> attestation." This is FRE 902(14) self-authenticating evidence —
-> a court-of-law bar, not just a CI green check.
+> alone — no network, no trusted third-party servers." This
+> supports a FRE 902(14) self-authenticating-evidence claim, with
+> the honest caveat documented below.
+
+> **Amendment A5 (2026-05-01):** the OpenTimestamps + Bitcoin
+> anchoring tier was removed. The chain dropped from five links
+> to four primitives composed across three tiers (audit chain →
+> Merkle root → sigstore signature). The Bitcoin tier required
+> network reach to a calendar server plus a multi-hour wait for
+> the attestation to mature, neither of which a judge scoring
+> offline can exercise. The honest implication for the FRE 902(14)
+> claim is in the "What FRE 902(14) requires" section.
 
 ---
 
-## The five-link chain
+## The three-link chain
 
 Every Find Evil! investigation produces a `run.manifest.json`
-backed by five composed cryptographic primitives:
+backed by composed cryptographic primitives across three tiers:
 
 ```
    evidence file (.e01 / .img / .evtx)
@@ -35,9 +44,6 @@ backed by five composed cryptographic primitives:
        │
        ▼  sigstore-python = 3.x (sigstore Fulcio cert + Rekor log)
    signature  (signed over the manifest body bytes)
-       │
-       ▼  opentimestamps-client (calendar → Bitcoin)
-   OpenTimestamps proof (.ots) — ~1 hr to mature, then offline
 ```
 
 Each link's role:
@@ -47,13 +53,14 @@ Each link's role:
 | 1 | SHA-256 of the evidence | The image we read is the image we received | `sha2 = 0.10` (Rust) |
 | 2 | Audit hash chain | No record was deleted, reordered, or back-dated after the fact | `services/agent/findevil_agent/crypto/audit_log.py` |
 | 3 | rs_merkle tree | The set of records named in the manifest is the set the agent actually wrote | `rs_merkle = 1.4.0` (Rust) |
-| 4 | sigstore signature | The manifest was produced by a key whose Fulcio cert is logged in Rekor — non-repudiable provenance | `sigstore = 3.x` (Python) |
-| 5 | OpenTimestamps proof | The manifest existed AT OR BEFORE the named Bitcoin block — independent time attestation | `opentimestamps-client` |
+| 4 | sigstore signature | The manifest was produced by a key whose Fulcio cert is logged in Rekor — non-repudiable provenance via a public transparency log | `sigstore = 3.x` (Python) |
 
 **No single primitive is load-bearing alone.** A SHA-256 by itself
 proves byte equality but not freshness; a Merkle root proves set
 membership but not who built the set; a sigstore signature proves
-identity but not time. The composition is the attestation.
+identity AND (via Rekor inclusion) lower-bounds time, but only as
+late as the Rekor entry's own timestamp. The composition is the
+attestation.
 
 ---
 
@@ -68,16 +75,13 @@ services/agent/findevil_agent/crypto/            ← (M2 crypto stack)
 ├── audit.py                                     — link 2: prev_hash chain
 ├── merkle.py                                    — link 3: rs_merkle tree
 ├── signer.py                                    — link 4: sigstore Fulcio + Rekor
-├── manifest.py                                  — composes 2/3/4 into run.manifest.json
-└── ots.py                                       — link 5: OpenTimestamps stamp + verify
+└── manifest.py                                  — composes 2/3/4 into run.manifest.json
 
 services/agent_mcp/findevil_agent_mcp/tools/     ← (Python MCP wrapping the above)
 ├── audit_append.py                              ↘  one MCP tool per link
-├── audit_verify.py                              ↘  10 tools total — see TOOLS.md
-├── manifest_finalize.py                         ↘
-├── manifest_verify.py                           ↘
-├── ots_stamp.py                                 ↘
-└── ots_verify.py                                ↘
+├── audit_verify.py                              ↘  11 Python tools total — see TOOLS.md
+├── manifest_finalize.py                         ↘  (the OTS pair was removed under A5)
+└── manifest_verify.py                           ↘
 ```
 
 The Rust side does the in-process content addressing (links 1 and
@@ -89,12 +93,12 @@ Python side composes the chain and signs.
 ## How a third party verifies offline
 
 A judge, regulator, or counter-party who has zero trust in the
-agent can verify a Find Evil! manifest with these tools alone:
+agent can verify a Find Evil! manifest with one tool, offline:
 
 ```bash
-# 1. The sigstore signature, audit chain, and Merkle root.
-#    No network required (the manifest is self-contained).
-#    Direct library call — no MCP server, no JSON-RPC plumbing.
+# The sigstore signature, audit chain, and Merkle root.
+# No network required (the manifest is self-contained).
+# Direct library call — no MCP server, no JSON-RPC plumbing.
 uv run --directory services/agent python -c "
 from pathlib import Path
 from findevil_agent.crypto.manifest import verify_manifest
@@ -108,11 +112,6 @@ print(r)
 #                               overall=True)
 # Any field becomes a string instead of True on failure, naming the
 # precise reason (e.g. 'audit chain seq=4 prev_hash mismatch').
-
-# 2. The Bitcoin anchor (mature ~1hr after ots_stamp).
-#    Requires the third-party `opentimestamps-client` CLI.
-ots verify run.manifest.ots
-# Returns: success + Bitcoin block height + UTC timestamp
 ```
 
 For a fuller workout that also exercises `audit_verify`,
@@ -162,7 +161,8 @@ proponent doesn't need to call a witness to authenticate it — when:
    a. Cryptographic evidence (hashing, digital signatures), AND
    b. A trusted timestamp from an independent third party.
 
-Find Evil!'s manifest meets both prongs:
+Find Evil!'s manifest meets prong (a) cleanly and meets prong (b)
+in a weaker form than the pre-A5 design did:
 
 - **Prong (a) — accurate process:** the typed Rust MCP server has no
   `execute_shell`; every tool is a narrow Pydantic-validated wrapper
@@ -170,18 +170,29 @@ Find Evil!'s manifest meets both prongs:
   SHA-256. The `verify_finding` MCP tool re-executes any cited
   `tool_call_id` and confirms the original output's hash matches.
   Reproducibility is built in.
-- **Prong (b) — trusted timestamp:** OpenTimestamps anchors the
-  manifest's Merkle root in the Bitcoin blockchain via independent
-  calendar servers (default: `alice.btc.calendar.opentimestamps.org`,
-  `bob.btc.calendar.opentimestamps.org`, `finney.calendar.eternitywall.com`).
-  Once the proof matures (~1 hour wall-clock), the timestamp is
-  offline-verifiable forever — no need to trust the calendars or
-  the agent.
+- **Prong (b) — trusted timestamp:** sigstore's Rekor transparency
+  log records every signature with its own append-only inclusion
+  proof. Rekor is operated by the Linux Foundation as a public,
+  audited service whose log is independently mirrored. A signature's
+  Rekor entry establishes that the signed body existed AT OR BEFORE
+  the entry's logged time, attested by an independent third party
+  who has no relationship to Find Evil!'s authors.
+  - **Honest disclaimer:** prong (b) was previously satisfied by an
+    OpenTimestamps proof anchored in the Bitcoin blockchain (removed
+    under Amendment A5). The Bitcoin anchor offered a *stronger*
+    third-party-timestamp claim, since the Bitcoin chain is operated
+    by no single party at all. Rekor depends on the Linux Foundation
+    continuing to operate the log honestly. The 902(14) claim is
+    still defensible — Rekor is a non-trivial independent record —
+    but the trust assumption is one party (the LF) rather than zero
+    parties (the Bitcoin proof-of-work network).
 
-The combination is the load-bearing claim: a judge looking at a
-`run.manifest.json` + `run.manifest.ots` three years from now can
-verify the run's integrity without trusting Find Evil!, the
-analyst, or any party except Bitcoin's proof-of-work chain.
+A judge looking at a `run.manifest.json` three years from now can
+verify the run's integrity without trusting Find Evil! or the
+analyst, but does need to trust that the Rekor log has not been
+silently rewritten in the interim. Rekor's gossip-based monitoring
+makes silent rewrites detectable in practice; this is the basis of
+the prong-(b) claim today.
 
 ---
 
@@ -283,4 +294,4 @@ Honest disclosure (per `docs/false-positives.md` and SOUL.md):
   every L1 build per `docker/l1-compose.yml`)
 - [Federal Rule of Evidence 902(14)](https://www.law.cornell.edu/rules/fre/rule_902)
 - [sigstore-python documentation](https://github.com/sigstore/sigstore-python)
-- [OpenTimestamps protocol](https://opentimestamps.org)
+- [Rekor transparency log](https://docs.sigstore.dev/logging/overview/)
