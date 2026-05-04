@@ -7,10 +7,11 @@
 //! (b) contain an MZ header in unexpected places — both strong indicators
 //! that something has been injected into a legitimate process.
 //!
-//! Pair with `vol_pslist` for cross-artifact corroboration: pslist tells
-//! you WHAT processes exist, malfind tells you WHICH of them are
-//! suspicious. Together they satisfy the SOUL.md ≥2 artifact-class rule
-//! within memory itself.
+//! Pair with `vol_pslist` for memory-context corroboration: pslist tells
+//! you WHAT processes exist, malfind tells you WHICH of them contain
+//! suspicious memory regions. This is still memory-only evidence; disk,
+//! event-log, or network artifacts are needed before making execution or
+//! exfiltration claims.
 //!
 //! Volatility invocation: `<vol> -f <memory> -r json windows.malfind`.
 //! Reuses the same binary-discovery helper as `vol_pslist`.
@@ -31,7 +32,7 @@ pub struct VolMalfindInput {
     /// Case ID from a prior `case_open` call.
     pub case_id: String,
 
-    /// Path to the memory image (`.mem`, `.raw`, `.dmp`, `.vmem`).
+    /// Path to the memory image (`.mem`, `.raw`, `.dmp`, `.vmem`, `.img`).
     pub memory_path: PathBuf,
 
     /// Optional PID filter. When supplied, only injections in

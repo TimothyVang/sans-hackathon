@@ -1,7 +1,7 @@
 name: Release
 
-# Glue Spec #4 §4. Triggered by git tag v<N> push. Verifies L3 green,
-# builds .deb + Docker image + offline report.html in parallel,
+# Glue Spec #4 §4, post-A2 packaging. Triggered by git tag v<N> push.
+# Verifies L3 green, builds Docker image + offline report.html,
 # uploads artifacts to GH Release, pushes release=true score to the
 # leaderboard, posts #releases Slack. For v-submit, devpost-submit.yml
 # chains downstream.

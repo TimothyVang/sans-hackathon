@@ -8,8 +8,9 @@
 //!
 //! `windows.pslist` is the canonical "first look" memory plugin —
 //! it walks the kernel's process list (`PsActiveProcessHead`) and
-//! emits one row per live process. Pair with `vol_malfind` for code-
-//! injection detection.
+//! emits one row per live process. Pair with `vol_psscan` and
+//! `vol_psxview` for process-view corroboration, then use
+//! `vol_malfind` for code-injection triage.
 //!
 //! Volatility invocation: `<vol> -f <memory> -r json windows.pslist`.
 //! `-r json` writes a clean JSON array to stdout. Binary discovery
@@ -32,7 +33,7 @@ pub struct VolPslistInput {
     /// correlation; not consumed by the parser.
     pub case_id: String,
 
-    /// Path to the memory image (`.mem`, `.raw`, `.dmp`, `.vmem`).
+    /// Path to the memory image (`.mem`, `.raw`, `.dmp`, `.vmem`, `.img`).
     /// Volatility auto-detects the OS profile.
     pub memory_path: PathBuf,
 
@@ -299,6 +300,7 @@ pub fn path_looks_like_memory_image(path: &Path) -> bool {
             || e.eq_ignore_ascii_case("vmem")
             || e.eq_ignore_ascii_case("lime")
             || e.eq_ignore_ascii_case("aff4")
+            || e.eq_ignore_ascii_case("img")
     })
 }
 

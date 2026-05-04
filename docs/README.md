@@ -19,6 +19,7 @@ The authoritative *precedence* hierarchy (which spec overrides which) lives in `
 | File | Status | Purpose |
 |---|---|---|
 | `CLAUDE.md` | **ACTIVE** | Agent instructions, document hierarchy, non-negotiable invariants, spec/code divergences. Always loaded into Claude Code sessions. |
+| `AGENTS.md` | **ACTIVE** | Codex-compatible adapter instructions that defer to `CLAUDE.md` and preserve the narrow MCP surface. |
 | `README.md` | **ACTIVE** | Public-facing project landing page. |
 | `QUICKSTART.md` | **ACTIVE** | Three-step quickstart for impatient users. |
 | `CHANGELOG.md` | **ACTIVE** | Chronological project changelog. |
@@ -28,6 +29,7 @@ The authoritative *precedence* hierarchy (which spec overrides which) lives in `
 | File | Status | Purpose |
 |---|---|---|
 | `architecture.md` | **REQUIRED** | Devpost Required Component #3. Trust-boundary diagram + runtime architecture. The single page judges reach first. |
+| `codex-compatibility.md` | **ACTIVE** | Operator guide for using Codex with the same two product MCP servers, without broad external MCP defaults. |
 | `cryptographic-attestation.md` | **REQUIRED** | Three-link chain-of-custody story (rubric criterion #5). How `manifest_verify` produces FRE 902(14) self-authenticating evidence post-A5. |
 | `DATASET.md` | **REQUIRED** | Devpost Required Component #5. Every fixture the agent was tested against, with SHA-256 + license + expected findings. |
 | `demo-script-a2.md` | **ACTIVE** | 5-minute Devpost demo video script (A2 flow). Pre-flight checklist + per-beat narration + rubric mapping. |

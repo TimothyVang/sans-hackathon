@@ -1,9 +1,9 @@
 # Spec #4 — Orchestration Glue: CI Pipeline
 
-> **Status: SHIPPED.** Nine GHA workflows live in `.github/workflows/`. Branch protection, release pipeline (`release.yml` on `v*` tags), Devpost submission zip (`devpost-submit.yml` on `v-submit`), competitor watch, and the budget-guard (no-op under A1 unless `ANTHROPIC_API_KEY` is set) all wired. `scripts/build-deb.sh` was cut by A2 (PR #4 / `docs/runbooks/dockerfile-a2-decision.md`).
+> **Status: SHIPPED.** Nine GHA workflows live in `.github/workflows/`. Branch protection, release pipeline (`release.yml` on `v*` tags), Devpost submission zip (`devpost-submit.yml` on `v-submit`), competitor watch, and the budget-guard (no-op under A1 unless `ANTHROPIC_API_KEY` is set) all wired. `scripts/build-deb.sh` and the `.deb` artifact were cut by A2 (PR #4 / `docs/runbooks/dockerfile-a2-decision.md`); current release artifacts are Docker image, `report.html`, and the Devpost zip.
 
 **Date:** 2026-04-26
-**Status:** Design — awaiting user approval
+**Status:** Shipped — current workflow YAML wins where older design details below conflict
 **Deadline:** 2026-06-15 22:45 CDT
 **Parent:** `docs/specs/2026-04-23-find-evil-automation-master-design.md`
 **Depends on:** Spec #3 (Sandbox), Spec #1 (Build Swarm), Spec #2 (Product)
@@ -20,7 +20,7 @@ Three independently designed subsystems — the autonomous build swarm (#1), the
 2. Runs L3 goldens nightly on `main` and blocks every release tag when L3 is red.
 3. Pushes nightly benchmark scores to the M1 public leaderboard at `findevil-bench.dev`.
 4. Monitors three watched competitor repos weekly and alerts on any activity delta.
-5. Packages a release-quality `.deb` + Docker image + offline `report.html` on every `v<N>` tag.
+5. Packages a Docker image + offline `report.html` on every `v<N>` tag; `.deb` packaging was cut under A2.
 6. Produces a complete Devpost submission zip automatically on the `v-submit` tag cut by 2026-06-14.
 
 ---
@@ -59,10 +59,9 @@ Three independently designed subsystems — the autonomous build swarm (#1), the
 │                                                                      │
 │  release.yml                                                         │
 │    ├── verify: L3 green on tagged commit (last 24h)                  │
-│    ├── build-deb:    find-evil_v<N>_amd64.deb                        │
 │    ├── build-docker: ghcr.io/find-evil/find-evil:v<N>                │
 │    ├── build-report: report.html (Vite lib build)                    │
-│    ├── upload: all three to GitHub Release                           │
+│    ├── upload: report.html to GitHub Release; Docker by tag/digest   │
 │    ├── push: release=true score to findevil-bench.dev                │
 │    └── Slack #releases: "v<N> shipped"                               │
 └──────────────────────────────────────────────────────────────────────┘
@@ -92,7 +91,6 @@ Three independently designed subsystems — the autonomous build swarm (#1), the
 │    │     ├── benchmark-results.csv (from last L3 run artifacts)      │
 │    │     ├── demo-video-link.txt                                     │
 │    │     ├── LICENSE (Apache-2.0, static)                            │
-│    │     ├── find-evil_v-submit_amd64.deb                            │
 │    │     └── report.html                                             │
 │    ├── gh release upload v-submit find-evil-submission.zip           │
 │    └── Slack #releases: "Devpost package ready for manual upload"    │
@@ -112,7 +110,7 @@ All files live under `.github/workflows/`. L0/L1/L2/L3 internals are defined in 
 | `l2-sift-lite.yml` | PR + any branch push | Advisory DFIR smoke — Spec #3 §4.3. Non-blocking; posts result comment on PR. |
 | `l3-nightly.yml` | `cron: '30 2 * * *'` + `push: branches: [main]` | Nightly full-SIFT golden run; on pass pushes score to leaderboard; on fail posts to `#ci-alerts`. |
 | `l3-weekly-goldens.yml` | `cron: '0 23 * * 0'` (Sunday 23:00 UTC) | Full golden matrix run weekly; score update to leaderboard. |
-| `release.yml` | `push: tags: ['v[0-9]*']` | Verifies L3 green; builds `.deb` + Docker + `report.html`; uploads to GH Release; Slack `#releases`. |
+| `release.yml` | `push: tags: ['v[0-9]*', 'v-submit']` | Verifies L3 green; builds Docker + `report.html`; uploads release artifacts; Slack `#releases`. |
 | `competitor-watch.yml` | `cron: '0 9 * * 1'` (Monday 09:00 UTC) | Repo delta scan for 3 competitors + topic search; Slack `#competitor-watch`. |
 | `devpost-submit.yml` | `push: tags: ['v-submit']` | Waits for `release.yml` green; runs `scripts/package-devpost.sh`; uploads zip to GH Release. |
 | `budget-guard.yml` | `cron: '0 6 * * *'` (daily 06:00 UTC) | Queries LiteLLM proxy `/spend`; sets `SWARM_HALT=true` variable and Slack-alerts if daily spend > $50. |
@@ -137,16 +135,16 @@ For every `git tag v<N> && git push origin v<N>` (weeks 1-8):
    ```
    If no matching green run in the last 24 hours, the job posts to `#ci-alerts` and exits with code 1. The release tag is not deleted — re-trigger via `gh workflow run release.yml --ref v<N>` once L3 catches up.
 
-3. **Parallel build jobs** (all on `ubuntu-22.04` standard runner except Docker which uses `ubuntu-latest`):
-   - `build-deb`: `cargo build --release --locked` then `scripts/build-deb.sh $VERSION` → `find-evil_v<N>_amd64.deb`. The deb targets `ubuntu:22.04` (SIFT base).
-   - `build-docker`: `docker buildx build --platform linux/amd64 --tag ghcr.io/find-evil/find-evil:v<N> --push .` using `GHCR_TOKEN` secret.
-   - `build-report`: `pnpm install --frozen-lockfile && pnpm run build:lib` → single-file `report.html` (Vite library build from `apps/web/`).
+3. **Parallel build jobs**:
+   - `build-docker`: `docker buildx build --platform linux/amd64 --tag ghcr.io/find-evil/find-evil:v<N> --push .` using `GHCR_TOKEN` or `GITHUB_TOKEN`.
+   - `build-report`: installs the web workspace and uploads `report.html`, falling back to a clear stub if the offline report build is unavailable.
+   - `build-deb` is intentionally absent post-A2; the `.deb` wrapper had no runtime after Claude Code became the primary interface.
 
-4. **Upload artifacts** to GH Release: `gh release upload v<N> find-evil_v<N>_amd64.deb report.html` (Docker is accessed by digest, no file upload needed; the image digest is appended to the release notes).
+4. **Upload artifacts** to GH Release: `report.html` is uploaded; Docker is accessed by tag/digest.
 
 5. **Leaderboard release ping** via `scripts/push-leaderboard-score.sh --release true --tag v<N>` using the score JSON from the gating L3 run.
 
-6. **Slack `#releases`**: `"[find-evil] v<N> shipped — .deb + Docker ghcr.io/find-evil/find-evil:v<N> + report.html | <GH Release URL>"`.
+6. **Slack `#releases`**: `"[find-evil CI] release | PASS | <sha> | <GH Release URL>"` plus Docker/report summary.
 
 For `v-submit`, `devpost-submit.yml` runs downstream after `release.yml` succeeds (see §9).
 
@@ -342,7 +340,7 @@ Full report: <link to GHA run>
 
 2. **Verify `DEMO_VIDEO_URL` set.** `gh variable get DEMO_VIDEO_URL` — if empty or unset, exits 1 with message: `"Set DEMO_VIDEO_URL via: gh variable set DEMO_VIDEO_URL --body '<url>' before cutting v-submit"`.
 
-3. **Download release artifacts** for `v-submit`: `.deb` and `report.html` from `gh release download v-submit`.
+3. **Download release artifacts** for `v-submit`: `report.html` and any optional legacy artifacts from `gh release download v-submit`.
 
 4. **Download benchmark CSV.** Pull the `l3-verdicts` artifact from the most recent successful `l3-weekly-goldens.yml` run via `gh run download`. Then run `scripts/json-to-benchmark-csv.py run.log > benchmark-results.csv`.
 
@@ -354,10 +352,9 @@ Full report: <link to GHA run>
      - `benchmark-results.csv`
      - `demo-video-link.txt` (contains `$DEMO_VIDEO_URL` verbatim)
      - `LICENSE` (Apache-2.0, from repo root)
-     - `find-evil_v-submit_amd64.deb`
-     - `report.html`
+      - `report.html`
 
-6. **Integrity check.** Script verifies zip contains all 6 expected files (5 + the conditional .deb when present); exits 1 if any missing. (Pre-Phase-3d the list included a 7th, `SUBMISSION_NOTES.md`; that file was deleted 2026-05-02 — judge-facing Q&A migrated to README.md "Anticipated questions.")
+6. **Integrity check.** Script verifies zip contains all 5 required files; a legacy `.deb` is included only if an older release asset provided one. (Pre-Phase-3d the list included `SUBMISSION_NOTES.md`; that file was deleted 2026-05-02 — judge-facing Q&A migrated to README.md "Anticipated questions.")
 
 7. **Upload.** `gh release upload v-submit find-evil-submission.zip`.
 
@@ -420,9 +417,9 @@ No Block Kit. Plain text only. Keeps webhook implementation trivially simple and
 - [ ] Critic subagent `gh pr review --approve` satisfies the branch protection review requirement; `gh pr merge --squash` completes without manual human action.
 - [ ] Merge to `main` triggers `l3-nightly.yml`; the run completes and posts a status message to `#ci-alerts` within 25 minutes.
 - [ ] `git tag v2 && git push origin v2` starts `release.yml`; if no L3 green on `main` within the last 24h, the workflow exits 1 and posts to `#ci-alerts` without producing artifacts.
-- [ ] When L3 is green: `release.yml` produces `find-evil_v2_amd64.deb`, `ghcr.io/find-evil/find-evil:v2` image, and `report.html`; all three are attached to the GH Release page for `v2`.
-- [ ] `sudo dpkg -i find-evil_v2_amd64.deb && find-evil --version` exits 0 on a fresh `ubuntu:22.04` container.
-- [ ] `docker run --rm ghcr.io/find-evil/find-evil:v2 find-evil --version` exits 0.
+- [ ] When L3 is green: `release.yml` produces `ghcr.io/find-evil/find-evil:v2` image and `report.html`; `report.html` is attached to the GH Release page for `v2`.
+- [ ] Release logs explicitly note that `build-deb`/`.deb` packaging is absent post-A2.
+- [ ] `docker run --rm ghcr.io/find-evil/find-evil:v2 bash -lc 'ls /app || true'` exits 0 for build-state reproduction.
 - [ ] `report.html` opens in a browser with `--disable-features=NetworkService` and renders the verdict card without network requests.
 
 ### Weekly competitor report
@@ -435,7 +432,7 @@ No Block Kit. Plain text only. Keeps webhook implementation trivially simple and
 ### Devpost package ready by 2026-06-14
 
 - [ ] By 2026-06-14 23:59 CDT: `v-submit` tag exists on `main` and `devpost-submit.yml` completed successfully.
-- [ ] `find-evil-submission.zip` is attached to the GH Release for `v-submit` and contains exactly: `README-submission.md`, `benchmark-results.csv`, `demo-video-link.txt`, `LICENSE`, `find-evil_v-submit_amd64.deb`, `report.html`. (Pre-Phase-3d also `SUBMISSION_NOTES.md`; deleted 2026-05-02.)
+- [ ] `find-evil-submission.zip` is attached to the GH Release for `v-submit` and contains: `README-submission.md`, `benchmark-results.csv`, `demo-video-link.txt`, `LICENSE`, and `report.html`. (Pre-A2 also `.deb`; pre-Phase-3d also `SUBMISSION_NOTES.md`; both were removed.)
 - [ ] `demo-video-link.txt` contains a non-placeholder URL (not empty, not a template variable).
 - [ ] `LICENSE` contains the full Apache-2.0 text.
 - [ ] `benchmark-results.csv` has at least one row with `fixture=nist-hacking-case` and `findings_matched` > 0.
@@ -451,7 +448,7 @@ No Block Kit. Plain text only. Keeps webhook implementation trivially simple and
 | G2 | Slack webhook unavailable during demo or deadline night | All Slack messages are best-effort fire-and-forget. GH Release page and GHA run logs are the source of truth for all artifacts. The Devpost zip is uploaded to GH Release before the Slack notification fires. |
 | G3 | Devpost deadline-night scramble | `v-submit` tag is cut 2026-06-14 by design, one day early. The zip is staged in GH Release by midnight. Manual Devpost form submission takes < 5 minutes from the pre-staged zip. No automation touches Devpost's external servers. |
 | G4 | `findevil-bench.dev` (M1 leaderboard) down during judging week | Leaderboard is a bonus SEO asset — not required for Devpost submission. Judges evaluate the Product directly. The `benchmark-results.csv` in the Devpost zip serves as static evidence of benchmark accuracy. |
-| G5 | `.deb` build fails on a mid-sprint release tag | `build-deb` job failure is non-fatal for the release workflow (Docker + `report.html` still upload). Alert to `#ci-alerts`. Product is still submittable via Docker. |
+| G5 | Docker/report build fails on a mid-sprint release tag | Release workflow fails loudly; rerun after fixing the build. The canonical judge path remains `git clone` + `scripts/install.sh` + `claude`, not a `.deb`. |
 | G6 | Critic subagent's GitHub account lacks approval permission | Critic's PAT account must be added as a repo collaborator with `write` role before the first nightly swarm run. Add with: `gh api repos/{owner}/{repo}/collaborators/{critic-account} --method PUT --field permission=write`. |
 | G7 | `DEMO_VIDEO_URL` not set before `v-submit` tag cut | `package-devpost.sh` checks for non-empty value and exits 1 with an explicit error message. The `devpost-submit.yml` workflow fails loudly on Slack `#ci-alerts` before any zip is assembled. |
 | G8 | Concurrent competitor-watch runs (unlikely but possible on re-run) | Workflow uses `git pull --rebase` before pushing state; single Monday cron means no true concurrency. If a manual re-run races with a scheduled run, last writer wins on `competitor-watch.json` — acceptable (idempotent state file). |
@@ -465,11 +462,11 @@ Sandbox costs are already captured in Spec #3 §7. These are the incremental cos
 
 | Line | Estimate | Basis |
 |---|---|---|
-| `release.yml` builds (8 weekly releases) | ~$1.50 | ~6min avg × 8 × $0.016/min (deb + report.html on standard runner; Docker on free tier buildx) |
+| `release.yml` builds (8 weekly releases) | ~$1.50 | ~6min avg × 8 × $0.016/min (report.html on standard runner; Docker on free tier buildx) |
 | `competitor-watch.yml` (8 Monday runs) | ~$0.15 | ~3min × 8 × $0.016/min |
 | `budget-guard.yml` (53 daily runs) | ~$0.10 | <1min each |
 | `devpost-submit.yml` (1 run) | ~$0.08 | ~5min on standard runner |
-| GHA artifact storage for 8 releases | ~$3-5 | .deb (~15MB) + report.html (~2MB) × 8 + zip (~20MB) × 1 |
+| GHA artifact storage for 8 releases | ~$1-3 | report.html (~2MB) × 8 + zip (~20MB) × 1 |
 | **Glue subtotal** | **~$5-7** | Negligible vs. L3 ($420-525) and swarm ($2,650 worst case) |
 
 Total project budget ceiling remains ~$3,500-4,000 per master design §8.

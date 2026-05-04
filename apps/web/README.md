@@ -13,6 +13,40 @@ pnpm --filter @findevil/web dev
 # open http://localhost:3000
 ```
 
+The Codex operator wrapper lives at:
+
+```text
+http://localhost:3000/codex
+```
+
+The page is useful in two modes:
+
+- Prompt cockpit: always available. Pick a suggested investigation, copy the guarded prompt, and paste it into the Codex TUI/dashboard.
+- Local one-shot runner: disabled by default. Set `FINDEVIL_CODEX_UI_ENABLE=1` before starting the dashboard to let `/api/codex` launch constrained `codex exec` runs.
+
+The browser dashboard cannot send text into an already-running Codex CLI TUI session; Codex does not expose a live TUI input API. Use **Copy TUI prompt** for the terminal, **Open Codex app** for a `codex://new` deeplink, or **Run in chat** for a separate one-shot `codex exec` run.
+
+Example local runner startup:
+
+```bash
+FINDEVIL_CODEX_UI_ENABLE=1 pnpm --filter @findevil/web dev
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:FINDEVIL_CODEX_UI_ENABLE = "1"
+pnpm --filter @findevil/web dev
+```
+
+Codex users can also invoke the repo skill named `dashboard` from the Codex TUI. It starts the local dev server, so it does not require a prior Next.js production build. It uses:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/codex-dashboard.ps1
+```
+
+The runner is intentionally narrow: it uses `--ignore-user-config`, `--ephemeral`, disables Codex's shell tool, and passes per-mode MCP `enabled_tools` allow-lists. It still uses Codex's non-interactive bypass flag because current `codex exec` auto-cancels MCP calls otherwise; keep this route local and disabled unless you are actively testing it.
+
 The build:
 
 ```bash
@@ -56,3 +90,15 @@ pnpm --filter @findevil/web dev
 ```
 
 The allow-list closes the path-traversal hole flagged in PR #7's `route.ts` comment — a malicious browser tab pointed at the dashboard URL can no longer trick the route into reading arbitrary filesystem paths.
+
+## Path allow-list for `/api/codex`
+
+The Codex wrapper accepts evidence or run paths only under these repo-relative roots:
+
+- `fixtures/`
+- `goldens/`
+- `tmp/auto-runs/`
+- `tmp/smoke/`
+- `test-forensics/`
+
+To add local roots without code changes, set `FINDEVIL_CODEX_EXTRA_ROOTS` using the platform path delimiter. The route passes paths to Codex as prompt text only; the actual evidence read still happens through the typed Find Evil MCP tools.

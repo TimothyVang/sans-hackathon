@@ -443,9 +443,10 @@ fn build_registry() -> Vec<ToolEntry> {
                  (read-write-execute, the classic injection footprint) AND/OR contain an MZ \
                  header in unexpected places — both strong indicators that something has \
                  been injected into a legitimate process. \
-                 PAIR WITH vol_pslist for cross-artifact corroboration within memory: \
-                 pslist tells you WHAT processes exist, malfind tells you WHICH are \
-                 suspicious. Together they satisfy the SOUL.md ≥2 artifact-class rule. \
+                 PAIR WITH vol_pslist for memory-context corroboration: pslist tells \
+                 you WHAT processes exist, malfind tells you WHICH contain suspicious \
+                 memory regions. This remains memory-only evidence; disk, event-log, \
+                 or network artifacts are needed before execution or exfiltration claims. \
                  Use AFTER case_open. memory_path is the image. pid_filter narrows to \
                  specific PIDs (typically PIDs that vol_pslist flagged as suspicious — \
                  abnormal parent, unusual session, etc.). Default limit 10000 (a \

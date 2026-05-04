@@ -68,6 +68,7 @@ def main() -> int:
     extract_ascii_strings = fea._extract_ascii_strings_from_hex  # noqa: SLF001
     extract_iocs = fea._extract_iocs_from_texts  # noqa: SLF001
     process_sets_diverge = fea.process_sets_diverge
+    write_normalized_timeline_csv = fea.write_normalized_timeline_csv
     write_timeline_csv = fea.write_timeline_csv
     print("=" * 60)
     print("Find Evil! — verdict + evidence/process policy smoke")
@@ -203,6 +204,7 @@ def main() -> int:
     disk_inv = fea.Investigation("foo.E01", unattended=True, with_report=False)
     disk_inv.tool_calls = [{"tool": "case_open", "tool_call_id": "tc-disk"}]
     disk_comp = disk_inv._case_completeness()  # noqa: SLF001 - smoke covers policy
+    disk_comp_case_open_only = disk_comp
     disk_checks = {
         row.get("artifact_class"): row for row in disk_comp.get("checks", [])
     }
@@ -231,6 +233,21 @@ def main() -> int:
             print(f"         expected: {expected!r}")
             print(f"         actual  : {actual!r}")
             failures += 1
+    disk_inv.tool_calls = [
+        {"tool": "case_open", "tool_call_id": "tc-disk"},
+        {"tool": "yara_scan", "tool_call_id": "tc-yara"},
+    ]
+    disk_comp_yara = disk_inv._case_completeness()  # noqa: SLF001 - smoke covers policy
+    disk_checks = {
+        row.get("artifact_class"): row for row in disk_comp_yara.get("checks", [])
+    }
+    disk_policy_checks += 1
+    ok = disk_checks["disk/filesystem"].get("touched") is True
+    marker = "OK  " if ok else "FAIL"
+    print(f"  [{marker}] disk: yara_scan counts as disk/filesystem touch")
+    if not ok:
+        print(f"         disk check: {disk_checks['disk/filesystem']!r}")
+        failures += 1
 
     # ----- EVTX parse success is summary/timeline, not suspicion -------
     benign_evtx_rows = [
@@ -359,6 +376,21 @@ def main() -> int:
             print(f"         expected: {expected!r}")
             print(f"         actual  : {actual!r}")
             failures += 1
+
+    disk_actions = build_next_actions([], coverage, disk_comp_case_open_only, [])
+    disk_gap_actions = [
+        action for action in disk_actions if "disk_gap" in action.get("based_on", [])
+    ]
+    process_checks += 1
+    ok = (
+        bool(disk_gap_actions)
+        and "read-only" in disk_gap_actions[0].get("action", "").lower()
+    )
+    marker = "OK  " if ok else "FAIL"
+    print(f"  [{marker}] action: disk next action uses read-only SIFT wording")
+    if not ok:
+        print(f"         actions: {disk_actions!r}")
+        failures += 1
 
     # ----- Correlator refined findings drive final verdict input ------
 
@@ -788,6 +820,28 @@ def main() -> int:
     marker = "OK  " if ok else "FAIL"
     print(
         "  [{marker}] timeline: CSV export includes details_json".format(marker=marker)
+    )
+    if not ok:
+        print(f"         csv text: {text!r}")
+        failures += 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        csv_path = Path(tmp) / "normalized-timeline.csv"
+        write_normalized_timeline_csv(normalized["events"], csv_path)
+        text = csv_path.read_text(encoding="utf-8")
+    process_checks += 1
+    ok = (
+        "event_id" in text
+        and "timestamp_utc" in text
+        and "source_record_ref" in text
+        and "tc-psscan" in text
+        and "T1014" in text
+    )
+    marker = "OK  " if ok else "FAIL"
+    print(
+        "  [{marker}] timeline: normalized CSV export includes analyst fields".format(
+            marker=marker
+        )
     )
     if not ok:
         print(f"         csv text: {text!r}")

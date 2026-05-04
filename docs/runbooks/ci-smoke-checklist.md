@@ -47,7 +47,7 @@ Cut a throwaway tag to exercise the release path end-to-end:
 
 - [ ] `git tag v-smoke && git push origin v-smoke`.
 - [ ] `release.yml` starts; `l3-gate` job either confirms green L3 or emits pre-Week-2 `::warning`.
-- [ ] `build-deb` job uploads `find-evil_v-smoke_amd64.deb` to the GH Release page for `v-smoke`.
+- [ ] Confirm the release log notes the A2 removal of the `build-deb` job; no `.deb` artifact is expected.
 - [ ] `build-docker` job pushes `ghcr.io/${OWNER,,}/find-evil:v-smoke` and `:latest`.
 - [ ] `build-report` job uploads `report.html` (stub acceptable pre-Week-5).
 - [ ] `publish` job creates or updates the GH Release and runs `scripts/push-leaderboard-score.sh`.
@@ -85,7 +85,7 @@ gh variable set DEMO_VIDEO_URL --body "https://youtu.be/<id>"
       - Downloads release artifacts + latest weekly L3 verdicts.
       - Runs `scripts/json-to-benchmark-csv.py` → `benchmark-results.csv`.
       - Runs `scripts/package-devpost.sh` → `find-evil-submission.zip`.
-      - Integrity-checks the zip contents: `README-submission.md`, `benchmark-results.csv`, `demo-video-link.txt`, `LICENSE`, `report.html`, and (when present) the `.deb`. (Pre-Phase-3d also `SUBMISSION_NOTES.md`; deleted 2026-05-02.)
+      - Integrity-checks the zip contents: `README-submission.md`, `benchmark-results.csv`, `demo-video-link.txt`, `LICENSE`, and `report.html`. (Pre-A2 also `.deb`; pre-Phase-3d also `SUBMISSION_NOTES.md`; both were removed.)
       - Uploads the zip to the GH Release under the `v-submit` tag.
 - [ ] Slack `#releases` posts the "Devpost package ready" message.
 
