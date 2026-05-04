@@ -1267,7 +1267,7 @@ class Investigation:
         attestation — the agent doesn't get to revise it after seeing
         the score it actually got.
         """
-        all_findings = list(self.findings_pool_a) + list(self.findings_pool_b)
+        scored_findings = list(merged)
 
         # Criterion 1: tool failures and corrections.
         failures = sum(
@@ -1276,11 +1276,11 @@ class Investigation:
             if "error" in tc or tc.get("output_hash") in {None, ""}
         )
 
-        # Criterion 2: confidence distribution across raw (pre-merge) findings.
-        n = max(1, len(all_findings))
-        c_count = sum(1 for f in all_findings if f.get("confidence") == "CONFIRMED")
-        i_count = sum(1 for f in all_findings if f.get("confidence") == "INFERRED")
-        h_count = sum(1 for f in all_findings if f.get("confidence") == "HYPOTHESIS")
+        # Criterion 2: confidence distribution across the final findings.
+        n = max(1, len(scored_findings))
+        c_count = sum(1 for f in scored_findings if f.get("confidence") == "CONFIRMED")
+        i_count = sum(1 for f in scored_findings if f.get("confidence") == "INFERRED")
+        h_count = sum(1 for f in scored_findings if f.get("confidence") == "HYPOTHESIS")
 
         # Criterion 3: artifact classes touched (one per tool name we ran).
         artifact_class_for_tool = {
@@ -1304,12 +1304,11 @@ class Investigation:
                 if tc.get("tool") in artifact_class_for_tool
             }
         )
-        # Crossing ≥2 artifact classes is the SOUL.md upgrade rule.
+        # Crossing >=2 artifact classes is the SOUL.md upgrade rule.
         # The correlator already enforced it on `merged`; we don't get
         # the per-finding outcome list back here, so use the kept count
-        # as a proxy — `kept` means the correlator approved, which
-        # means ≥2 artifact corroboration where the rule required it.
-        cross_class_findings = kept
+        # as a proxy only when the run actually touched >=2 classes.
+        cross_class_findings = kept if len(classes_touched) >= 2 else 0
 
         # Criterion 4: typed-surface validation rejections. We catch tool
         # errors as `_error` keys on tool_calls; rejection reasons live
@@ -1318,7 +1317,7 @@ class Investigation:
 
         # Criterion 5: tool_call_id citation rate on findings. The verifier
         # vetoes uncited findings, but we record the rate honestly.
-        cited = sum(1 for f in all_findings if f.get("tool_call_id"))
+        cited = sum(1 for f in scored_findings if f.get("tool_call_id"))
 
         # Criterion 6: reproducibility — every tool call has an
         # output_hash AND the manifest is signed (signer != "stub" in a
@@ -1336,7 +1335,7 @@ class Investigation:
                 2,
                 "Confidence distribution",
                 f"C={c_count * 100 // n}% I={i_count * 100 // n}% "
-                f"H={h_count * 100 // n}% (n={len(all_findings)})",
+                f"H={h_count * 100 // n}% (n={len(scored_findings)})",
             ),
             (
                 3,
@@ -1351,7 +1350,7 @@ class Investigation:
             (
                 5,
                 "tool_call_id citation rate",
-                f"cited={cited}/{len(all_findings)}",
+                f"cited={cited}/{len(scored_findings)}",
             ),
             (
                 6,
