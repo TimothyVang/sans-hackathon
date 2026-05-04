@@ -18,7 +18,7 @@ Some DFIR tools are intrinsically more FP-prone than others. The agent's tool su
 | `registry_query` | Low for raw values; medium for *interpretation* (Run keys can be benign software) | Pool A reads and Pool B re-reads with different bias |
 | `usnjrnl_query` | Low for events; medium for *gaps* — USN journal is **circular**; gaps are normal | `MEMORY.md` caveat surfaces this |
 | `yara_scan` | **High** if community rules used unfiltered; low if YARA-Forge "core" tier only | Agent prefers `core` tier; `extended` tier requires corroboration |
-| `hayabusa_scan` | Medium — Sigma rules are tuned conservatively but still flag legit admin activity | Multi-level filter (`min_level: medium` cuts most FPs) |
+| `hayabusa_scan` | Medium — Sigma rules are tuned conservatively but still flag legit admin activity | Multi-level filter (`min_level: medium` cuts most FPs); rule hits are triage leads until corroborated |
 | `vol_pslist` | Medium — *fooled by* DKOM, paging artifacts, kernel build mismatch | Cross-reference with `vol_psscan`; divergence is itself the finding |
 | `vol_malfind` | Medium — *misses* hidden injections in DKOM-affected memory | Same — cross-reference with raw YARA scan over `.img` |
 | `vel_collect` | Varies by artifact | Velociraptor's per-artifact tuning |
@@ -97,7 +97,7 @@ The DKOM hypothesis is the *fifth* possibility. Before claiming DKOM in your rep
 
 * Run `vol_psscan` — if it also returns 0, the dump is corrupt, not DKOM.
 * Run `vol windows.info` — if symbols load and DTB is reasonable, the kernel is intact.
-* Run `vol windows.psxview` (not currently in our MCP surface — invoke directly) — cross-references 7 process-listing methods. DKOM shows as inconsistency between `pslist` and `psscan` columns; corruption shows as inconsistency across all 7.
+* Run `vol_psxview` — now in the typed MCP surface — to cross-reference process-listing methods. DKOM shows as inconsistency between `pslist` and `psscan` columns; corruption shows as inconsistency across broader views.
 
 The `2026-04-26-srl2018-dc-investigation.md` report uses this exact escalation — psscan recovered 124 processes including expected Windows kernel processes, so pslist=0 is genuinely a DKOM signal there, not a corrupt dump.
 
@@ -107,6 +107,7 @@ Default Sigma rules flag PowerShell `Invoke-Expression`, `runas` elevation, and 
 
 * Run with `min_level: high` for noisy Sigma rules.
 * Pair every Hayabusa finding with `evtx_query` on the same time window — if Hayabusa flags PowerShell at T0, run `evtx_query` for `Microsoft-Windows-PowerShell/Operational` at T0 and read the actual command. Legitimate admin commands usually don't include obfuscation, b64-encoded payloads, or download cradles.
+* Do not treat the rule hit itself as proof of compromise. Confirm the underlying EVTX record and look for a second artifact class before upgrading the claim.
 
 ### YARA matches a common byte pattern
 

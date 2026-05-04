@@ -34,6 +34,10 @@ dependencies = [
   # Structured logging — keeps server-side debug output JSON-shaped
   # so the launching Claude Code session can pipe it cleanly.
   "structlog>=24.4",
+
+  # mcp imports pydantic-settings providers at server import time;
+  # those providers require python-dotenv even when no .env is loaded.
+  "python-dotenv>=1.0,<1.2",
 ]
 
 [project.optional-dependencies]

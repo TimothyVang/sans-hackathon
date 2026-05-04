@@ -32,6 +32,7 @@ same SHA-256 (chain of custody) but a fresh case_id and fresh manifest.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import csv
 import json
 import os
@@ -339,7 +340,10 @@ def build_attack_coverage(
             gap = "finding-level evidence exists; preserve cited tool output"
         elif observed_tools:
             status = "covered_no_finding"
-            gap = "target-specific tools ran without a finding"
+            gap = (
+                "target-specific tools ran without qualifying evidence; this is "
+                "limited coverage, not proof of absence"
+            )
         elif target_classes & available_classes:
             status = "available_not_examined"
             gap = "required evidence class was available but no target tool ran"
@@ -527,6 +531,138 @@ def build_next_actions(
     return actions[:5]
 
 
+def build_evtx_summary(
+    rows: list[dict[str, Any]], records_seen: int, parse_errors: int
+) -> dict[str, Any]:
+    event_ids = Counter(str(r.get("event_id")) for r in rows if r.get("event_id"))
+    channels = sorted({r.get("channel") for r in rows if r.get("channel")})
+    suspicious = evtx_rows_to_findings(rows, "summary-only", "summary-only", "")
+    return {
+        "records_seen": records_seen,
+        "row_count": len(rows),
+        "parse_errors": parse_errors,
+        "distinct_event_ids": len(event_ids),
+        "top_event_ids": [
+            {"event_id": event_id, "count": count}
+            for event_id, count in event_ids.most_common(10)
+        ],
+        "channels": channels,
+        "suspicious_event_count": len(suspicious),
+        "verdict_contribution": "finding" if suspicious else "none",
+        "reason": (
+            "parsed records alone are timeline context, not suspicious behavior"
+            if not suspicious
+            else "high-signal event semantics produced finding-level evidence"
+        ),
+    }
+
+
+def _json_text(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, default=str).lower()
+
+
+def evtx_rows_to_findings(
+    rows: list[dict[str, Any]], tool_call_id: str, case_id: str, artifact_path: str
+) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    seen_kinds: set[str] = set()
+    for row in rows:
+        event_id = row.get("event_id")
+        channel = str(row.get("channel") or "")
+        record_id = row.get("record_id")
+        data_text = _json_text(row.get("data", row))
+        if event_id == 1102 and "audit_log_cleared" not in seen_kinds:
+            seen_kinds.add("audit_log_cleared")
+            findings.append(
+                {
+                    "case_id": case_id,
+                    "finding_id": "f-A-evtx-audit-log-cleared",
+                    "tool_call_id": tool_call_id,
+                    "artifact_path": artifact_path,
+                    "description": (
+                        f"EVTX contains Security EID 1102 audit-log clear event "
+                        f"(record {record_id}); this is confirmed event-log "
+                        f"evidence of log clearing and requires analyst review."
+                    ),
+                    "confidence": "CONFIRMED",
+                    "pool_origin": "A",
+                    "mitre_technique": "T1070.001",
+                }
+            )
+        elif (
+            event_id == 4104
+            and "powershell_suspicious" not in seen_kinds
+            and any(
+                token in data_text
+                for token in (
+                    "encodedcommand",
+                    "frombase64string",
+                    "downloadstring",
+                    "invoke-webrequest",
+                    "iex ",
+                )
+            )
+        ):
+            seen_kinds.add("powershell_suspicious")
+            findings.append(
+                {
+                    "case_id": case_id,
+                    "finding_id": "f-B-evtx-powershell-lead",
+                    "tool_call_id": tool_call_id,
+                    "artifact_path": artifact_path,
+                    "description": (
+                        f"EVTX PowerShell script-block record {record_id} in "
+                        f"{channel or 'unknown channel'} contains encoded or "
+                        f"download-cradle indicators; treat as a triage lead "
+                        f"until corroborated with process, disk, or network evidence."
+                    ),
+                    "confidence": "HYPOTHESIS",
+                    "pool_origin": "B",
+                    "mitre_technique": "T1059.001",
+                }
+            )
+    return findings
+
+
+def _process_pid(proc: dict[str, Any]) -> int | None:
+    pid = proc.get("pid", proc.get("PID"))
+    try:
+        return int(pid)
+    except (TypeError, ValueError):
+        return None
+
+
+def _process_name(proc: dict[str, Any]) -> str:
+    return str(proc.get("image_name") or proc.get("ImageFileName") or "").lower()
+
+
+def process_sets_diverge(
+    pslist_rows: list[dict[str, Any]],
+    psscan_rows: list[dict[str, Any]],
+    pslist_seen: int,
+    psscan_seen: int,
+) -> tuple[bool, str]:
+    if pslist_seen != psscan_seen:
+        return True, "process counts differ"
+    pslist_pids = {pid for row in pslist_rows if (pid := _process_pid(row)) is not None}
+    psscan_pids = {pid for row in psscan_rows if (pid := _process_pid(row)) is not None}
+    if pslist_pids != psscan_pids:
+        return True, "process PID sets differ"
+    pslist_idents = {
+        (pid, name)
+        for row in pslist_rows
+        if (pid := _process_pid(row)) is not None and (name := _process_name(row))
+    }
+    psscan_idents = {
+        (pid, name)
+        for row in psscan_rows
+        if (pid := _process_pid(row)) is not None and (name := _process_name(row))
+    }
+    if pslist_idents and psscan_idents and pslist_idents != psscan_idents:
+        return True, "process identity sets differ"
+    return False, "process views agree"
+
+
 def write_timeline_csv(timeline: list[dict[str, Any]], path: Path) -> None:
     fieldnames = [
         "ts",
@@ -577,6 +713,7 @@ class Investigation:
         self.local_artifacts: dict[str, str] = {}
         self.tool_calls: list[dict[str, Any]] = []
         self.timeline_events: list[dict[str, Any]] = []
+        self.evtx_summary: dict[str, Any] | None = None
         self.findings_pool_a: list[dict[str, Any]] = []
         self.findings_pool_b: list[dict[str, Any]] = []
         self.tcid_counter = 0
@@ -862,10 +999,14 @@ class Investigation:
             )
         print(f"  vol_psscan: {psscan_count} processes")
 
-        # Tool 4: psxview — only useful when process views disagree.
+        # Tool 4: psxview — useful when process views disagree by count,
+        # PID set, or process identity.
         tcid_psxview = tcid_psscan
         psxview = []
-        if ps_seen != psscan_count:
+        views_diverge, divergence_reason = process_sets_diverge(
+            ps, psscan, ps_seen, psscan_count
+        )
+        if views_diverge:
             psxview_out = rust.call_tool(
                 "vol_psxview",
                 {
@@ -885,6 +1026,8 @@ class Investigation:
                 {"processes_seen": psxview_out.get("processes_seen", len(psxview))},
             )
             print(f"  vol_psxview: {len(psxview)} rows")
+        else:
+            print(f"  vol_psxview skipped: {divergence_reason}")
 
         # Synthesize findings
         # Finding 1 — pslist=0 + psscan>0 = DKOM signal
@@ -1024,47 +1167,15 @@ class Investigation:
                 {"event_id": event_id, "record_id": record_id},
             )
 
-        # EID histogram for finding synthesis
-        from collections import Counter
-
-        eids = Counter(r.get("event_id", 0) for r in rows)
-        top_eid = eids.most_common(1)[0][0] if eids else 0
-
-        # Pool A finding: persistence-flavored
-        self.findings_pool_a.append(
-            {
-                "case_id": self.handle["id"],
-                "finding_id": "f-A-evtx-summary",
-                "tool_call_id": tcid,
-                "artifact_path": self.evidence,
-                "description": (
-                    f"Event log contains {seen} records across {len(eids)} "
-                    f"distinct event IDs (top: EID {top_eid} ×"
-                    f"{eids[top_eid] if top_eid else 0}). Reviewable for "
-                    f"persistence indicators."
-                ),
-                "confidence": "CONFIRMED",
-                "pool_origin": "A",
-                "mitre_technique": None,
-            }
+        self.evtx_summary = build_evtx_summary(rows, seen, pe)
+        evtx_findings = evtx_rows_to_findings(
+            rows, tcid, self.handle["id"], self.evidence
         )
-        # Pool B finding: skeptical
-        self.findings_pool_b.append(
-            {
-                "case_id": self.handle["id"],
-                "finding_id": "f-B-evtx-corroboration",
-                "tool_call_id": tcid,
-                "artifact_path": self.evidence,
-                "description": (
-                    f"EVTX activity inferred from {seen} records but no "
-                    f"corroborating Sysmon, EDR, or memory artifacts cited. "
-                    f"Single-source claim — apply SOUL.md ≥2-class rule."
-                ),
-                "confidence": "HYPOTHESIS",
-                "pool_origin": "B",
-                "mitre_technique": None,
-            }
-        )
+        for finding in evtx_findings:
+            if finding.get("pool_origin") == "B":
+                self.findings_pool_b.append(finding)
+            else:
+                self.findings_pool_a.append(finding)
 
     def investigate_disk(self, rust: SshMcpClient, py: SshMcpClient) -> None:
         # Disk image investigation requires libewf-mounted access to the
@@ -1126,6 +1237,9 @@ class Investigation:
         if merged:
             c = py.call_tool("correlate_findings", {"findings": merged})
             outcomes = c.get("outcomes", []) if "_error" not in c else []
+            refined = c.get("refined") if "_error" not in c else None
+            if isinstance(refined, list):
+                merged = refined
             kept = sum(1 for o in outcomes if o.get("action") == "kept")
             downgraded = sum(1 for o in outcomes if o.get("action") == "downgraded")
             print(f"  correlator: {kept} kept, {downgraded} downgraded")
@@ -1366,6 +1480,7 @@ class Investigation:
                 "soul_md_downgraded": downgraded,
             },
             "findings": merged,
+            "evtx_summary": self.evtx_summary,
             "case_completeness": case_completeness,
             "attack_coverage": attack_coverage,
             "next_actions": next_actions,
