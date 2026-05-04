@@ -273,7 +273,7 @@ Honest disclosure (per `docs/false-positives.md` and SOUL.md):
   the *compromised* output. Defense-in-depth (read-only mounts,
   unprivileged user, no `execute_shell`) is the architectural
   layer; the cryptographic layer assumes those guardrails hold.
-- **Not the absence of evidence.** A clean manifest covers the
+- **Not the absence of evidence.** A valid manifest covers the
   evidence the agent looked at. Evidence not collected (e.g. a
   full disk image from a host where only memory was acquired)
   is not part of the chain. The DC investigation report §8

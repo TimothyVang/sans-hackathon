@@ -248,6 +248,9 @@ export default function DashboardPage() {
         <a href="/debug" className="nes-text is-primary">
           [Open the /debug raw-events stream viewer]
         </a>
+        <a href="/codex" className="nes-text is-success ml-3">
+          [Open the Codex investigation cockpit]
+        </a>
         <span className="ml-3 text-xs opacity-70">
           Sprites are placeholder NES.css visuals; final art lands with the
           Claude Design pass (A3 §1.2).

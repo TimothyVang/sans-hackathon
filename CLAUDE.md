@@ -25,7 +25,7 @@ The investigation flow is roughly: `case_open` → split into Pool A (persistenc
 
 ## Project state
 
-This is the SANS **Find Evil!** hackathon submission (deadline **2026-06-15 22:45 CDT**). All four subsystems exist and the smoke suite is **fully green** (13/13 in `bash scripts/run-all-smokes.sh` as of 2026-04-27). The Product layer is feature-complete through Amendment A3 Phase 4 plus the post-A5 `vol_psxview` addition: **24 MCP tools** (13 Rust DFIR + 11 Python crypto/ACH/memory/ACP — post-A5), the agent-config prompts know when to call them, the audit-log SSE tail powers a Next.js + Tailwind v4 + NES.css dashboard scaffold at `apps/web/`. The five pixel-art sprite components (Phase 5) and the AuditBeadString chrome (Phase 6) remain gated on a Claude Design prototyping pass per A3 §1.2. The 0-hard-blocker state was reached when PR #4 cut the pre-A2 `find-evil` CLI wrapper + `.deb` packaging.
+This is the SANS **Find Evil!** hackathon submission (deadline **2026-06-15 22:45 CDT**). All four subsystems exist and the smoke suite is **fully green** (14/14 in `bash scripts/run-all-smokes.sh` as of 2026-04-27). The Product layer is feature-complete through Amendment A3 Phase 4 plus the post-A5 `vol_psxview` addition: **24 MCP tools** (13 Rust DFIR + 11 Python crypto/ACH/memory/ACP — post-A5), the agent-config prompts know when to call them, the audit-log SSE tail powers a Next.js + Tailwind v4 + NES.css dashboard scaffold at `apps/web/`. The five pixel-art sprite components (Phase 5) and the AuditBeadString chrome (Phase 6) remain gated on a Claude Design prototyping pass per A3 §1.2. The 0-hard-blocker state was reached when PR #4 cut the pre-A2 `find-evil` CLI wrapper + `.deb` packaging.
 
 Before writing code of your own, **read the relevant spec and plan** for the subsystem you are touching. The specs define exact file paths, pinned dependency versions, and TDD task sequences; diverging from them silently creates integration mismatches with other subsystems. When a spec and the current code disagree, the **code + its committed pin files win** — see "Spec/code divergences" below for known cases. `CHANGELOG.md` summarizes per-feature; `git log --oneline -20` for recent commit context.
 
@@ -95,7 +95,7 @@ Shipped tree — these are the directories that end up in the submission:
 ├── docs/legacy/                                    # v1 docs superseded by v2 + amendments
 ├── services/mcp/                                   # Rust MCP server (13 typed DFIR tools; hand-rolled stdio JSON-RPC 2.0 per "Spec/code divergences" §5; evtx/duckdb/rs_merkle linked; others subprocess-only)
 ├── services/agent/                                 # Python package findevil_agent — M2 crypto + M4 ACH + A3 memory/acp (FastAPI/LangGraph DROPPED under A2)
-├── services/agent_mcp/                             # Python MCP server wrapping M2/M4/memory/ACP as 13 typed tools for Claude Code
+├── services/agent_mcp/                             # Python MCP server wrapping M2/M4/memory/ACP as 11 typed tools for Claude Code
 ├── services/swarm/                                 # Python build swarm (Option B — Claude CLI subagents)
 ├── .mcp.json                                       # A2: registers findevil-mcp (Rust) + findevil-agent-mcp (Python) for auto-spawn
 ├── apps/web/                                       # Next.js 15 + Tailwind v4 + NES.css scaffold (A3 §2.1) — SSE audit-log tail at /api/audit, /debug live viewer, pydantic→TS event codegen at lib/events.ts; sprites + chrome gated on Claude Design pass
@@ -103,7 +103,7 @@ Shipped tree — these are the directories that end up in the submission:
 ├── packer/sift-microvm.pkr.hcl                     # L3 warm-qcow2 build from the OVA
 ├── docker/                                         # l1-compose.yml, l1-devbase.Dockerfile, l2-siftlite.Dockerfile, swarm-postgres.yml
 ├── scripts/                                        # swarm-start, swarm-status, l2-dfir-smoke, l3-run-goldens, fetch-fixtures,
-│                                                   # build-deb, package-devpost, push-leaderboard-score, competitor-watch,
+│                                                   # package-devpost, push-leaderboard-score, competitor-watch,
 │                                                   # setup-branch-protection, sift-provision, verify-sandbox, json-to-benchmark-csv.py
 │                                                   # find-evil-auto + find_evil_auto.py (Tesla-mode end-to-end orchestrator),
 │                                                   # fleet_investigate.py + fleet_correlate.py + render_fleet_report.py (multi-host pipeline),
@@ -131,7 +131,7 @@ The dev entry points are `scripts/find-evil` (interactive Claude Code session) a
 
 These show up across multiple specs and the agent-config files. Violating any of them breaks the judging story or an integration contract:
 
-- **No `execute_shell` MCP tool, ever.** The Rust MCP server's typed surface (12 tools — the 11 from Spec #2 §6 plus `vol_psscan` for DKOM cross-validation) is deliberately narrow. Adding shell pass-through undoes the "reduces the attack surface" pitch.
+- **No `execute_shell` MCP tool, ever.** The Rust MCP server's typed surface (13 tools — the 11 from Spec #2 §6 plus `vol_psscan` and `vol_psxview` for DKOM cross-validation) is deliberately narrow. Adding shell pass-through undoes the "reduces the attack surface" pitch.
 - **Every Finding cites a `tool_call_id`.** The verifier node vetos any Finding without one (Spec #2, `agent-config/SOUL.md`). UI chips render `[confirmed · tool · sha256]` per finding.
 - **Epistemic hierarchy is strict.** `CONFIRMED` (backed by tool output) > `INFERRED` (≥2 confirmed facts, labeled) > `HYPOTHESIS` (prefixed "hypothesis:"). Nothing else is legal.
 - **AGPL/GPL tools (Hayabusa, Chainsaw, Volatility3, Velociraptor, YARA) are subprocess-only — never linked.** Violating this contaminates the submission license (must be MIT or Apache-2.0 per SANS rules).
@@ -264,7 +264,7 @@ Specs were written 2026-04-23; code has been shipped since 2026-04-24. Where the
 - **Swarm package is `findevil_swarm`, not `services.swarm`.** Spec #1 / `docs/plans/2026-04-23-build-swarm-plan.md` use `services.swarm.*`; code ships under `findevil_swarm.*` (matching `findevil_agent`/`findevil_agent_mcp`/`findevil-mcp`). Canonical invocation: `scripts/swarm-start.sh:105` (`cd services/swarm && exec uv run python -m findevil_swarm.main run "$@"`).
 - **A3 MemoryStore: FTS5 phrase-quoting + Python-side sort.** Plan Task 1.1/spec §2.4 specified raw `params=[query]` MATCH + `ORDER BY score`. Shipped `services/agent/findevil_agent/memory/store.py` phrase-quotes (`fts_query = '"' + query.replace('"','""') + '"'`) — required so queries like `evil.com` or `T1059.001` don't trip `fts5: syntax error near "."` — and re-sorts by combined `confidence` so decay breaks BM25 ties. Plan + spec updated; multi-word recall is conservative phrase-match.
 - **A3 audit-log push: SSE, not WebSocket.** Plan Task 4.2 specified a WebSocket; PR #7 (`281d26f`) shipped SSE. Flow is strictly server→client, App Router doesn't natively support WS upgrade, SSE is one route handler. Live handler: `apps/web/app/api/audit/route.ts` (Node runtime, SSE MIME, 15s keepalive comment frame). Iterator: `apps/web/lib/audit-tail.ts`. Consumers: `new EventSource("/api/audit?case=…")` + `addEventListener("audit_line", …)`. Don't "upgrade" back to WS without a spec amendment naming a concrete client→server message.
-- **A5 OTS removal: legacy specs (M2 spec, A2 §2.3, `docs/cryptographic-attestation.md`) still reference `ots_stamp`/`ots_verify`/Bitcoin.** Code has cut all five touchpoints (`crypto/ots.py`, both MCP tool modules, `opentimestamps-client` dep, orchestrator + report-renderer + smoke refs). Chain is 3 tiers. Code wins; spec docs are the things to update. No A5 spec doc written yet.
+- **A5 OTS removal: legacy specs (M2 spec, A2 §2.3) still reference `ots_stamp`/`ots_verify`/Bitcoin as design-era behavior.** Code has cut all five touchpoints (`crypto/ots.py`, both MCP tool modules, `opentimestamps-client` dep, orchestrator + report-renderer + smoke refs). Chain is 3 tiers; `docs/cryptographic-attestation.md` now documents the post-A5 trade-off. Code wins for any remaining legacy-spec conflict. No A5 spec doc written yet.
 
 When you spot a new divergence, append it here (one bullet, one line) before continuing with the task — so the next session doesn't re-litigate the same decision.
 

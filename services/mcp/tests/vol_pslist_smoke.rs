@@ -70,6 +70,9 @@ fn path_looks_like_memory_image_cases() {
     assert!(path_looks_like_memory_image(Path::new("vm.vmem")));
     assert!(path_looks_like_memory_image(Path::new("snap.lime")));
     assert!(path_looks_like_memory_image(Path::new("acquired.aff4")));
+    assert!(path_looks_like_memory_image(Path::new(
+        "base-dc-memory.img"
+    )));
     assert!(!path_looks_like_memory_image(Path::new("file.evtx")));
     assert!(!path_looks_like_memory_image(Path::new("notes.txt")));
     assert!(!path_looks_like_memory_image(Path::new("no-extension")));

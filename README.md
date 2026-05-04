@@ -58,6 +58,8 @@ bash scripts/find-evil-auto /mnt/hgfs/evidence/extracted/<host>/<host>-memory.im
 
 Per-mode walkthrough + SIFT-VM setup recipe lives in [QUICKSTART.md](QUICKSTART.md). Trust-boundary diagrams in [docs/architecture.md](docs/architecture.md). Pre-emptive judge Q&A is the [Anticipated questions](#anticipated-questions) section below.
 
+Codex operator support is documented in [docs/codex-compatibility.md](docs/codex-compatibility.md). The web dashboard also has a local Codex prompt cockpit at `/codex`; it is an operator aid, not a new product-default MCP surface.
+
 ---
 
 ## Repository layout
@@ -126,3 +128,5 @@ The vendored reference clones in `openclaw/`, `hermes-agent/`, `Linear-Coding-Ag
 This is a hackathon submission, not a maintained product. The code, test suite, agent-config, and demo script are stable; the build swarm and Devpost video are pre-submission work-in-progress. The cryptographic chain-of-custody and the typed MCP tool surface are the load-bearing claims — both are exercised end-to-end on every CI run.
 
 > **For Claude Code agents:** read [CLAUDE.md](CLAUDE.md) first. It encodes the document hierarchy, the non-negotiable invariants, the Karpathy 4 principles, and the spec/code divergence list.
+
+> **For Codex-compatible agents:** read [AGENTS.md](AGENTS.md), then [docs/codex-compatibility.md](docs/codex-compatibility.md). Codex support uses the same two narrow MCP servers; it is not an invitation to add broad external MCP defaults.

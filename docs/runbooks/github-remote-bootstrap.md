@@ -91,8 +91,8 @@ gh repo edit <your-username>/find-evil --visibility public
 # 2. Update DEMO_VIDEO_URL to the real video.
 gh variable set DEMO_VIDEO_URL --body 'https://youtu.be/<your-id>'
 
-# 3. Tag v-submit.  release.yml fires first (~10 min: build .deb +
-#    Docker image + report.html).  devpost-submit.yml fires after
+# 3. Tag v-submit.  release.yml fires first (~10 min: Docker image +
+#    report.html; .deb was cut under A2).  devpost-submit.yml fires after
 #    release.yml succeeds (waits up to 30 min, then assembles the
 #    submission zip).
 git tag v-submit

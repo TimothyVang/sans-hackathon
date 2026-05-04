@@ -6,7 +6,7 @@
 #
 #   - DEMO_VIDEO_URL env var set (checked)
 #   - RELEASE_TAG env var (defaults to 'v-submit')
-#   - release-assets/ containing .deb + report.html (from
+#   - release-assets/ containing report.html and optional legacy .deb (from
 #     `gh release download`)
 #   - benchmark-results.csv at cwd (produced by json-to-benchmark-csv.py)
 #   - LICENSE + docs/templates/devpost-readme.md from the repo
@@ -63,7 +63,7 @@ fi
 cp LICENSE "${STAGE_DIR}/LICENSE"
 
 # ---------------------------------------------------------------------
-# 4. .deb — from release-assets/.
+# 4. Optional legacy .deb — from release-assets/ if an older release provided one.
 # ---------------------------------------------------------------------
 deb=$(ls release-assets/*.deb 2>/dev/null | head -n1 || true)
 if [[ -z "${deb}" ]]; then

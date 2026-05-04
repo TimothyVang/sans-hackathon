@@ -1133,6 +1133,10 @@ def render_report(
                 loaded_timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
                 if isinstance(loaded_timeline, list):
                     timeline = loaded_timeline
+                elif isinstance(loaded_timeline, dict) and isinstance(
+                    loaded_timeline.get("events"), list
+                ):
+                    timeline = loaded_timeline["events"]
             except json.JSONDecodeError:
                 timeline = []
     timeline_csv_exists = (case_dir / "timeline.csv").exists()

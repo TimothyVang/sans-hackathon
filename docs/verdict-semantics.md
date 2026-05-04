@@ -64,8 +64,8 @@ affected host.
 ### `NO_EVIL`
 
 The agent ran the per-evidence-type playbook and emitted **zero**
-findings. Either the evidence really is clean, or the agent's
-tool surface didn't reach the artifact class where the badness
+findings within the artifact classes it actually examined. The
+tool surface may still miss the artifact class where the badness
 lives. Not a clean bill of health by itself.
 
 **What to do:** confirm the playbook actually ran (audit JSONL
@@ -74,9 +74,10 @@ If the agent only got as far as `case_open` (e.g. the evidence
 type detected as `unknown`), upgrade the manual triage —
 `NO_EVIL` from a one-tool run is meaningless. The `findings_summary`
 field in `verdict.json` includes the by_confidence breakdown
-({CONFIRMED: 0, INFERRED: 0, HYPOTHESIS: 0, total: 0} for a true
+({CONFIRMED: 0, INFERRED: 0, HYPOTHESIS: 0, total: 0} for a scoped
 NO_EVIL); a `total: 0` with `agent: "find-evil-auto"` and a
-healthy audit chain (≥6 records) is high-confidence clean.
+healthy audit chain (≥6 records) is stronger scoped coverage, not
+proof that unexamined evidence is benign.
 
 ## What the verdict does NOT mean
 

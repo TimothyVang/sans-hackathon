@@ -29,7 +29,7 @@ Tool and community anchors:
 - The DFIR Report public cases: useful report shape for timeline, ATT&CK-mapped case narrative, evidence-by-phase, IOCs, detections, and cross-artifact reasoning.
 - Red Canary Threat Detection Report: useful detection-engineering model: map analytics to ATT&CK, list data sources, test visibility with Atomic Red Team-style emulations, and filter benign/testing/PUP-like noise from threat metrics.
 - Elastic Security Labs: useful engineering themes: root-cause workflows, higher-order multi-signal correlation, rootkit behavioral detection beyond static matches, beaconing/DGA/network anomaly analytics, and repeatable telemetry-to-verdict workflows.
-- Reddit community signals from `r/DFIR`, `r/computerforensics`, and `r/blueteamsec`: practitioners discuss evidence preservation, verification, AI-assisted forensics caution, network forensics, memory forensics, MCP-enabled forensic tooling, deterministic IOC extraction, and repeatable triage. Treat Reddit as prioritization signal only, not as authoritative evidence.
+- Reddit community signals from r/DFIR, r/computerforensics, and r/blueteamsec: practitioners discuss evidence preservation, verification, AI-assisted forensics caution, network forensics, memory forensics, MCP-enabled forensic tooling, deterministic IOC extraction, and repeatable triage. Treat Reddit as prioritization signal only, not as authoritative evidence.
 
 Timeline, reporting, and visual-evidence anchors:
 

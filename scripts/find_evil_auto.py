@@ -1154,10 +1154,10 @@ def build_next_actions(
     if not disk.get("touched"):
         add(
             "P2",
-            "Mount or collect disk artifacts and parse Prefetch, Registry, MFT, and USN Journal evidence.",
+            "Use read-only SIFT disk workflow to extract Prefetch, Registry, MFT, USN Journal, and YARA targets before parsing them with typed tools.",
             "Execution and persistence claims need disk-backed corroboration; memory-only observations are not enough for final execution claims.",
             ["disk_gap"],
-            "Prefetch, Amcache/ShimCache, Run keys, services, scheduled tasks, MFT/USN entries",
+            "ewfmount read-only mount, Sleuth Kit file extraction, Prefetch, Amcache/ShimCache, Run keys, services, scheduled tasks, MFT/USN entries",
         )
 
     network = checks_by_class.get("network", {})
@@ -1178,7 +1178,7 @@ def build_next_actions(
     if blind_spots:
         add(
             "P3",
-            "Close ATT&CK blind spots before making absence-of-evil claims.",
+            "Close ATT&CK blind spots before making closure decisions.",
             "The coverage matrix identifies target techniques with no supporting artifact class in this run.",
             list(blind_spots[:5]),
             "Additional evidence classes mapped in attack_coverage.targets[].artifact_classes",
@@ -1391,6 +1391,61 @@ def write_timeline_csv(timeline: list[dict[str, Any]], path: Path) -> None:
             )
 
 
+def write_normalized_timeline_csv(events: list[dict[str, Any]], path: Path) -> None:
+    fieldnames = [
+        "event_id",
+        "timestamp_utc",
+        "timestamp_source",
+        "artifact_class",
+        "significance",
+        "summary",
+        "tool_call_id",
+        "source_record_ref",
+        "linked_finding_ids",
+        "attck_techniques",
+        "confidence",
+        "citation_ids",
+        "limitations",
+    ]
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for event in events:
+            writer.writerow(
+                {
+                    "event_id": event.get("event_id", ""),
+                    "timestamp_utc": event.get("timestamp_utc", ""),
+                    "timestamp_source": event.get("timestamp_source", ""),
+                    "artifact_class": event.get("artifact_class", ""),
+                    "significance": event.get("significance", ""),
+                    "summary": event.get("summary", ""),
+                    "tool_call_id": event.get("tool_call_id", ""),
+                    "source_record_ref": event.get("source_record_ref", ""),
+                    "linked_finding_ids": json.dumps(
+                        event.get("linked_finding_ids", []),
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                    "attck_techniques": json.dumps(
+                        event.get("attck_techniques", []),
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                    "confidence": event.get("confidence", ""),
+                    "citation_ids": json.dumps(
+                        event.get("citation_ids", []),
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                    "limitations": json.dumps(
+                        event.get("limitations", []),
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                }
+            )
+
+
 class Investigation:
     """Orchestrates the full automated investigation flow."""
 
@@ -1414,6 +1469,7 @@ class Investigation:
         self.timeline_events: list[dict[str, Any]] = []
         self.evtx_summary: dict[str, Any] | None = None
         self.malware_triage: dict[str, Any] | None = None
+        self.normalized_timeline: dict[str, Any] | None = None
         self.analysis_limitations: list[str] = []
         self.findings_pool_a: list[dict[str, Any]] = []
         self.findings_pool_b: list[dict[str, Any]] = []
@@ -1532,6 +1588,7 @@ class Investigation:
                         "usnjrnl_query",
                         "prefetch_parse",
                         "registry_query",
+                        "yara_scan",
                     }
                 ),
                 "tools": sorted(
@@ -1541,6 +1598,7 @@ class Investigation:
                         "usnjrnl_query",
                         "prefetch_parse",
                         "registry_query",
+                        "yara_scan",
                     }
                 ),
                 "confidence_impact": "disk image registered; deep filesystem parsing requires mounted artifacts"
@@ -2169,6 +2227,7 @@ class Investigation:
         )
         source_bibliography = build_source_bibliography()
         normalized_timeline = build_normalized_timeline(timeline, merged)
+        self.normalized_timeline = normalized_timeline
         report_evidence_cards = build_report_evidence_cards(
             merged, normalized_timeline["events"], source_bibliography
         )
@@ -2297,10 +2356,15 @@ class Investigation:
                 encoding="utf-8",
             )
         timeline = sorted(self.timeline_events, key=lambda e: e["ts"])
-        (local_dir / "timeline.json").write_text(
-            json.dumps(timeline, indent=2, sort_keys=True), encoding="utf-8"
+        normalized_timeline = self.normalized_timeline or build_normalized_timeline(
+            timeline, []
         )
-        write_timeline_csv(timeline, local_dir / "timeline.csv")
+        (local_dir / "timeline.json").write_text(
+            json.dumps(normalized_timeline, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        write_normalized_timeline_csv(
+            normalized_timeline.get("events", []), local_dir / "timeline.csv"
+        )
         return local_dir
 
     # ------------------------------------------------------------------
