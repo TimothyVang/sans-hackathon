@@ -303,6 +303,160 @@ def fig_findings_table(findings: list[dict[str, Any]], out: Path) -> None:
     plt.close(fig)
 
 
+def _parse_event_time(event: dict[str, Any]) -> datetime | None:
+    value = event.get("timestamp_utc") or event.get("ts")
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def fig_timeline_overview(events: list[dict[str, Any]], out: Path) -> bool:
+    parsed = []
+    for event in events:
+        dt = _parse_event_time(event)
+        if dt is None:
+            continue
+        parsed.append(
+            {
+                "dt": dt,
+                "artifact_class": event.get("artifact_class") or "unknown",
+                "significance": event.get("significance") or "context",
+            }
+        )
+    fig, ax = plt.subplots(figsize=(12, 4.8))
+    if not parsed:
+        ax.axis("off")
+        ax.text(
+            0.5,
+            0.5,
+            "No normalized timeline events available",
+            ha="center",
+            va="center",
+            fontsize=11,
+            color="#777",
+        )
+        fig.savefig(out)
+        plt.close(fig)
+        return False
+
+    classes = sorted({row["artifact_class"] for row in parsed})
+    class_to_y = {name: i for i, name in enumerate(classes)}
+    colors = {
+        "context": "#1565c0",
+        "triage_lead": "#ef6c00",
+        "finding_support": "#c62828",
+    }
+    for row in parsed:
+        ax.scatter(
+            row["dt"],
+            class_to_y[row["artifact_class"]],
+            s=55,
+            color=colors.get(row["significance"], "#1565c0"),
+            edgecolor="black",
+            linewidth=0.4,
+            alpha=0.8,
+        )
+    ax.set_yticks(list(class_to_y.values()), list(class_to_y.keys()))
+    ax.set_xlabel("UTC time")
+    ax.set_title(f"Normalized timeline overview ({len(parsed)} timestamped events)")
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M"))
+    plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha="right")
+    ax.grid(True, axis="x", alpha=0.3)
+    ax.legend(
+        handles=[
+            mpatches.Patch(color="#1565c0", label="Context"),
+            mpatches.Patch(color="#ef6c00", label="Triage lead"),
+            mpatches.Patch(color="#c62828", label="Finding support"),
+        ],
+        loc="upper left",
+        fontsize=8,
+    )
+    fig.tight_layout()
+    fig.savefig(out)
+    plt.close(fig)
+    return True
+
+
+def fig_practitioner_coverage(coverage: dict[str, Any], out: Path) -> bool:
+    lanes = coverage.get("lanes", {}) if coverage else {}
+    fig, ax = plt.subplots(figsize=(12, 2.4 + 0.35 * max(1, len(lanes))))
+    ax.axis("off")
+    if not lanes:
+        ax.text(
+            0.5,
+            0.5,
+            "No practitioner coverage data available",
+            ha="center",
+            va="center",
+            fontsize=11,
+            color="#777",
+        )
+        fig.savefig(out)
+        plt.close(fig)
+        return False
+    table_data = [["Lane", "Status", "Artifacts Seen", "Tools", "ATT&CK Data Sources"]]
+    for lane, row in lanes.items():
+        table_data.append(
+            [
+                lane.replace("_", " "),
+                row.get("status", "?"),
+                ", ".join(row.get("artifact_classes_seen") or []) or "none",
+                ", ".join(row.get("tools_run") or []) or "none",
+                ", ".join(row.get("attck_data_sources_seen") or []) or "none",
+            ]
+        )
+    table = ax.table(
+        cellText=table_data,
+        loc="center",
+        cellLoc="left",
+        colWidths=[0.17, 0.13, 0.20, 0.25, 0.25],
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(7.5)
+    table.scale(1, 1.35)
+    for i in range(len(table_data[0])):
+        cell = table[(0, i)]
+        cell.set_facecolor("#1565c0")
+        cell.set_text_props(color="white", fontweight="bold")
+    fig.savefig(out)
+    plt.close(fig)
+    return True
+
+
+def fig_process_view_comparison(tool_calls: list[dict[str, Any]], out: Path) -> bool:
+    rows = []
+    for tool in ("vol_pslist", "vol_psscan", "vol_psxview"):
+        matches = [tc for tc in tool_calls if tc.get("tool") == tool]
+        if not matches:
+            continue
+        tc = matches[-1]
+        count = tc.get("processes_seen", tc.get("processes_returned", 0))
+        try:
+            count_int = int(count)
+        except (TypeError, ValueError):
+            count_int = 0
+        rows.append((tool, count_int, tc.get("tool_call_id", "?")))
+    if not rows:
+        return False
+    fig, ax = plt.subplots(figsize=(8.5, 4.5))
+    tools = [row[0] for row in rows]
+    counts = [row[1] for row in rows]
+    colors = ["#1565c0", "#ef6c00", "#c62828"][: len(rows)]
+    ax.bar(tools, counts, color=colors, edgecolor="black", linewidth=0.6)
+    for i, (_, count, tcid) in enumerate(rows):
+        ax.text(i, count, f"{count}\n{tcid}", ha="center", va="bottom", fontsize=8)
+    ax.set_ylabel("Process rows / objects seen")
+    ax.set_title("Memory process-view comparison by typed tool output")
+    ax.grid(True, axis="y", alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(out)
+    plt.close(fig)
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Markdown report template
 # ---------------------------------------------------------------------------
@@ -362,6 +516,14 @@ def write_markdown(
     timeline: list[dict[str, Any]] | None = None,
     timeline_csv_exists: bool = False,
     evtx_summary: dict[str, Any] | None = None,
+    practitioner_coverage: dict[str, Any] | None = None,
+    malware_triage: dict[str, Any] | None = None,
+    analysis_limitations: list[str] | None = None,
+    evidence_cards: list[dict[str, Any]] | None = None,
+    bibliography: list[dict[str, Any]] | None = None,
+    has_timeline_fig: bool = False,
+    has_practitioner_fig: bool = False,
+    has_process_view_fig: bool = False,
 ) -> Path:
     md = case_dir / "REPORT.md"
     fa = manifest["audit_log_final_hash"]
@@ -475,6 +637,83 @@ def write_markdown(
             f"{attack_coverage.get('summary', '')}\n\n" + "\n".join(rows) + "\n\n"
         )
 
+    practitioner_section = ""
+    if practitioner_coverage:
+        lanes = practitioner_coverage.get("lanes", {})
+        rows = [
+            "| Lane | Status | Artifacts Seen | Tools Run | Data Sources | Gaps |",
+            "|---|---|---|---|---|---|",
+        ]
+        for lane, row in lanes.items():
+            rows.append(
+                f"| {md_cell(lane.replace('_', ' '))} | "
+                f"{md_cell(row.get('status', ''))} | "
+                f"{md_cell(row.get('artifact_classes_seen', [])) or 'none'} | "
+                f"`{md_cell(row.get('tools_run', [])) or 'none'}` | "
+                f"{md_cell(row.get('attck_data_sources_seen', [])) or 'none'} | "
+                f"{md_cell(row.get('coverage_gaps', [])) or 'none'} |"
+            )
+        guardrails = practitioner_coverage.get("overclaim_guardrails_applied", [])
+        fig_block = (
+            "![Practitioner coverage](figures/practitioner_coverage.png)\n\n"
+            if has_practitioner_fig
+            else ""
+        )
+        practitioner_section = (
+            "\n## Practitioner Coverage\n\n"
+            "GCFA, GNFA, and GREM are practitioner domains and certifications; "
+            "this table describes evidence-orchestration coverage only.\n\n"
+            + fig_block
+            + "\n".join(rows)
+            + "\n\n"
+            + "**Overclaim guardrails applied:** "
+            + (md_cell(guardrails) if guardrails else "none")
+            + "\n\n"
+        )
+
+    malware_section = ""
+    if malware_triage:
+        summary = malware_triage.get("summary", {})
+        observables = malware_triage.get("observables", [])
+        aggregate_iocs = malware_triage.get("aggregate_iocs", {})
+        rows = [
+            "| Observable | Process | Region | Labels | Tool Call |",
+            "|---|---|---|---|---|",
+        ]
+        for observable in observables[:10]:
+            process = observable.get("process", {})
+            region = observable.get("memory_region", {})
+            rows.append(
+                f"| `{md_cell(observable.get('observable_id', ''))}` | "
+                f"{md_cell(process.get('image_name', ''))} pid={md_cell(process.get('pid', ''))} | "
+                f"{md_cell(region.get('vad_start_hex', ''))}-{md_cell(region.get('vad_end_hex', ''))} {md_cell(region.get('protection', ''))} | "
+                f"{md_cell(observable.get('labels', []))} | "
+                f"`{md_cell(observable.get('tool_call_id', ''))}` |"
+            )
+        ioc_rows = ["| Type | Values |", "|---|---|"]
+        for key, values in aggregate_iocs.items():
+            if values:
+                ioc_rows.append(f"| {md_cell(key)} | `{md_cell(values[:10])}` |")
+        ioc_table = (
+            "\n".join(ioc_rows)
+            if len(ioc_rows) > 2
+            else "*No IOCs extracted from previews.*"
+        )
+        malware_section = (
+            "\n## Malware Triage\n\n"
+            "This section is malware triage only. It does not identify who operated the code, execution, or intent. Single-source malfind/YARA/string indicators require corroboration before response claims.\n\n"
+            f"* Scope: `{malware_triage.get('scope', 'triage_only')}`\n"
+            f"* Observables: {summary.get('observable_count', 0)}\n"
+            f"* IOCs extracted: {summary.get('ioc_count', 0)}\n"
+            f"* malfind injections: {summary.get('malfind_injection_count', 0)}\n"
+            f"* YARA matches: {summary.get('yara_match_count', 0)}\n"
+            f"* Verdict contribution: `{summary.get('verdict_contribution', 'none')}`\n\n"
+            + "\n".join(rows)
+            + "\n\n### Extracted IOC Leads\n\n"
+            + ioc_table
+            + "\n\n"
+        )
+
     evtx_section = ""
     if evtx_summary:
         top = (
@@ -511,32 +750,108 @@ def write_markdown(
             )
         actions_section = "\n## Next 5 Analyst Actions\n\n" + "\n".join(rows) + "\n\n"
 
+    limitations_section = ""
+    if analysis_limitations:
+        limitations_section = (
+            "\n## Analysis Limitations\n\n"
+            + "\n".join(f"* {md_cell(item)}" for item in analysis_limitations)
+            + "\n\n"
+        )
+
     timeline_section = ""
     if timeline:
         timeline_exports = "`timeline.json`"
         if timeline_csv_exists:
             timeline_exports += " and analyst-friendly `timeline.csv`"
         rows = [
-            "| UTC Time | Source | Artifact Class | Description | Tool Call |",
-            "|---|---|---|---|---|",
+            "| UTC Time | Artifact Class | Significance | Summary | Tool Call | Source Record |",
+            "|---|---|---|---|---|---|",
         ]
         for event in timeline[:25]:
+            ts = event.get("timestamp_utc") or event.get("ts") or "?"
+            summary = event.get("summary") or event.get("description") or ""
+            significance = event.get("significance") or "context"
             rows.append(
-                "| {ts} | `{source}` | {artifact_class} | {desc} | `{tcid}` |".format(
-                    ts=event.get("ts", "?"),
-                    source=event.get("source", "?"),
+                "| {ts} | {artifact_class} | {significance} | {summary} | `{tcid}` | `{ref}` |".format(
+                    ts=ts,
                     artifact_class=event.get("artifact_class", "?"),
-                    desc=event.get("description", "")[:120],
+                    significance=significance,
+                    summary=summary[:120],
                     tcid=event.get("tool_call_id", "?"),
+                    ref=event.get("source_record_ref") or event.get("source") or "?",
                 )
             )
+        fig_block = (
+            "![Normalized timeline overview](figures/timeline_overview.png)\n\n"
+            if has_timeline_fig
+            else ""
+        )
         timeline_section = (
-            "\n## Unified Timeline\n\n"
+            "\n## Timeline\n\n"
             f"Normalized timeline events: {len(timeline)}. "
             f"First 25 events shown below; full data is in {timeline_exports}.\n\n"
+            + fig_block
             + "\n".join(rows)
             + "\n\n"
         )
+
+    visual_section = ""
+    if evidence_cards:
+        lines = [
+            "\n## Visual Evidence\n",
+            "Visual exhibits are generated from parsed tool outputs. They support cited findings but do not replace `tool_call_id`-backed evidence or upgrade confidence by themselves.\n",
+        ]
+        rendered_assets: set[str] = set()
+        if has_process_view_fig and not any(
+            card.get("visual_asset") == "figures/process_view_comparison.png"
+            for card in evidence_cards
+        ):
+            lines.append(
+                "![Process-view comparison](figures/process_view_comparison.png)\n"
+            )
+            rendered_assets.add("figures/process_view_comparison.png")
+        for card in evidence_cards[:10]:
+            asset = card.get("visual_asset")
+            if (
+                asset
+                and str(asset) not in rendered_assets
+                and (case_dir / str(asset)).exists()
+            ):
+                lines.append(
+                    f"![{md_cell(card.get('title', 'Evidence card'))}]({asset})\n"
+                )
+                rendered_assets.add(str(asset))
+            lines.extend(
+                [
+                    f"### {md_cell(card.get('title', 'Evidence card'))}",
+                    f"* Card: `{card.get('card_id', '?')}`",
+                    f"* Linked findings: `{md_cell(card.get('linked_finding_ids', []))}`",
+                    f"* Tool call: `{card.get('tool_call_id', '?')}`",
+                    f"* Source records: `{md_cell(card.get('source_record_refs', []))}`",
+                    f"* Confidence: `{card.get('confidence', '?')}`",
+                    f"* Citations: `{md_cell(card.get('citation_ids', []))}`",
+                    f"* Why suspicious/relevant: {md_cell(card.get('why_suspicious', ''))}",
+                    f"* Snippet: `{md_cell(card.get('snippet', ''))}`",
+                    f"* Caveats: {md_cell(card.get('caveats', []))}",
+                    "",
+                ]
+            )
+        visual_section = "\n".join(lines) + "\n"
+
+    sources_section = ""
+    if bibliography:
+        rows = [
+            "| Citation ID | Title | URL | Supports |",
+            "|---|---|---|---|",
+        ]
+        for source in bibliography:
+            rows.append(
+                f"| `{md_cell(source.get('citation_id', ''))}` | "
+                f"{md_cell(source.get('title', ''))} | "
+                f"{md_cell(source.get('url', ''))} | "
+                f"{md_cell(source.get('supports', []))} |"
+            )
+        sources_section = "\n## Sources\n\n" + "\n".join(rows) + "\n\n"
 
     caveats = build_false_positive_caveats(merged, completeness, attack_coverage)
     caveat_section = (
@@ -583,11 +898,21 @@ def write_markdown(
 
 {completeness_section}
 
+{practitioner_section}
+
 {attack_section}
 
 {evtx_section}
 
+{limitations_section}
+
 {timeline_section}
+
+{malware_section}
+
+{visual_section}
+
+{sources_section}
 
 {caveat_section}
 
@@ -785,16 +1110,35 @@ def render_report(
         except json.JSONDecodeError:
             verdict_obj = {}
 
+    practitioner_coverage = verdict_obj.get("attck_practitioner_coverage", {})
+    has_practitioner_fig = fig_practitioner_coverage(
+        practitioner_coverage,
+        fig_dir / "practitioner_coverage.png",
+    )
+    has_process_view_fig = fig_process_view_comparison(
+        verdict_obj.get("tool_calls", []),
+        fig_dir / "process_view_comparison.png",
+    )
+
     timeline = []
-    timeline_path = case_dir / "timeline.json"
-    if timeline_path.exists():
-        try:
-            loaded_timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
-            if isinstance(loaded_timeline, list):
-                timeline = loaded_timeline
-        except json.JSONDecodeError:
-            timeline = []
+    normalized_timeline = verdict_obj.get("normalized_timeline", {})
+    if isinstance(normalized_timeline, dict) and isinstance(
+        normalized_timeline.get("events"), list
+    ):
+        timeline = normalized_timeline["events"]
+    else:
+        timeline_path = case_dir / "timeline.json"
+        if timeline_path.exists():
+            try:
+                loaded_timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
+                if isinstance(loaded_timeline, list):
+                    timeline = loaded_timeline
+            except json.JSONDecodeError:
+                timeline = []
     timeline_csv_exists = (case_dir / "timeline.csv").exists()
+    has_timeline_fig = fig_timeline_overview(
+        timeline, fig_dir / "timeline_overview.png"
+    )
 
     md = write_markdown(
         case_dir,
@@ -813,6 +1157,14 @@ def render_report(
         timeline=timeline,
         timeline_csv_exists=timeline_csv_exists,
         evtx_summary=verdict_obj.get("evtx_summary"),
+        practitioner_coverage=practitioner_coverage,
+        malware_triage=verdict_obj.get("malware_triage"),
+        analysis_limitations=verdict_obj.get("analysis_limitations", []),
+        evidence_cards=verdict_obj.get("report_evidence_cards", []),
+        bibliography=verdict_obj.get("source_bibliography", []),
+        has_timeline_fig=has_timeline_fig,
+        has_practitioner_fig=has_practitioner_fig,
+        has_process_view_fig=has_process_view_fig,
     )
     html, pdf = render_html_pdf(md)
     return pdf if pdf else html

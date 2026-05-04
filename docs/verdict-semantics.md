@@ -105,6 +105,44 @@ Honest disclosure (echoing `docs/false-positives.md`):
   finding list, designed to be reproducible across runs of the
   same evidence (modulo Volatility symbol-cache state).
 
+## Supporting verdict fields
+
+`verdict.json` includes several fields that improve analyst review
+without changing the top-line verdict policy:
+
+- `case_completeness` records which artifact classes were available
+  and touched in the current run.
+- `attack_coverage` maps typed-tool output to ATT&CK target
+  techniques. `covered_no_finding` means limited scoped coverage,
+  not clean, cleared, disproven, or absence of evidence.
+- `attck_practitioner_coverage` groups current coverage into
+  GCFA_endpoint, GNFA_network, and GREM_malware lanes. These are
+  practitioner workflow lanes only; they do not claim the product
+  automates GCFA, GNFA, or GREM certification-level judgment.
+- `normalized_timeline` keeps source-aware timeline events with UTC
+  timestamps, source timestamp names, artifact classes,
+  `tool_call_id`, source record references, significance labels, and
+  linked finding IDs when present. Timeline rows are context or
+  finding support, not findings by themselves.
+- `report_evidence_cards` define PDF exhibits. Each card must cite a
+  `tool_call_id`, source record references, confidence, caveats, and
+  external source citation IDs. Visuals and snippets support parsed
+  tool output; they do not create findings or upgrade confidence.
+- `source_bibliography` resolves every external citation ID used by
+  practitioner coverage, normalized timeline rows, or evidence cards.
+- `malware_triage` summarizes malfind/YARA/string/IOC leads from
+  existing typed outputs. It is triage-only: it does not identify who
+  operated code, prove execution, or upgrade a Finding without
+  corroboration.
+- `analysis_limitations` records material scope gaps, such as disk
+  auto mode registering a disk image without mounting or parsing
+  filesystem artifacts.
+
+Auto disk mode is deliberately custody-only today. A disk-only auto
+run that only performs `case_open` cannot support `NO_EVIL`; it should
+return `INDETERMINATE` with an analysis limitation instead of a
+placeholder Finding.
+
 ## Triage flow
 
 ```

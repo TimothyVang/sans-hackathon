@@ -59,7 +59,14 @@ def main() -> int:
     build_attack_coverage = fea.build_attack_coverage
     build_evtx_summary = fea.build_evtx_summary
     build_next_actions = fea.build_next_actions
+    build_attck_practitioner_coverage = fea.build_attck_practitioner_coverage
+    build_malware_triage = fea.build_malware_triage
+    build_normalized_timeline = fea.build_normalized_timeline
+    build_report_evidence_cards = fea.build_report_evidence_cards
+    build_source_bibliography = fea.build_source_bibliography
     evtx_rows_to_findings = fea.evtx_rows_to_findings
+    extract_ascii_strings = fea._extract_ascii_strings_from_hex  # noqa: SLF001
+    extract_iocs = fea._extract_iocs_from_texts  # noqa: SLF001
     process_sets_diverge = fea.process_sets_diverge
     write_timeline_csv = fea.write_timeline_csv
     print("=" * 60)
@@ -189,6 +196,38 @@ def main() -> int:
         print(f"  [{marker}] evtype: {label}")
         if not ok:
             print(f"         path    : {path!r}")
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
+    disk_inv = fea.Investigation("foo.E01", unattended=True, with_report=False)
+    disk_inv.tool_calls = [{"tool": "case_open", "tool_call_id": "tc-disk"}]
+    disk_comp = disk_inv._case_completeness()  # noqa: SLF001 - smoke covers policy
+    disk_checks = {
+        row.get("artifact_class"): row for row in disk_comp.get("checks", [])
+    }
+    disk_policy_checks = 0
+    disk_cases = [
+        (
+            "disk case-open-only verdict is INDETERMINATE",
+            disk_inv.compute_verdict([]),
+            "INDETERMINATE",
+        ),
+        (
+            "disk class is available but not touched by case_open only",
+            (
+                disk_checks["disk/filesystem"].get("available"),
+                disk_checks["disk/filesystem"].get("touched"),
+            ),
+            (True, False),
+        ),
+    ]
+    for label, actual, expected in disk_cases:
+        disk_policy_checks += 1
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] disk: {label}")
+        if not ok:
             print(f"         expected: {expected!r}")
             print(f"         actual  : {actual!r}")
             failures += 1
@@ -538,6 +577,196 @@ def main() -> int:
             print(f"         actual  : {actual!r}")
             failures += 1
 
+    practitioner = build_attck_practitioner_coverage(
+        tool_calls,
+        findings,
+        completeness,
+        coverage,
+    )
+    practitioner_cases = [
+        (
+            "practitioner coverage keeps GCFA endpoint automated",
+            practitioner["lanes"]["GCFA_endpoint"].get("status"),
+            "automated",
+        ),
+        (
+            "practitioner coverage does not claim GNFA without network evidence",
+            practitioner["lanes"]["GNFA_network"].get("status"),
+            "not_covered",
+        ),
+        (
+            "practitioner coverage keeps GREM memory-only lane partial",
+            practitioner["lanes"]["GREM_malware"].get("status"),
+            "partial",
+        ),
+        (
+            "practitioner coverage maps memory process output to ATT&CK DS0009",
+            "DS0009"
+            in practitioner["lanes"]["GCFA_endpoint"].get(
+                "attck_data_sources_seen", []
+            ),
+            True,
+        ),
+        (
+            "practitioner coverage records overclaim guardrails",
+            bool(practitioner.get("overclaim_guardrails_applied")),
+            True,
+        ),
+        (
+            "vel_collect alone does not claim GNFA without network artifact",
+            build_attck_practitioner_coverage(
+                [{"tool": "vel_collect"}], [], completeness, coverage
+            )["lanes"]["GNFA_network"].get("status"),
+            "not_covered",
+        ),
+    ]
+    for label, actual, expected in practitioner_cases:
+        process_checks += 1
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] practitioner: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
+    timeline_events = [
+        {
+            "ts": "2026-05-04T00:00:00Z",
+            "source": "vol_psscan",
+            "artifact_class": "memory",
+            "description": "recovered process object: evil.exe pid=31337",
+            "tool_call_id": "tc-psscan",
+            "details": {"pid": 31337, "image_name": "evil.exe"},
+        }
+    ]
+    timeline_findings = [
+        {
+            "finding_id": "f-dkom",
+            "tool_call_id": "tc-psscan",
+            "confidence": "HYPOTHESIS",
+            "mitre_technique": "T1014",
+            "description": "process-view divergence lead",
+        }
+    ]
+    normalized = build_normalized_timeline(timeline_events, timeline_findings)
+    bibliography = build_source_bibliography()
+    bibliography_ids = {row["citation_id"] for row in bibliography}
+    cards = build_report_evidence_cards(
+        timeline_findings,
+        normalized["events"],
+        bibliography,
+    )
+    timeline_cases = [
+        (
+            "normalized timeline preserves timestamp provenance",
+            normalized["events"][0].get("timestamp_source"),
+            "CreateTime",
+        ),
+        (
+            "normalized timeline preserves tool_call_id",
+            normalized["events"][0].get("tool_call_id"),
+            "tc-psscan",
+        ),
+        (
+            "normalized timeline links supporting finding",
+            normalized["events"][0].get("linked_finding_ids"),
+            ["f-dkom"],
+        ),
+        (
+            "evidence card resolves MITRE citation",
+            set(cards[0].get("citation_ids", [])) <= bibliography_ids,
+            True,
+        ),
+        (
+            "evidence card cites parsed tool output",
+            cards[0].get("tool_call_id"),
+            "tc-psscan",
+        ),
+        (
+            "evidence card explains suspiciousness",
+            "T1014" in cards[0].get("why_suspicious", ""),
+            True,
+        ),
+    ]
+    for label, actual, expected in timeline_cases:
+        process_checks += 1
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] timeline-schema: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
+    extracted_strings = extract_ascii_strings("687474703a2f2f6576696c2e746573742f61")
+    extracted_iocs = extract_iocs(extracted_strings)
+    malware_triage = build_malware_triage(
+        {
+            "injections": [
+                {
+                    "pid": 31337,
+                    "image_name": "rundll32.exe",
+                    "vad_start_hex": "0x1000",
+                    "vad_end_hex": "0x1fff",
+                    "protection": "PAGE_EXECUTE_READWRITE",
+                    "mz_match": True,
+                    "sample_hex": "687474703a2f2f6576696c2e746573742f61",
+                }
+            ],
+            "injections_seen": 1,
+        },
+        None,
+        {"vol_malfind": "tc-malfind"},
+        "memory.img",
+    )
+    malware_cases = [
+        (
+            "hex string extraction recovers URL string",
+            "http://evil.test/a" in extracted_strings,
+            True,
+        ),
+        (
+            "IOC extraction records URL",
+            "http://evil.test/a" in extracted_iocs["urls"],
+            True,
+        ),
+        (
+            "malware triage is triage-only",
+            malware_triage.get("scope"),
+            "triage_only",
+        ),
+        (
+            "malware triage contributes lead not verdict proof",
+            malware_triage["summary"].get("verdict_contribution"),
+            "triage_lead",
+        ),
+        (
+            "malware triage observable stays HYPOTHESIS",
+            malware_triage["observables"][0].get("confidence"),
+            "HYPOTHESIS",
+        ),
+        (
+            "malware triage observable cites tool output",
+            malware_triage["observables"][0].get("tool_call_id"),
+            "tc-malfind",
+        ),
+        (
+            "malware triage does not change empty verdict policy",
+            compute_verdict([]),
+            "NO_EVIL",
+        ),
+    ]
+    for label, actual, expected in malware_cases:
+        process_checks += 1
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] malware: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
     with tempfile.TemporaryDirectory() as tmp:
         csv_path = Path(tmp) / "timeline.csv"
         write_timeline_csv(
@@ -566,7 +795,13 @@ def main() -> int:
 
     print()
     print("=" * 60)
-    total = len(cases) + len(et_cases) + len(evtx_cases) + process_checks
+    total = (
+        len(cases)
+        + len(et_cases)
+        + len(evtx_cases)
+        + disk_policy_checks
+        + process_checks
+    )
     if failures == 0:
         print(f"OK - all {total} verdict + evidence/process cases pass.")
         print("=" * 60)

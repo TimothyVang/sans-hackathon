@@ -36,6 +36,7 @@ from collections import Counter
 import csv
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -306,6 +307,135 @@ ATTACK_COVERAGE_TARGETS: tuple[dict[str, Any], ...] = (
     },
 )
 
+DATA_SOURCES_BY_TOOL: dict[str, tuple[str, ...]] = {
+    "evtx_query": ("DS0017", "DS0028", "DS0003", "DS0019", "DS0009"),
+    "hayabusa_scan": ("DS0017", "DS0028", "DS0003", "DS0019", "DS0009"),
+    "vol_pslist": ("DS0009", "DS0008", "DS0011"),
+    "vol_psscan": ("DS0009", "DS0008", "DS0011"),
+    "vol_psxview": ("DS0009", "DS0008", "DS0011"),
+    "vol_malfind": ("DS0009", "DS0008", "DS0011"),
+    "registry_query": ("DS0024",),
+    "prefetch_parse": ("DS0022", "DS0009"),
+    "mft_timeline": ("DS0022",),
+    "usnjrnl_query": ("DS0022",),
+    "yara_scan": ("DS0022", "DS0011", "DS0012"),
+    "vel_collect": ("DS0022", "DS0024", "DS0009", "DS0029"),
+}
+
+TIMESTAMP_SOURCE_BY_TOOL: dict[str, str] = {
+    "evtx_query": "Event.System.TimeCreated",
+    "hayabusa_scan": "Event.System.TimeCreated",
+    "vol_pslist": "CreateTime",
+    "vol_psscan": "CreateTime",
+    "mft_timeline": "MFT timestamp",
+    "usnjrnl_query": "USN timestamp",
+    "prefetch_parse": "Prefetch last run time",
+    "registry_query": "Registry key LastWrite",
+    "vel_collect": "artifact timestamp",
+}
+
+TECHNIQUE_CITATIONS: dict[str, tuple[str, ...]] = {
+    "T1014": ("CITE-MITRE-T1014", "CITE-VOLATILITY3"),
+    "T1003": ("CITE-MITRE-T1003-001",),
+    "T1003.001": ("CITE-MITRE-T1003-001",),
+    "T1055": ("CITE-MITRE-ATTACK-DATASOURCES", "CITE-VOLATILITY3"),
+    "T1059.001": ("CITE-MITRE-ATTACK-DATASOURCES",),
+    "T1071.001": ("CITE-MITRE-ATTACK-DATASOURCES", "CITE-ZEEK-LOGS"),
+    "T1071.004": ("CITE-MITRE-ATTACK-DATASOURCES", "CITE-ZEEK-LOGS"),
+    "T1041": ("CITE-MITRE-ATTACK-DATASOURCES", "CITE-ZEEK-LOGS"),
+}
+
+SOURCE_BIBLIOGRAPHY: tuple[dict[str, Any], ...] = (
+    {
+        "citation_id": "CITE-MITRE-ATTACK-DATASOURCES",
+        "title": "MITRE ATT&CK Data Sources",
+        "url": "https://attack.mitre.org/datasources/",
+        "accessed_utc": "2026-05-04T00:00:00Z",
+        "supports": ["ATT&CK data-source coverage mapping"],
+    },
+    {
+        "citation_id": "CITE-MITRE-T1003-001",
+        "title": "MITRE ATT&CK T1003.001 LSASS Memory",
+        "url": "https://attack.mitre.org/techniques/T1003/001/",
+        "accessed_utc": "2026-05-04T00:00:00Z",
+        "supports": ["LSASS credential-dumping interpretation"],
+    },
+    {
+        "citation_id": "CITE-MITRE-T1014",
+        "title": "MITRE ATT&CK T1014 Rootkit",
+        "url": "https://attack.mitre.org/techniques/T1014/",
+        "accessed_utc": "2026-05-04T00:00:00Z",
+        "supports": ["DKOM/rootkit process-view divergence interpretation"],
+    },
+    {
+        "citation_id": "CITE-NIST-800-61R2",
+        "title": "NIST SP 800-61 Rev. 2 Computer Security Incident Handling Guide",
+        "url": "https://csrc.nist.gov/pubs/sp/800/61/r2/final",
+        "accessed_utc": "2026-05-04T00:00:00Z",
+        "supports": ["separation of evidence, analysis, response actions, and gaps"],
+    },
+    {
+        "citation_id": "CITE-PLASO",
+        "title": "Plaso/log2timeline documentation",
+        "url": "https://plaso.readthedocs.io/",
+        "accessed_utc": "2026-05-04T00:00:00Z",
+        "supports": ["multi-source forensic timeline normalization"],
+    },
+    {
+        "citation_id": "CITE-TIMESKETCH",
+        "title": "Timesketch documentation",
+        "url": "https://timesketch.org/",
+        "accessed_utc": "2026-05-04T00:00:00Z",
+        "supports": ["analyst-oriented forensic timeline review"],
+    },
+    {
+        "citation_id": "CITE-VOLATILITY3",
+        "title": "Volatility 3 documentation",
+        "url": "https://volatility3.readthedocs.io/",
+        "accessed_utc": "2026-05-04T00:00:00Z",
+        "supports": ["memory plugin output and process-view validation"],
+    },
+    {
+        "citation_id": "CITE-ZEEK-LOGS",
+        "title": "Zeek log documentation",
+        "url": "https://docs.zeek.org/en/current/logs/index.html",
+        "accessed_utc": "2026-05-04T00:00:00Z",
+        "supports": ["network log and protocol-semantic coverage"],
+    },
+    {
+        "citation_id": "CITE-VELOCIRAPTOR-ARTIFACTS",
+        "title": "Velociraptor artifact documentation",
+        "url": "https://docs.velociraptor.app/docs/artifacts/",
+        "accessed_utc": "2026-05-04T00:00:00Z",
+        "supports": ["artifact-based endpoint collection"],
+    },
+    {
+        "citation_id": "CITE-SIGMAHQ",
+        "title": "SigmaHQ rules repository",
+        "url": "https://github.com/SigmaHQ/sigma",
+        "accessed_utc": "2026-05-04T00:00:00Z",
+        "supports": ["structured log detection rules as triage leads"],
+    },
+    {
+        "citation_id": "CITE-HAYABUSA",
+        "title": "Hayabusa repository",
+        "url": "https://github.com/Yamato-Security/hayabusa",
+        "accessed_utc": "2026-05-04T00:00:00Z",
+        "supports": ["Windows EVTX timeline and hunting output"],
+    },
+    {
+        "citation_id": "CITE-CAPA",
+        "title": "capa repository",
+        "url": "https://github.com/mandiant/capa",
+        "accessed_utc": "2026-05-04T00:00:00Z",
+        "supports": ["malware capability triage limits"],
+    },
+)
+
+
+def build_source_bibliography() -> list[dict[str, Any]]:
+    return [dict(row) for row in SOURCE_BIBLIOGRAPHY]
+
 
 def build_attack_coverage(
     tool_calls: list[dict[str, Any]],
@@ -383,6 +513,575 @@ def build_attack_coverage(
         "blind_spot_count": blind,
         "observed_techniques": sorted(finding_confidence),
         "targets": rows,
+    }
+
+
+def _finding_id(finding: dict[str, Any], index: int) -> str:
+    value = finding.get("finding_id")
+    return str(value) if value else f"finding-{index:03d}"
+
+
+def _citation_ids_for_technique(technique: str | None) -> list[str]:
+    if not technique:
+        return ["CITE-NIST-800-61R2"]
+    return list(TECHNIQUE_CITATIONS.get(technique, ("CITE-MITRE-ATTACK-DATASOURCES",)))
+
+
+def _data_sources_for_tools(tools: set[str]) -> list[str]:
+    data_sources = {
+        data_source
+        for tool in tools
+        for data_source in DATA_SOURCES_BY_TOOL.get(tool, ())
+    }
+    return sorted(data_sources)
+
+
+def build_attck_practitioner_coverage(
+    tool_calls: list[dict[str, Any]],
+    findings: list[dict[str, Any]],
+    case_completeness: dict[str, Any],
+    attack_coverage: dict[str, Any],
+) -> dict[str, Any]:
+    """Translate tool coverage into GCFA/GNFA/GREM practitioner lanes."""
+    tools_run = {tc.get("tool") for tc in tool_calls if isinstance(tc.get("tool"), str)}
+    tool_by_tcid = {
+        tc.get("tool_call_id"): tc.get("tool")
+        for tc in tool_calls
+        if tc.get("tool_call_id") and tc.get("tool")
+    }
+    checks = {c.get("artifact_class"): c for c in case_completeness.get("checks", [])}
+    touched_classes = {
+        name for name, row in checks.items() if name and row.get("touched")
+    }
+    available_classes = {
+        name for name, row in checks.items() if name and row.get("available")
+    }
+
+    lane_specs: dict[str, dict[str, Any]] = {
+        "GCFA_endpoint": {
+            "classes": {"memory", "evtx", "disk/filesystem"},
+            "tools": {
+                "evtx_query",
+                "hayabusa_scan",
+                "vol_pslist",
+                "vol_psscan",
+                "vol_psxview",
+                "vol_malfind",
+                "registry_query",
+                "prefetch_parse",
+                "mft_timeline",
+                "usnjrnl_query",
+                "vel_collect",
+            },
+            "techniques": set(row["technique_id"] for row in ATTACK_COVERAGE_TARGETS),
+        },
+        "GNFA_network": {
+            "classes": {"network"},
+            "tools": {"vel_collect"},
+            "techniques": {"T1041", "T1071", "T1071.001", "T1071.004", "T1105"},
+        },
+        "GREM_malware": {
+            "classes": {"memory", "disk/filesystem"},
+            "tools": {"vol_malfind", "yara_scan"},
+            "techniques": {"T1003", "T1003.001", "T1027", "T1055", "T1105"},
+        },
+    }
+
+    indexed_findings = [(_finding_id(f, i), f) for i, f in enumerate(findings, 1)]
+    targets = attack_coverage.get("targets", [])
+    lanes: dict[str, dict[str, Any]] = {}
+    for lane_name, spec in lane_specs.items():
+        lane_tools = set(spec["tools"])
+        lane_classes = set(spec["classes"])
+        lane_techniques = set(spec["techniques"])
+        observed_tools = sorted(lane_tools & tools_run)
+        artifact_classes_seen = sorted(lane_classes & touched_classes)
+        relevant_available = sorted(lane_classes & available_classes)
+        linked_findings = [
+            fid
+            for fid, finding in indexed_findings
+            if finding.get("mitre_technique") in lane_techniques
+            or tool_by_tcid.get(finding.get("tool_call_id")) in lane_tools
+        ]
+        observed_techniques = sorted(
+            {
+                str(finding.get("mitre_technique"))
+                for _, finding in indexed_findings
+                if finding.get("mitre_technique") in lane_techniques
+            }
+        )
+        coverage_notes = [
+            row.get("technique_id")
+            for row in targets
+            if row.get("status") == "covered_no_finding"
+            and set(row.get("tools_observed") or []) & lane_tools
+        ]
+
+        if lane_name == "GNFA_network" and not (
+            artifact_classes_seen or relevant_available
+        ):
+            status = "not_covered"
+        elif lane_name == "GREM_malware" and observed_tools:
+            status = "partial"
+        elif observed_tools and (linked_findings or coverage_notes):
+            status = "automated"
+        elif observed_tools or artifact_classes_seen or relevant_available:
+            status = "partial"
+        else:
+            status = "not_covered"
+
+        coverage_gaps = []
+        missing_classes = sorted(lane_classes - touched_classes)
+        if missing_classes:
+            coverage_gaps.append(
+                "missing or untouched artifact classes: " + ", ".join(missing_classes)
+            )
+        if lane_name == "GREM_malware" and observed_tools:
+            coverage_gaps.append(
+                "malware lane is triage only without payload extraction, capa-style capabilities, and cross-artifact corroboration"
+            )
+        if lane_name == "GNFA_network" and status == "not_covered":
+            coverage_gaps.append(
+                "no PCAP, Zeek, proxy, DNS, firewall, or NetFlow telemetry supplied"
+            )
+
+        lanes[lane_name] = {
+            "status": status,
+            "artifact_classes_seen": artifact_classes_seen,
+            "tools_run": observed_tools,
+            "findings_linked": linked_findings,
+            "attck_techniques_observed": observed_techniques,
+            "attck_data_sources_seen": _data_sources_for_tools(set(observed_tools)),
+            "coverage_gaps": coverage_gaps,
+            "next_actions": [
+                "Corroborate lane-specific leads with another artifact class before upgrading confidence."
+            ]
+            if status in {"partial", "automated"}
+            else ["Supply lane-relevant evidence and rerun typed tools."],
+        }
+
+    technique_rows = []
+    for row in targets:
+        technique = row.get("technique_id")
+        technique_rows.append(
+            {
+                "technique_id": technique,
+                "technique_name": row.get("technique_name"),
+                "status": row.get("status"),
+                "linked_findings": [
+                    fid
+                    for fid, finding in indexed_findings
+                    if finding.get("mitre_technique") == technique
+                ],
+                "source_citation_ids": _citation_ids_for_technique(technique),
+            }
+        )
+
+    data_source_rows = []
+    for data_source in _data_sources_for_tools(tools_run):
+        observed_tools = sorted(
+            tool
+            for tool in tools_run
+            if data_source in DATA_SOURCES_BY_TOOL.get(tool, ())
+        )
+        data_source_rows.append(
+            {
+                "data_source_id": data_source,
+                "status": "covered_no_finding",
+                "tools_observed": observed_tools,
+                "source_citation_ids": ["CITE-MITRE-ATTACK-DATASOURCES"],
+            }
+        )
+
+    return {
+        "version": 1,
+        "research_basis": [
+            "MITRE ATT&CK data sources and techniques",
+            "SANS FOR508/FOR572/FOR610 public course themes",
+            "Zeek, Velociraptor, Sigma/Hayabusa, YARA, capa public docs",
+            "DFIR Report, Red Canary, Elastic Security Labs practitioner reporting patterns",
+            "Reddit DFIR/computerforensics/blueteamsec prioritization signals",
+        ],
+        "lanes": lanes,
+        "technique_coverage": technique_rows,
+        "data_source_coverage": data_source_rows,
+        "overclaim_guardrails_applied": [
+            "covered_no_finding is limited coverage, not a clean/cleared claim",
+            "GCFA/GNFA/GREM lanes describe triage/orchestration coverage, not certification-level analyst judgment",
+            "visual exhibits do not create findings or upgrade confidence",
+            "execution claims still require at least two artifact classes",
+        ],
+        "source_citation_ids": sorted(
+            {
+                citation
+                for row in technique_rows + data_source_rows
+                for citation in row.get("source_citation_ids", [])
+            }
+            | {"CITE-NIST-800-61R2"}
+        ),
+    }
+
+
+def _source_record_ref(event: dict[str, Any], fallback_index: int) -> str:
+    details = event.get("details") if isinstance(event.get("details"), dict) else {}
+    parts = []
+    for key in ("record_id", "event_id", "pid", "image_name", "path", "offset"):
+        value = details.get(key)
+        if value not in (None, ""):
+            parts.append(f"{key}={value}")
+    source = event.get("source") or "timeline"
+    return f"{source}:{';'.join(parts) if parts else fallback_index}"
+
+
+def build_normalized_timeline(
+    timeline_events: list[dict[str, Any]], findings: list[dict[str, Any]]
+) -> dict[str, Any]:
+    indexed_findings = [(_finding_id(f, i), f) for i, f in enumerate(findings, 1)]
+    findings_by_tool: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for fid, finding in indexed_findings:
+        tcid = finding.get("tool_call_id")
+        if isinstance(tcid, str) and tcid:
+            findings_by_tool.setdefault(tcid, []).append((fid, finding))
+
+    events = []
+    for i, event in enumerate(
+        sorted(timeline_events, key=lambda e: e.get("ts") or ""), 1
+    ):
+        tcid = str(event.get("tool_call_id") or "")
+        linked = findings_by_tool.get(tcid, [])
+        techniques = sorted(
+            {
+                str(finding.get("mitre_technique"))
+                for _, finding in linked
+                if finding.get("mitre_technique")
+            }
+        )
+        citation_ids = sorted(
+            {
+                citation
+                for technique in techniques
+                for citation in _citation_ids_for_technique(technique)
+            }
+        )
+        confidence = "CONFIRMED"
+        if linked:
+            confidence = max(
+                (finding.get("confidence", "HYPOTHESIS") for _, finding in linked),
+                key=lambda c: CONFIDENCE_RANK.get(c, 0),
+            )
+        source = str(event.get("source") or "unknown")
+        events.append(
+            {
+                "event_id": f"timeline-{i:04d}",
+                "timestamp_utc": event.get("ts"),
+                "timestamp_source": TIMESTAMP_SOURCE_BY_TOOL.get(
+                    source, "source timestamp"
+                ),
+                "artifact_class": event.get("artifact_class") or "unknown",
+                "tool_call_id": tcid,
+                "source_record_ref": _source_record_ref(event, i),
+                "summary": event.get("description") or "timeline event",
+                "significance": "finding_support" if linked else "context",
+                "linked_finding_ids": [fid for fid, _ in linked],
+                "attck_techniques": techniques,
+                "confidence": confidence,
+                "citation_ids": citation_ids,
+                "limitations": [],
+            }
+        )
+
+    counts = Counter(event.get("artifact_class") or "unknown" for event in events)
+    return {
+        "version": 1,
+        "events": events,
+        "source_coverage": [
+            {"artifact_class": artifact_class, "event_count": count}
+            for artifact_class, count in sorted(counts.items())
+        ],
+        "limitations": []
+        if events
+        else ["No timestamped events were normalized from the supplied evidence."],
+    }
+
+
+def build_report_evidence_cards(
+    findings: list[dict[str, Any]],
+    normalized_events: list[dict[str, Any]],
+    bibliography: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    bibliography_ids = {row.get("citation_id") for row in bibliography}
+    events_by_tool: dict[str, list[dict[str, Any]]] = {}
+    for event in normalized_events:
+        tcid = event.get("tool_call_id")
+        if isinstance(tcid, str) and tcid:
+            events_by_tool.setdefault(tcid, []).append(event)
+
+    cards = []
+    for i, finding in enumerate(findings, 1):
+        tcid = str(finding.get("tool_call_id") or "")
+        technique = finding.get("mitre_technique")
+        citations = [
+            citation
+            for citation in _citation_ids_for_technique(technique)
+            if citation in bibliography_ids
+        ] or ["CITE-NIST-800-61R2"]
+        linked_events = events_by_tool.get(tcid, [])
+        if technique == "T1014":
+            visual_asset = "figures/process_view_comparison.png"
+            why = (
+                "T1014 Rootkit relevance: the case has process-view or process-list "
+                f"evidence cited by `{tcid}`. This is suspicious because process "
+                "hiding can indicate DKOM/rootkit behavior, but memory-only evidence "
+                "still needs disk, driver, or log corroboration before execution claims."
+            )
+        elif technique == "T1055":
+            visual_asset = "figures/findings_table.png"
+            why = (
+                f"T1055 process-injection relevance: `{tcid}` reported suspicious "
+                "memory state. Treat this as a high-priority malware lead until bytes, "
+                "process ancestry, and disk or network artifacts corroborate it."
+            )
+        else:
+            visual_asset = "figures/findings_table.png"
+            why = (
+                f"This observable is relevant because finding `{_finding_id(finding, i)}` "
+                f"is backed by parsed tool output `{tcid}` and should be interpreted "
+                "with the cited artifact and source caveats."
+            )
+        cards.append(
+            {
+                "card_id": f"evidence-card-{i:03d}",
+                "title": str(finding.get("description") or "Finding evidence")[:90],
+                "linked_finding_ids": [_finding_id(finding, i)],
+                "tool_call_id": tcid,
+                "source_record_refs": [
+                    event.get("source_record_ref") for event in linked_events[:3]
+                ]
+                or [tcid],
+                "visual_asset": visual_asset,
+                "snippet": str(finding.get("description") or "")[:240],
+                "why_suspicious": why,
+                "confidence": finding.get("confidence", "HYPOTHESIS"),
+                "citation_ids": citations,
+                "caveats": [
+                    "Visual exhibit supports the cited finding but does not replace parsed tool output."
+                ]
+                + (
+                    [
+                        "HYPOTHESIS confidence requires additional artifact corroboration."
+                    ]
+                    if finding.get("confidence") == "HYPOTHESIS"
+                    else []
+                ),
+            }
+        )
+    return cards
+
+
+IOC_KEYS = (
+    "urls",
+    "domains",
+    "ips",
+    "emails",
+    "paths",
+    "registry_keys",
+    "mutex_like",
+    "user_agents",
+    "hashes",
+)
+
+
+def _empty_iocs() -> dict[str, list[str]]:
+    return {key: [] for key in IOC_KEYS}
+
+
+def _uniq(values: list[str]) -> list[str]:
+    return sorted({value for value in values if value})
+
+
+def _extract_ascii_strings_from_hex(sample_hex: str, min_len: int = 4) -> list[str]:
+    cleaned = "".join(ch for ch in str(sample_hex) if ch in "0123456789abcdefABCDEF")
+    if len(cleaned) < 2:
+        return []
+    if len(cleaned) % 2:
+        cleaned = cleaned[:-1]
+    try:
+        data = bytes.fromhex(cleaned)
+    except ValueError:
+        return []
+    strings: list[str] = []
+    current: list[str] = []
+    for byte in data:
+        if 32 <= byte <= 126:
+            current.append(chr(byte))
+        else:
+            if len(current) >= min_len:
+                strings.append("".join(current))
+            current = []
+    if len(current) >= min_len:
+        strings.append("".join(current))
+    return _uniq(strings)[:25]
+
+
+def _extract_iocs_from_texts(texts: list[str]) -> dict[str, list[str]]:
+    blob = "\n".join(texts)
+    iocs = _empty_iocs()
+    iocs["urls"] = _uniq(re.findall(r"https?://[^\s'\"<>]+", blob, flags=re.I))[:50]
+    iocs["emails"] = _uniq(
+        re.findall(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", blob)
+    )[:50]
+    iocs["ips"] = _uniq(
+        re.findall(
+            r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b",
+            blob,
+        )
+    )[:50]
+    domains = re.findall(r"\b(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}\b", blob)
+    iocs["domains"] = _uniq(
+        [domain for domain in domains if not domain.lower().startswith("www.")]
+        + [domain[4:] for domain in domains if domain.lower().startswith("www.")]
+    )[:50]
+    iocs["paths"] = _uniq(re.findall(r"[A-Za-z]:\\(?:[^\\/:*?\"<>|\r\n]+\\?)+", blob))[
+        :50
+    ]
+    iocs["registry_keys"] = _uniq(
+        re.findall(r"\bHK(?:LM|CU|CR|U|CC)\\[^\r\n\t]+", blob, flags=re.I)
+    )[:50]
+    iocs["hashes"] = _uniq(re.findall(r"\b[A-Fa-f0-9]{32,64}\b", blob))[:50]
+    iocs["mutex_like"] = _uniq(
+        re.findall(r"\b(?:Global|Local)\\[A-Za-z0-9_.-]{4,}\b", blob)
+    )[:50]
+    iocs["user_agents"] = _uniq(
+        text
+        for text in texts
+        if any(token in text.lower() for token in ("mozilla/", "curl/", "wget/"))
+    )[:20]
+    return iocs
+
+
+def _merge_iocs(items: list[dict[str, list[str]]]) -> dict[str, list[str]]:
+    merged = _empty_iocs()
+    for item in items:
+        for key in IOC_KEYS:
+            merged[key].extend(item.get(key, []))
+    return {key: _uniq(values) for key, values in merged.items()}
+
+
+def _ioc_count(iocs: dict[str, list[str]]) -> int:
+    return sum(len(values) for values in iocs.values())
+
+
+def _malfind_row_to_triage_observable(
+    row: dict[str, Any],
+    tool_call_id: str,
+    artifact_path: str,
+    index: int,
+) -> dict[str, Any]:
+    sample_hex = str(row.get("sample_hex") or "")
+    strings = _extract_ascii_strings_from_hex(sample_hex)
+    iocs = _extract_iocs_from_texts(strings)
+    labels = ["memory_injection_lead"]
+    if row.get("mz_match"):
+        labels.append("mz_header_present")
+    if str(row.get("protection") or "").upper().endswith("READWRITE"):
+        labels.append("writable_executable_memory")
+    return {
+        "observable_id": f"maltriage-{index:04d}",
+        "kind": "memory_region",
+        "tool": "vol_malfind",
+        "tool_call_id": tool_call_id,
+        "artifact_path": artifact_path,
+        "process": {
+            "pid": row.get("pid") or row.get("PID"),
+            "image_name": row.get("image_name") or row.get("ImageFileName"),
+        },
+        "memory_region": {
+            "vad_start_hex": row.get("vad_start_hex"),
+            "vad_end_hex": row.get("vad_end_hex"),
+            "protection": row.get("protection"),
+            "mz_match": bool(row.get("mz_match")),
+            "sample_hex_preview": sample_hex,
+        },
+        "strings": strings,
+        "iocs": iocs,
+        "labels": labels,
+        "confidence": "HYPOTHESIS",
+        "limitations": [
+            "Derived from a single memory artifact class.",
+            "Does not prove execution, intent, or who operated the code.",
+        ],
+    }
+
+
+def build_malware_triage(
+    malfind_out: dict[str, Any],
+    yara_out: dict[str, Any] | None,
+    tool_call_ids: dict[str, str],
+    artifact_path: str,
+) -> dict[str, Any]:
+    injections = (
+        malfind_out.get("injections", []) if isinstance(malfind_out, dict) else []
+    )
+    if not isinstance(injections, list):
+        injections = []
+    observables = [
+        _malfind_row_to_triage_observable(
+            row,
+            tool_call_ids.get("vol_malfind", ""),
+            artifact_path,
+            index,
+        )
+        for index, row in enumerate(injections, 1)
+        if isinstance(row, dict)
+    ]
+    aggregate_iocs = _merge_iocs([obs.get("iocs", {}) for obs in observables])
+    yara_matches = yara_out.get("matches", []) if isinstance(yara_out, dict) else []
+    if not isinstance(yara_matches, list):
+        yara_matches = []
+    source_tools = []
+    if "vol_malfind" in tool_call_ids:
+        source_tools.append(
+            {
+                "tool": "vol_malfind",
+                "tool_call_id": tool_call_ids["vol_malfind"],
+                "artifact_class": "memory",
+            }
+        )
+    if "yara_scan" in tool_call_ids:
+        source_tools.append(
+            {
+                "tool": "yara_scan",
+                "tool_call_id": tool_call_ids["yara_scan"],
+                "artifact_class": "file_or_memory",
+            }
+        )
+    return {
+        "version": 1,
+        "scope": "triage_only",
+        "source_tools": source_tools,
+        "summary": {
+            "observable_count": len(observables),
+            "ioc_count": _ioc_count(aggregate_iocs),
+            "yara_match_count": len(yara_matches),
+            "malfind_injection_count": int(
+                malfind_out.get("injections_seen", len(injections)) or 0
+            ),
+            "verdict_contribution": "triage_lead"
+            if observables or yara_matches
+            else "none",
+        },
+        "observables": observables,
+        "aggregate_iocs": aggregate_iocs,
+        "analysis_constraints": [
+            "Memory-only malware triage requires disk, process, network, or registry corroboration before upgrading claims.",
+            "YARA and malfind outputs are triage leads unless corroborated.",
+            "This section does not identify who operated the code or why it was present.",
+        ],
+        "next_actions": [
+            "Dump and hash suspicious VAD bytes before static analysis.",
+            "Scan dumped bytes with curated YARA rules.",
+            "Corroborate process ancestry, backing file path, registry persistence, and network telemetry.",
+        ],
     }
 
 
@@ -714,6 +1413,8 @@ class Investigation:
         self.tool_calls: list[dict[str, Any]] = []
         self.timeline_events: list[dict[str, Any]] = []
         self.evtx_summary: dict[str, Any] | None = None
+        self.malware_triage: dict[str, Any] | None = None
+        self.analysis_limitations: list[str] = []
         self.findings_pool_a: list[dict[str, Any]] = []
         self.findings_pool_b: list[dict[str, Any]] = []
         self.tcid_counter = 0
@@ -964,6 +1665,12 @@ class Investigation:
             self._hash_obj(mal),
             {"injections_returned": len(injs)},
         )
+        self.malware_triage = build_malware_triage(
+            mal,
+            None,
+            {"vol_malfind": tcid_malfind},
+            self.evidence,
+        )
         print(f"  vol_malfind: {len(injs)} injections")
 
         # Tool 3: vol_psscan — cross-validates pslist for DKOM.
@@ -1088,9 +1795,9 @@ class Investigation:
                     "description": (
                         f"vol_malfind found {len(injs)} suspicious VAD regions "
                         f"({mz_count} with MZ headers in unexpected locations) "
-                        f"— code injection signature (T1055)."
+                        f"— code injection triage lead (T1055)."
                     ),
-                    "confidence": "CONFIRMED" if mz_count > 0 else "INFERRED",
+                    "confidence": "HYPOTHESIS",
                     "pool_origin": "A",
                     "mitre_technique": "T1055",
                 }
@@ -1131,6 +1838,9 @@ class Investigation:
         )
         self.local_artifacts["psxview_json"] = json.dumps(
             psxview or [], separators=(",", ":")
+        )
+        self.local_artifacts["malfind_json"] = json.dumps(
+            mal or {}, separators=(",", ":")
         )
 
     def investigate_evtx(self, rust: SshMcpClient, py: SshMcpClient) -> None:
@@ -1182,24 +1892,16 @@ class Investigation:
         # E01 — out of scope for the MVP orchestrator since case_open
         # only SHA-256s the file. Future: MFT extraction via Sleuth Kit.
         print("\n=== disk image investigation (case_open only — MVP) ===")
-        # We've already done case_open; nothing more to do for MVP.
-        self.findings_pool_a.append(
-            {
-                "case_id": self.handle["id"],
-                "finding_id": "f-A-disk-registered",
-                "tool_call_id": self.tool_calls[0]["tool_call_id"],
-                "artifact_path": self.evidence,
-                "description": (
-                    f"Disk image registered with SHA-256 "
-                    f"{self.handle['image_hash']}. Full filesystem analysis "
-                    f"requires E01-mount support (libewf), which is out of "
-                    f"scope for the MVP orchestrator. Open the agent "
-                    f"interactively for deeper analysis."
-                ),
-                "confidence": "INFERRED",
-                "pool_origin": "A",
-                "mitre_technique": None,
-            }
+        limitation = (
+            "Auto disk mode registered and hashed the image only; it did not mount "
+            "or parse filesystem artifacts, so no disk-content finding or NO_EVIL "
+            "claim is supported."
+        )
+        self.analysis_limitations.append(limitation)
+        self._audit(
+            py,
+            "agent_message",
+            {"role": "supervisor", "content": limitation},
         )
 
     def reason(self, py: SshMcpClient) -> tuple[list[dict[str, Any]], int, int, int]:
@@ -1415,11 +2117,23 @@ class Investigation:
               evidence is objectively visible in tool divergence even if
               the judge conservatively downgrades the merged confidence);
           (c) any T1055 (code injection) at INFERRED-tier or higher.
-        NO_EVIL — no findings at all (clean baseline).
+        NO_EVIL — no findings after a substantive per-evidence playbook ran.
         INDETERMINATE — findings exist but at HYPOTHESIS-only tier or
-          covering low-severity techniques.
+          covering low-severity techniques; also disk auto mode when only
+          case_open/chain-of-custody ran.
         """
         if not merged:
+            if self is not None and detect_evidence_type(self.evidence) == "disk":
+                substantive_disk_tools = {
+                    "mft_timeline",
+                    "usnjrnl_query",
+                    "prefetch_parse",
+                    "registry_query",
+                    "yara_scan",
+                }
+                tools_run = {tc.get("tool") for tc in getattr(self, "tool_calls", [])}
+                if not (tools_run & substantive_disk_tools):
+                    return "INDETERMINATE"
             return "NO_EVIL"
 
         SEVERE_INFERRED_OK = {"T1014", "T1055"}
@@ -1447,8 +2161,16 @@ class Investigation:
         attack_coverage = build_attack_coverage(
             self.tool_calls, merged, case_completeness
         )
+        attck_practitioner_coverage = build_attck_practitioner_coverage(
+            self.tool_calls, merged, case_completeness, attack_coverage
+        )
         next_actions = build_next_actions(
             merged, attack_coverage, case_completeness, timeline
+        )
+        source_bibliography = build_source_bibliography()
+        normalized_timeline = build_normalized_timeline(timeline, merged)
+        report_evidence_cards = build_report_evidence_cards(
+            merged, normalized_timeline["events"], source_bibliography
         )
         verdict_obj = {
             "case_id": self.handle["id"],
@@ -1461,6 +2183,7 @@ class Investigation:
                 datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             ),
             "verdict": verdict,
+            "analysis_limitations": self.analysis_limitations,
             "findings_summary": {
                 "total_merged": len(merged),
                 "by_confidence": {
@@ -1479,10 +2202,16 @@ class Investigation:
                 "soul_md_downgraded": downgraded,
             },
             "findings": merged,
+            "tool_calls": self.tool_calls,
             "evtx_summary": self.evtx_summary,
             "case_completeness": case_completeness,
             "attack_coverage": attack_coverage,
+            "attck_practitioner_coverage": attck_practitioner_coverage,
             "next_actions": next_actions,
+            "malware_triage": self.malware_triage,
+            "normalized_timeline": normalized_timeline,
+            "report_evidence_cards": report_evidence_cards,
+            "source_bibliography": source_bibliography,
             "timeline_summary": {
                 "event_count": len(timeline),
                 "first_ts": timeline[0]["ts"] if timeline else None,
@@ -1557,6 +2286,15 @@ class Investigation:
         if "psxview_json" in self.local_artifacts:
             (local_dir / "psxview.json").write_text(
                 self.local_artifacts["psxview_json"], encoding="utf-8"
+            )
+        if "malfind_json" in self.local_artifacts:
+            (local_dir / "malfind.json").write_text(
+                self.local_artifacts["malfind_json"], encoding="utf-8"
+            )
+        if self.malware_triage:
+            (local_dir / "malware_triage.json").write_text(
+                json.dumps(self.malware_triage, indent=2, sort_keys=True),
+                encoding="utf-8",
             )
         timeline = sorted(self.timeline_events, key=lambda e: e["ts"])
         (local_dir / "timeline.json").write_text(
