@@ -77,10 +77,10 @@ What it does in one command (no interactive prompts):
 
 1. Detects evidence type from the file extension
 2. Opens both MCP servers inside the SIFT VM via SSH stdio
-3. case_open → tool sequence per type → audit chain → judge → correlator → manifest_finalize
+3. case_open → tool sequence per type → audit chain → judge → correlator → manifest_finalize. Disk auto mode is the current exception: it performs custody-only registration unless mounted artifacts are supplied interactively.
 4. Synthesizes Pool A (persistence-biased) and Pool B (exfil-biased) findings deterministically from tool outputs
-5. Writes `verdict.json` with the verdict (`SUSPICIOUS` / `NO_EVIL` / `INDETERMINATE` — see [`docs/verdict-semantics.md`](docs/verdict-semantics.md)), case completeness, ATT&CK coverage, and next analyst actions
-6. Generates a fully-templated PDF investigation report (figures + findings + ATT&CK coverage + chain-of-custody attestation)
+5. Writes `verdict.json` with the verdict (`SUSPICIOUS` / `NO_EVIL` / `INDETERMINATE` — see [`docs/verdict-semantics.md`](docs/verdict-semantics.md)), case completeness, ATT&CK/practitioner coverage, normalized timeline data, evidence-card data, source bibliography, and next analyst actions
+6. Generates a fully-templated PDF investigation report (figures + findings + ATT&CK/practitioner coverage + timeline + visual evidence cards + source bibliography + chain-of-custody attestation)
 
 Output (on host):
 ```

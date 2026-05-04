@@ -12,7 +12,16 @@ When the analyst says **"investigate &lt;path&gt;"**, **"find evil in &lt;path&g
 2. Inspect the path's extension and the case-open size to pick a playbook below.
 3. Fork **two subagents** with `CLAUDE_CODE_FORK_SUBAGENT=1` — one with the Pool A persistence prompt, one with Pool B exfil prompt (see `AGENTS.md`). Each pool reads this file and runs its biased-but-still-overlapping tool sequence.
 4. After both pools return Findings, run `detect_contradictions` → resolve (or auto-pass under `--unattended`) → `judge_findings` → `verify_finding` per Finding → `correlate_findings` → **emit 6 `kind=judge_selfscore` audit records** (one per SANS rubric criterion per `agent-config/JUDGING.md`) → `manifest_finalize` (terminal step under Amendment A5; the prior `ots_stamp` Bitcoin anchor was removed). The selfscore lands in the audit chain BEFORE finalize so it's part of the cryptographic attestation — the agent doesn't get to revise it after seeing the score it actually got.
-5. Render the verdict + manifest path.
+5. Render the verdict + manifest path. The verdict/report may include `attck_practitioner_coverage`, `normalized_timeline`, `report_evidence_cards`, and `source_bibliography`; treat those as coverage/reporting aids, not new evidence classes.
+
+Report fields to interpret consistently:
+
+- `attck_practitioner_coverage` maps current evidence and typed-tool output to GCFA/GNFA/GREM-style practitioner lanes. It is honest coverage accounting, not a claim that the product replaces certified analysts.
+- `normalized_timeline` preserves source timestamp, artifact class, `tool_call_id`, and source record reference. Timeline context does not become a Finding without artifact-backed semantics.
+- `report_evidence_cards` are generated exhibits for the PDF. Each card must point back to parsed tool output and source citations; visuals do not create Findings or raise confidence.
+- `source_bibliography` resolves external source citation IDs used for ATT&CK/data-source/report interpretation.
+- `malware_triage` records memory-region, string, IOC, and YARA/malfind leads as triage-only context; it does not identify who operated code or prove execution.
+- `analysis_limitations` records scope gaps. Auto disk mode currently records custody only unless mounted artifacts are supplied, so do not emit disk-content Findings from `case_open` alone.
 
 ---
 
@@ -37,6 +46,8 @@ Pick the one whose extension matches the input. If multiple apply (e.g., a case 
 ### `.e01` / `.E01` / `.dd` / `.raw` / `.aff` — full disk image
 
 The deepest evidence type. Run all the disk-class tools.
+
+Note: `scripts/find-evil-auto` intentionally deviates today for raw disk images: it performs `case_open`, hashes the image, records the limitation, and returns `INDETERMINATE` unless mounted/extracted artifacts are supplied for the typed disk tools below. Do not treat custody-only disk registration as a Finding.
 
 | Order | Tool | Purpose | Pool |
 |---|---|---|---|
