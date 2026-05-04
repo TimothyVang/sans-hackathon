@@ -135,9 +135,10 @@ fi
 
 # Velociraptor — not in SIFT; pull a release binary.
 VELOCIRAPTOR_VERSION="${VELOCIRAPTOR_VERSION:-0.74.6}"
+VELOCIRAPTOR_RELEASE="${VELOCIRAPTOR_RELEASE:-0.74}"
 if ! command -v velociraptor >/dev/null 2>&1 && [[ ! -x "$HOME/.local/bin/velociraptor" ]]; then
-  log "  installing velociraptor ${VELOCIRAPTOR_VERSION}..."
-  if curl -fsSL "https://github.com/Velocidex/velociraptor/releases/download/v${VELOCIRAPTOR_VERSION}/velociraptor-v${VELOCIRAPTOR_VERSION}-linux-amd64-musl" \
+  log "  installing velociraptor ${VELOCIRAPTOR_VERSION} from release ${VELOCIRAPTOR_RELEASE}..."
+  if curl -fsSL "https://github.com/Velocidex/velociraptor/releases/download/v${VELOCIRAPTOR_RELEASE}/velociraptor-v${VELOCIRAPTOR_VERSION}-linux-amd64-musl" \
       -o "$HOME/.local/bin/velociraptor"; then
     chmod +x "$HOME/.local/bin/velociraptor"
     log "    velociraptor → $HOME/.local/bin/velociraptor"
