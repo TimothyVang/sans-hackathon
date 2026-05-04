@@ -16,7 +16,7 @@
 
 Find Evil! investigates Windows host evidence (`.e01` disk images, memory captures, EVTX logs) end-to-end and produces a signed verdict (`SUSPICIOUS` / `INDETERMINATE` / `NO_EVIL`) with four load-bearing properties:
 
-1. **A typed MCP tool surface, no `execute_shell`.** 23 narrow Pydantic-validated tools — 12 Rust DFIR (`case_open`, `evtx_query`, `vol_pslist`/`vol_psscan`, `vol_malfind`, `mft_timeline`, `hayabusa_scan`, `yara_scan`, `usnjrnl_query`, `registry_query`, `prefetch_parse`, `vel_collect`) plus 11 Python crypto/ACH/memory/handoff. EVTX parsed in-process via the omerbenamram/evtx Rust crate (~1600× faster than python-evtx); AGPL/GPL tools (Hayabusa, Volatility3, Velociraptor) invoked through subprocess boundaries only — Apache-2.0 submission tree stays clean.
+1. **A typed MCP tool surface, no `execute_shell`.** 24 narrow Pydantic-validated tools — 13 Rust DFIR (`case_open`, `evtx_query`, `vol_pslist`/`vol_psscan`/`vol_psxview`, `vol_malfind`, `mft_timeline`, `hayabusa_scan`, `yara_scan`, `usnjrnl_query`, `registry_query`, `prefetch_parse`, `vel_collect`) plus 11 Python crypto/ACH/memory/handoff. EVTX parsed in-process via the omerbenamram/evtx Rust crate (~1600× faster than python-evtx); AGPL/GPL tools (Hayabusa, Volatility3, Velociraptor) invoked through subprocess boundaries only — Apache-2.0 submission tree stays clean.
 
 2. **Cryptographic chain of custody supporting a FRE 902(14) self-authenticating-evidence claim.** Three composed primitives: hash-chained audit JSONL (`prev_hash` per record) → `rs_merkle` Merkle root over canonical-JSON tool outputs → sigstore signature with Rekor transparency-log inclusion proof. Verifiable offline by `manifest_verify` — no network, no third-party servers. (Pre-A5 the chain tail-anchored to Bitcoin via OpenTimestamps; removed because judges scoring offline can't exercise the network call. Trade-off: `docs/cryptographic-attestation.md`.)
 
@@ -32,7 +32,7 @@ Five trust boundaries (see `docs/architecture.md` for Mermaid diagrams):
 Evidence vault (read-only .e01)
   → SIFT tool subprocesses (unprivileged, sandboxed)
   → Two typed MCP servers
-      • findevil-mcp (Rust)         — 12 DFIR tools, no execute_shell
+      • findevil-mcp (Rust)         — 13 DFIR tools, no execute_shell
       • findevil-agent-mcp (Python) — 11 crypto/ACH/memory/ACP tools
   → Claude Code agent loop (supervisor + forked Pool A/B subagents
     + verifier + judge + correlator + contradiction surface)

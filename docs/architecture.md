@@ -12,8 +12,8 @@ Per SANS Find Evil! rules, submissions declare which of four supported patterns 
 
 1. **Direct Agent Extension** (rules §1) — Claude Code IS the agent. The judge runs `scripts/find-evil` (or `claude`) at the repo root; `.mcp.json` auto-spawns both MCP servers; Claude Code drives the investigation as supervisor + Pool A/B subagents (`CLAUDE_CODE_FORK_SUBAGENT=1`). The SANS rules call this "the fastest path to a working submission."
 2. **Custom MCP Server** (rules §2) — two purpose-built MCP servers expose the typed tool surface:
-   - `findevil-mcp` (Rust) — DFIR primitives (case_open, evtx_query, mft_timeline, hayabusa_scan, vol_pslist, vol_malfind, yara_scan, usnjrnl_query, registry_query, prefetch_parse, vel_collect). Read-only on evidence; SHA-256 every output. **NO `execute_shell`.**
-   - `findevil-agent-mcp` (Python) — crypto + ACH plumbing (audit_append/verify, manifest_finalize/verify, ots_stamp/verify, verify_finding, detect_contradictions, judge_findings, correlate_findings).
+   - `findevil-mcp` (Rust) — 13 DFIR primitives (case_open, evtx_query, mft_timeline, hayabusa_scan, vol_pslist, vol_psscan, vol_psxview, vol_malfind, yara_scan, usnjrnl_query, registry_query, prefetch_parse, vel_collect). Read-only on evidence; SHA-256 every output. **NO `execute_shell`.**
+   - `findevil-agent-mcp` (Python) — 11 crypto + ACH + memory + ACP tools (audit_append/verify, manifest_finalize/verify, verify_finding, detect_contradictions, judge_findings, correlate_findings, memory_remember/recall, pool_handoff). The pre-A5 `ots_stamp`/`ots_verify` pair was removed.
 
 The combination is the architectural claim: Claude Code's agent loop never touches a raw shell because the only verbs it has are MCP-typed function calls into one of the two servers.
 
@@ -36,8 +36,8 @@ flowchart TB
     end
 
     subgraph Trust2["**TRUST BOUNDARY 2** — Two MCP Servers (typed tool surface)"]
-        RustMcp["**findevil-mcp** (Rust, hand-rolled MCP 2024-11-05)<br/>12 typed DFIR tools<br/>NO execute_shell<br/>---<br/>case_open, mft_timeline,<br/>evtx_query, hayabusa_scan,<br/>vol_pslist, vol_psscan, vol_malfind,<br/>yara_scan, usnjrnl_query,<br/>registry_query, prefetch_parse,<br/>vel_collect"]
-        AgentMcp["**findevil-agent-mcp** (Python, mcp SDK 1.x)<br/>10 typed crypto/ACH tools<br/>---<br/>audit_append/verify,<br/>manifest_finalize/verify,<br/>ots_stamp/verify,<br/>verify_finding,<br/>detect_contradictions,<br/>judge_findings,<br/>correlate_findings"]
+        RustMcp["**findevil-mcp** (Rust, hand-rolled MCP 2024-11-05)<br/>13 typed DFIR tools<br/>NO execute_shell<br/>---<br/>case_open, mft_timeline,<br/>evtx_query, hayabusa_scan,<br/>vol_pslist, vol_psscan, vol_psxview,<br/>vol_malfind, yara_scan, usnjrnl_query,<br/>registry_query, prefetch_parse,<br/>vel_collect"]
+        AgentMcp["**findevil-agent-mcp** (Python, mcp SDK 1.x)<br/>11 typed crypto/ACH/memory/ACP tools<br/>---<br/>audit_append/verify,<br/>manifest_finalize/verify,<br/>verify_finding,<br/>detect_contradictions,<br/>judge_findings,<br/>correlate_findings,<br/>memory_remember/recall,<br/>pool_handoff"]
         EvtxCrate["evtx crate<br/>MIT, in-process<br/>1600× python-evtx"]
         Merkle["rs_merkle 1.4.0<br/>append-only tree"]
         DuckDB["DuckDB 0.10<br/>L1 case store"]
@@ -55,7 +55,6 @@ flowchart TB
 
     subgraph Trust4["**TRUST BOUNDARY 4** — Crypto Custody (M2)"]
         Sigstore["sigstore 3.x<br/>keyless Fulcio signing<br/>Rekor transparency log"]
-        OTS["OpenTimestamps 0.7.2<br/>Bitcoin anchor<br/>FRE 902(14) self-authenticating"]
         AuditJSONL["audit.jsonl<br/>hash-chained, append-only<br/>prev_hash per line"]
         Manifest["run.manifest.json<br/>signs Merkle root +<br/>audit-log final hash"]
     end
@@ -92,7 +91,6 @@ flowchart TB
     RustMcp -.->|tool output digest<br/>becomes Merkle leaf| Merkle
     AgentMcp -->|manifest_finalize| Manifest
     Merkle --> Manifest
-    Manifest --> OTS
     Sigstore --> AuditJSONL
 
     Human -->|approve / reject<br/>plan + contradictions| Trust3
@@ -113,7 +111,7 @@ flowchart TB
 | 1 | SIFT tool subprocesses | **Architectural:** unprivileged user (no root, no CAP_SYS_ADMIN), 120s wall-clock budget per call, cpulimit 50%, tmpfs `/tmp/case-<id>-work/`, binary allowlist (no curl/wget/nc) | OS-enforced |
 | 2 | Two typed MCP servers | **Architectural:** Rust `findevil-mcp` type system forbids `execute_shell`; Python `findevil-agent-mcp` Pydantic input models use `extra="forbid"`; tool surfaces fixed at compile/build time. Adding a shell passthrough would require a code change + PR + review | Compiler/schema-enforced |
 | 3 | Claude Code agent loop | **Mixed:** agent system prompts (`agent-config/SOUL.md` — epistemic hierarchy, AGENTS.md — roles) are **prompt-based guardrails**; verifier veto (no Finding without `tool_call_id`) is **architectural** (Pydantic schema-level enforced at the `findevil-agent-mcp` boundary) | Mixed — prompt guards behavior, Pydantic guards data |
-| 4 | Crypto Custody | **Architectural:** sigstore signing and Merkle root computation happen inside `findevil-agent-mcp` before any finding is user-visible; OpenTimestamps anchoring is a subprocess call outside the agent's reach | Cryptographic |
+| 4 | Crypto Custody | **Architectural:** sigstore signing and Merkle root computation happen inside `findevil-agent-mcp` before any finding is user-visible; the pre-A5 OpenTimestamps/Bitcoin tier was removed so `manifest_finalize` is the terminal custody step | Cryptographic |
 | 5 | Presentation | **DEFERRED to bonus (A2 §2.1).** The terminal IS the primary UX. Optional Next.js SSE bus (when shipped) is read-only from the frontend; `--unattended` mode logs `approved_by: "auto"` to the audit chain. | Auth-enforced (when present) |
 
 ### Prompt-based vs architectural guardrails — explicit distinction
@@ -134,7 +132,7 @@ These are **testable for bypass** in L3 golden runs — prompt-injection fixture
 - Hash-chained `audit.jsonl` (`prev_hash` per line; chain replay catches any backdated/mutated entry)
 - sigstore signing of the run manifest at the `findevil-agent-mcp` layer (agent cannot forge signatures)
 - Merkle tree append-only at the `findevil-agent-mcp` layer (agent cannot rebuild the tree to favor a different leaf set)
-- OpenTimestamps subprocess anchoring (agent does not own the OTS calendar or the Bitcoin blockchain)
+- Sigstore/Rekor transparency-log inclusion proof (agent cannot forge the signed manifest provenance)
 
 **Cisco `mcp-scanner` run pre-submission** asserts zero findings for `execute_shell` or equivalent arbitrary-execution patterns in `services/mcp/` — the architectural claim is machine-verified.
 
@@ -249,10 +247,10 @@ All three modes are **judge-valid**. Judges pick whichever they already have —
 7. Supervisor calls `verify_finding` (Python MCP) for each candidate Finding — the wrapper spawns its own short-lived `findevil-mcp` subprocess and re-runs the cited tool call. Drift downgrades the Finding by one tier.
 8. Supervisor calls `judge_findings` (Python MCP) — credibility-weighted merge per Estornell ICML 2025.
 9. Supervisor calls `correlate_findings` (Python MCP) — SOUL.md cross-artifact rule downgrades execution claims that lack ≥2 artifact-class corroboration; Amcache-only execution gets the hard-coded downgrade.
-10. Supervisor calls `manifest_finalize` (Python MCP) — builds Merkle root, signs the canonicalized body via sigstore (or StubSigner for offline demo), writes `run.manifest.json`. The audit chain is finalized.
-11. Supervisor calls `ots_stamp` (Python MCP) — `opentimestamps-client` submits the manifest to OTS calendar servers; receipt saved as `run.manifest.ots`.
-12. Supervisor renders the `RunVerdict` to the terminal with paths to the manifest + receipt.
-13. Offline replay: `manifest_verify` + `ots_verify` (or any third-party OTS verifier with a Bitcoin header) reproduce the proof end-to-end, citing FRE 902(14).
+10. Supervisor emits 6 `kind="judge_selfscore"` audit records, one per SANS rubric criterion, so the self-assessment lands inside the signed chain.
+11. Supervisor calls `manifest_finalize` (Python MCP) — builds Merkle root, signs the canonicalized body via sigstore (or StubSigner for offline demo), writes `run.manifest.json`, and finalizes the audit chain. This is the terminal custody step under A5.
+12. Supervisor renders the `RunVerdict` to the terminal with paths to the manifest and report.
+13. Offline replay: `manifest_verify` reproduces the proof end-to-end, citing FRE 902(14) with the post-A5 Rekor timestamp trade-off.
 
 ---
 
@@ -260,9 +258,9 @@ All three modes are **judge-valid**. Judges pick whichever they already have —
 
 | Dimension | Valhuntir (reference) | Us |
 |---|---|---|
-| MCP server | Python, 8 servers via sift-gateway, 100+ tools | **Two** typed MCP servers — Rust `findevil-mcp` (12 DFIR tools, including the deliberately-redundant `vol_pslist` + `vol_psscan` pair for DKOM cross-validation) + Python `findevil-agent-mcp` (10 crypto/ACH tools); no execute_shell |
+| MCP server | Python, 8 servers via sift-gateway, 100+ tools | **Two** typed MCP servers — Rust `findevil-mcp` (13 DFIR tools, including the deliberately-redundant `vol_pslist` + `vol_psscan` pair plus `vol_psxview` for DKOM cross-validation) + Python `findevil-agent-mcp` (11 crypto/ACH/memory/ACP tools); no execute_shell |
 | Agent runtime | Custom Python harness | **Claude Code** itself (SANS rules §1 "Direct Agent Extension") — no custom orchestrator to maintain |
-| Chain-of-custody | Password-gated HMAC (PBKDF2 2M iter) | sigstore + Merkle + OpenTimestamps Bitcoin anchor (FRE 902(14) self-authenticating) |
+| Chain-of-custody | Password-gated HMAC (PBKDF2 2M iter) | sigstore/Rekor + Merkle + audit hash chain (FRE 902(14) self-authenticating, with the A5 timestamp trade-off documented) |
 | Agent pattern | Single agent + human approval | ACH dual-agent (persistence vs exfil) via Claude Code forked subagents + judge + contradiction surface |
 | Benchmarks published | **None** (their README: "no performance metrics disclosed") | DFIR-Metric + public leaderboard |
 | UI | Browser Examiner Portal | Claude Code terminal (primary); Next.js SPA + MCP Apps widgets (week-7 polish bonus, deferred) |

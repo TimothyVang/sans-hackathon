@@ -32,6 +32,7 @@ same SHA-256 (chain of custody) but a fresh case_id and fresh manifest.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import subprocess
@@ -181,7 +182,7 @@ def detect_evidence_type(path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Direct SSH for Vol3 plugins not in the typed MCP surface
+# Direct SSH helpers for SIFT-VM filesystem/probe operations
 # ---------------------------------------------------------------------------
 
 
@@ -201,21 +202,6 @@ def ssh_run(remote_command: str, timeout: int = 600) -> tuple[int, str, str]:
         timeout=timeout,
     )
     return r.returncode, r.stdout, r.stderr
-
-
-def vol_run(image_path: str, plugin: str) -> dict[str, Any] | list[Any] | None:
-    """Run a vol3 plugin, return parsed JSON or None on failure.
-    Used for plugins not in our typed MCP surface (psscan, etc.)."""
-    code, stdout, _ = ssh_run(
-        f"/home/sansforensics/.local/bin/vol " f"-f {image_path!r} -r json -q {plugin}",
-        timeout=900,
-    )
-    if code != 0 or not stdout.strip():
-        return None
-    try:
-        return json.loads(stdout)
-    except json.JSONDecodeError:
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +228,333 @@ def _load_common_procs() -> set[str]:
 
 COMMON_WIN_PROCS: set[str] = _load_common_procs()
 
+CONFIDENCE_RANK = {"HYPOTHESIS": 1, "INFERRED": 2, "CONFIRMED": 3}
+
+ATTACK_COVERAGE_TARGETS: tuple[dict[str, Any], ...] = (
+    {
+        "technique_id": "T1014",
+        "technique_name": "Rootkit",
+        "tactic": "Defense Evasion",
+        "artifact_classes": ("memory",),
+        "tool_names": ("vol_pslist", "vol_psscan", "vol_psxview"),
+        "analyst_value": "Cross-view process enumeration for DKOM/rootkit signals.",
+    },
+    {
+        "technique_id": "T1055",
+        "technique_name": "Process Injection",
+        "tactic": "Defense Evasion / Privilege Escalation",
+        "artifact_classes": ("memory",),
+        "tool_names": ("vol_malfind", "yara_scan"),
+        "analyst_value": "Suspicious VADs, injected code, and payload triage.",
+    },
+    {
+        "technique_id": "T1059.001",
+        "technique_name": "PowerShell",
+        "tactic": "Execution",
+        "artifact_classes": ("evtx", "disk/filesystem"),
+        "tool_names": ("evtx_query", "hayabusa_scan", "prefetch_parse"),
+        "analyst_value": "PowerShell process, script-block, and execution artifacts.",
+    },
+    {
+        "technique_id": "T1021.001",
+        "technique_name": "Remote Desktop Protocol",
+        "tactic": "Lateral Movement",
+        "artifact_classes": ("evtx",),
+        "tool_names": ("evtx_query", "hayabusa_scan"),
+        "analyst_value": "Logon events and remote-session evidence.",
+    },
+    {
+        "technique_id": "T1078",
+        "technique_name": "Valid Accounts",
+        "tactic": "Defense Evasion / Persistence / Privilege Escalation",
+        "artifact_classes": ("evtx", "disk/filesystem"),
+        "tool_names": ("evtx_query", "hayabusa_scan", "registry_query"),
+        "analyst_value": "Account logon, privilege use, and local-account artifacts.",
+    },
+    {
+        "technique_id": "T1003",
+        "technique_name": "OS Credential Dumping",
+        "tactic": "Credential Access",
+        "artifact_classes": ("memory", "evtx", "disk/filesystem"),
+        "tool_names": ("vol_malfind", "evtx_query", "hayabusa_scan", "yara_scan"),
+        "analyst_value": "LSASS access, dumping utilities, and credential-theft traces.",
+    },
+    {
+        "technique_id": "T1105",
+        "technique_name": "Ingress Tool Transfer",
+        "tactic": "Command and Control",
+        "artifact_classes": ("disk/filesystem", "network"),
+        "tool_names": ("mft_timeline", "usnjrnl_query", "yara_scan", "vel_collect"),
+        "analyst_value": "New files, download traces, and transfer telemetry.",
+    },
+    {
+        "technique_id": "T1041",
+        "technique_name": "Exfiltration Over C2 Channel",
+        "tactic": "Exfiltration",
+        "artifact_classes": ("network",),
+        "tool_names": ("vel_collect",),
+        "analyst_value": "Network telemetry needed to prove or reject exfiltration.",
+    },
+    {
+        "technique_id": "T1547.001",
+        "technique_name": "Registry Run Keys / Startup Folder",
+        "tactic": "Persistence / Privilege Escalation",
+        "artifact_classes": ("disk/filesystem",),
+        "tool_names": ("registry_query", "prefetch_parse", "mft_timeline"),
+        "analyst_value": "Autorun persistence and execution corroboration.",
+    },
+)
+
+
+def build_attack_coverage(
+    tool_calls: list[dict[str, Any]],
+    findings: list[dict[str, Any]],
+    case_completeness: dict[str, Any],
+) -> dict[str, Any]:
+    """Summarize ATT&CK-relevant coverage from actual typed-tool output."""
+    tools_run = {tc.get("tool") for tc in tool_calls if tc.get("tool")}
+    checks = case_completeness.get("checks", [])
+    available_classes = {c.get("artifact_class") for c in checks if c.get("available")}
+    touched_classes = {c.get("artifact_class") for c in checks if c.get("touched")}
+    finding_confidence: dict[str, str] = {}
+    for finding in findings:
+        technique = finding.get("mitre_technique")
+        confidence = finding.get("confidence", "HYPOTHESIS")
+        if not isinstance(technique, str) or not technique:
+            continue
+        current = finding_confidence.get(technique)
+        if CONFIDENCE_RANK.get(confidence, 0) > CONFIDENCE_RANK.get(current, 0):
+            finding_confidence[technique] = confidence
+
+    rows = []
+    for target in ATTACK_COVERAGE_TARGETS:
+        target_tools = set(target["tool_names"])
+        target_classes = set(target["artifact_classes"])
+        observed_tools = sorted(target_tools & tools_run)
+        observed_classes = sorted(target_classes & touched_classes)
+        technique = target["technique_id"]
+        confidence = finding_confidence.get(technique)
+        if confidence:
+            status = "finding"
+            gap = "finding-level evidence exists; preserve cited tool output"
+        elif observed_tools:
+            status = "covered_no_finding"
+            gap = "target-specific tools ran without a finding"
+        elif target_classes & available_classes:
+            status = "available_not_examined"
+            gap = "required evidence class was available but no target tool ran"
+        else:
+            status = "blind_spot"
+            missing = sorted(target_classes - touched_classes)
+            gap = "missing or untouched artifact classes: " + ", ".join(missing)
+        rows.append(
+            {
+                "technique_id": technique,
+                "technique_name": target["technique_name"],
+                "tactic": target["tactic"],
+                "status": status,
+                "finding_confidence": confidence,
+                "artifact_classes": list(target["artifact_classes"]),
+                "tools_expected": list(target["tool_names"]),
+                "tools_observed": observed_tools,
+                "artifact_classes_observed": observed_classes,
+                "gap": gap,
+                "analyst_value": target["analyst_value"],
+            }
+        )
+
+    covered = sum(
+        1 for row in rows if row["status"] in {"finding", "covered_no_finding"}
+    )
+    observed = sum(1 for row in rows if row["status"] == "finding")
+    blind = sum(1 for row in rows if row["status"] == "blind_spot")
+    return {
+        "summary": (
+            f"{covered}/{len(rows)} ATT&CK targets covered by typed-tool output; "
+            f"{observed} target(s) produced finding-level evidence; "
+            f"{blind} target(s) remain blind spots"
+        ),
+        "covered_target_count": covered,
+        "finding_target_count": observed,
+        "blind_spot_count": blind,
+        "observed_techniques": sorted(finding_confidence),
+        "targets": rows,
+    }
+
+
+def build_next_actions(
+    findings: list[dict[str, Any]],
+    attack_coverage: dict[str, Any],
+    case_completeness: dict[str, Any],
+    timeline: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return the top follow-up actions implied by findings and evidence gaps."""
+    actions: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    techniques = {
+        f.get("mitre_technique")
+        for f in findings
+        if isinstance(f.get("mitre_technique"), str)
+    }
+    checks_by_class = {
+        c.get("artifact_class"): c for c in case_completeness.get("checks", [])
+    }
+
+    def add(
+        priority: str,
+        action: str,
+        why: str,
+        based_on: list[str],
+        expected_evidence: str,
+    ) -> None:
+        if action in seen or len(actions) >= 5:
+            return
+        seen.add(action)
+        actions.append(
+            {
+                "priority": priority,
+                "action": action,
+                "why": why,
+                "based_on": based_on,
+                "expected_evidence": expected_evidence,
+            }
+        )
+
+    if "T1014" in techniques:
+        add(
+            "P1",
+            "Corroborate the DKOM/rootkit signal with process-view rows, driver metadata, and disk execution artifacts.",
+            "T1014 is a severe inferred technique; SOUL.md requires cross-artifact support before turning process hiding into an execution narrative.",
+            ["T1014"],
+            "vol_psxview rows, loaded-driver metadata, Prefetch/Registry/MFT artifacts",
+        )
+    if "T1055" in techniques:
+        add(
+            "P1",
+            "Dump, hash, and YARA-scan suspicious VADs reported by malfind.",
+            "Process injection is high-impact, but the injected bytes need payload identity and disk/process ancestry before escalation.",
+            ["T1055"],
+            "VAD dump hashes, YARA hits, process ancestry, backing files",
+        )
+
+    evtx = checks_by_class.get("evtx", {})
+    if not evtx.get("touched"):
+        add(
+            "P2",
+            "Collect Security, Sysmon, and PowerShell Operational EVTX and rerun EVTX/Hayabusa analysis.",
+            "Current findings lack event-log corroboration for logon, process creation, and PowerShell execution hypotheses.",
+            ["evtx_gap"],
+            "Security 4624/4625/4688, Sysmon 1/3/7/10/11, PowerShell 4103/4104",
+        )
+
+    disk = checks_by_class.get("disk/filesystem", {})
+    if not disk.get("touched"):
+        add(
+            "P2",
+            "Mount or collect disk artifacts and parse Prefetch, Registry, MFT, and USN Journal evidence.",
+            "Execution and persistence claims need disk-backed corroboration; memory-only observations are not enough for final execution claims.",
+            ["disk_gap"],
+            "Prefetch, Amcache/ShimCache, Run keys, services, scheduled tasks, MFT/USN entries",
+        )
+
+    network = checks_by_class.get("network", {})
+    if not network.get("touched"):
+        add(
+            "P3",
+            "Acquire DNS, proxy, firewall, NetFlow, or PCAP telemetry to test C2 and exfiltration hypotheses.",
+            "Network evidence is absent, so exfiltration and command-and-control coverage remains a blind spot.",
+            ["network_gap"],
+            "DNS queries, proxy URLs, firewall sessions, PCAP, Velociraptor network collection",
+        )
+
+    blind_spots = [
+        row.get("technique_id")
+        for row in attack_coverage.get("targets", [])
+        if row.get("status") == "blind_spot" and row.get("technique_id")
+    ]
+    if blind_spots:
+        add(
+            "P3",
+            "Close ATT&CK blind spots before making absence-of-evil claims.",
+            "The coverage matrix identifies target techniques with no supporting artifact class in this run.",
+            list(blind_spots[:5]),
+            "Additional evidence classes mapped in attack_coverage.targets[].artifact_classes",
+        )
+
+    if timeline:
+        add(
+            "P4",
+            "Pivot from the first and last normalized timeline events into adjacent artifact classes.",
+            "Temporal clustering often exposes execution chains that a single artifact class cannot prove alone.",
+            ["timeline"],
+            "timeline.csv plus adjacent EVTX, Prefetch, MFT, and network events",
+        )
+    else:
+        add(
+            "P4",
+            "Build a broader timeline with disk and event-log artifacts before closing the case.",
+            "No normalized timeline events were available from the supplied evidence.",
+            ["timeline_gap"],
+            "EVTX timestamps, process creation times, MFT/USN entries, Prefetch last-run times",
+        )
+
+    add(
+        "P4",
+        "Verify run.manifest.json with manifest_verify before sharing or archiving results.",
+        "The audit chain and Merkle root are the reproducibility boundary for judge and analyst review.",
+        ["custody"],
+        "run.manifest.json, audit.jsonl, verdict.json, timeline.csv",
+    )
+
+    fallbacks = [
+        (
+            "P5",
+            "Document unresolved assumptions and explicitly label unsupported claims as HYPOTHESIS.",
+            "The epistemic hierarchy prevents single-source observations from becoming overconfident conclusions.",
+            ["SOUL.md"],
+            "Analyst notes tied to tool_call_id values",
+        ),
+        (
+            "P5",
+            "Preserve the original evidence hash and keep all derived artifacts read-only.",
+            "Chain-of-custody value depends on the original observable remaining unchanged.",
+            ["case_open"],
+            "Original evidence SHA-256 and signed manifest",
+        ),
+    ]
+    for fallback in fallbacks:
+        add(*fallback)
+    return actions[:5]
+
+
+def write_timeline_csv(timeline: list[dict[str, Any]], path: Path) -> None:
+    fieldnames = [
+        "ts",
+        "source",
+        "artifact_class",
+        "description",
+        "tool_call_id",
+        "details_json",
+    ]
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for event in timeline:
+            writer.writerow(
+                {
+                    "ts": event.get("ts", ""),
+                    "source": event.get("source", ""),
+                    "artifact_class": event.get("artifact_class", ""),
+                    "description": event.get("description", ""),
+                    "tool_call_id": event.get("tool_call_id", ""),
+                    "details_json": json.dumps(
+                        event.get("details", {}),
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                }
+            )
+
 
 class Investigation:
     """Orchestrates the full automated investigation flow."""
@@ -263,6 +576,7 @@ class Investigation:
         self.verdict_path = f"{self.case_dir}/verdict.json"
         self.local_artifacts: dict[str, str] = {}
         self.tool_calls: list[dict[str, Any]] = []
+        self.timeline_events: list[dict[str, Any]] = []
         self.findings_pool_a: list[dict[str, Any]] = []
         self.findings_pool_b: list[dict[str, Any]] = []
         self.tcid_counter = 0
@@ -315,6 +629,106 @@ class Investigation:
         return hashlib.sha256(
             json.dumps(obj, separators=(",", ":"), sort_keys=True).encode("utf-8")
         ).hexdigest()
+
+    def _timeline_add(
+        self,
+        ts: str | None,
+        source: str,
+        artifact_class: str,
+        description: str,
+        tool_call_id: str,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        if not ts:
+            return
+        try:
+            datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return
+        self.timeline_events.append(
+            {
+                "ts": ts,
+                "source": source,
+                "artifact_class": artifact_class,
+                "description": description,
+                "tool_call_id": tool_call_id,
+                "details": details or {},
+            }
+        )
+
+    def _case_completeness(self) -> dict[str, Any]:
+        evidence_type = detect_evidence_type(self.evidence)
+        tools_run = {tc.get("tool") for tc in self.tool_calls}
+        checks = [
+            {
+                "artifact_class": "memory",
+                "available": evidence_type == "memory",
+                "touched": bool(
+                    tools_run
+                    & {"vol_pslist", "vol_psscan", "vol_psxview", "vol_malfind"}
+                ),
+                "tools": sorted(
+                    tools_run
+                    & {"vol_pslist", "vol_psscan", "vol_psxview", "vol_malfind"}
+                ),
+                "confidence_impact": "process and injection evidence available"
+                if evidence_type == "memory"
+                else "not a memory image; no live-process evidence",
+            },
+            {
+                "artifact_class": "evtx",
+                "available": evidence_type == "evtx",
+                "touched": "evtx_query" in tools_run,
+                "tools": sorted(tools_run & {"evtx_query", "hayabusa_scan"}),
+                "confidence_impact": "Windows event evidence available"
+                if evidence_type == "evtx"
+                else "no event log supplied in this single-evidence run",
+            },
+            {
+                "artifact_class": "disk/filesystem",
+                "available": evidence_type == "disk",
+                "touched": bool(
+                    tools_run
+                    & {
+                        "mft_timeline",
+                        "usnjrnl_query",
+                        "prefetch_parse",
+                        "registry_query",
+                    }
+                ),
+                "tools": sorted(
+                    tools_run
+                    & {
+                        "mft_timeline",
+                        "usnjrnl_query",
+                        "prefetch_parse",
+                        "registry_query",
+                    }
+                ),
+                "confidence_impact": "disk image registered; deep filesystem parsing requires mounted artifacts"
+                if evidence_type == "disk"
+                else "no disk image supplied; execution/persistence corroboration is limited",
+            },
+            {
+                "artifact_class": "network",
+                "available": False,
+                "touched": False,
+                "tools": [],
+                "confidence_impact": "no PCAP, firewall, DNS, or proxy logs supplied",
+            },
+        ]
+        touched = sum(1 for c in checks if c["touched"])
+        available = sum(1 for c in checks if c["available"])
+        return {
+            "evidence_type": evidence_type,
+            "available_classes": available,
+            "touched_classes": touched,
+            "checks": checks,
+            "summary": (
+                f"{touched}/{len(checks)} artifact classes touched; "
+                f"{available}/{len(checks)} directly available from supplied evidence"
+            ),
+        }
 
     # ------------------------------------------------------------------
     # Investigation phases
@@ -370,12 +784,24 @@ class Investigation:
             pslist = {"processes": [], "processes_seen": 0}
         ps = pslist.get("processes", [])
         ps_seen = pslist.get("processes_seen", 0)
-        tcid_pslist = self._record_tool(
+        self._record_tool(
             py,
             "vol_pslist",
             self._hash_obj(pslist),
             {"processes_returned": len(ps), "processes_seen": ps_seen},
         )
+        tcid_pslist = self.tool_calls[-1]["tool_call_id"]
+        for proc in ps[:500]:
+            name = proc.get("image_name") or proc.get("ImageFileName") or "unknown"
+            pid = proc.get("pid") or proc.get("PID")
+            self._timeline_add(
+                proc.get("create_time_iso") or proc.get("CreateTime"),
+                "vol_pslist",
+                "memory",
+                f"process start: {name} pid={pid}",
+                tcid_pslist,
+                {"pid": pid, "image_name": name},
+            )
         print(f"  vol_pslist: {len(ps)}/{ps_seen} processes")
 
         # Tool 2: vol_malfind — slowest of the vol_* plugins. On a 5+GB
@@ -403,17 +829,62 @@ class Investigation:
         )
         print(f"  vol_malfind: {len(injs)} injections")
 
-        # Cross-validation: psscan via direct SSH (not in MCP surface)
-        print("  vol windows.psscan (direct, for pslist cross-check)...")
-        psscan = vol_run(self.evidence, "windows.psscan")
-        psscan_count = len(psscan) if isinstance(psscan, list) else 0
+        # Tool 3: vol_psscan — cross-validates pslist for DKOM.
+        psscan_out = rust.call_tool(
+            "vol_psscan",
+            {
+                "case_id": self.handle["id"],
+                "memory_path": self.evidence,
+                "limit": 500,
+            },
+        )
+        if "_error" in psscan_out:
+            print(f"  vol_psscan error: {psscan_out['_error']['message'][:80]}")
+            psscan_out = {"processes": [], "processes_seen": 0}
+        psscan = psscan_out.get("processes", [])
+        psscan_count = psscan_out.get("processes_seen", len(psscan))
         tcid_psscan = self._record_tool(
             py,
-            "vol_psscan_direct",
-            self._hash_obj(psscan or []),
+            "vol_psscan",
+            self._hash_obj(psscan_out),
             {"processes_seen": psscan_count},
         )
+        for proc in psscan[:500]:
+            name = proc.get("image_name") or proc.get("ImageFileName") or "unknown"
+            pid = proc.get("pid") or proc.get("PID")
+            self._timeline_add(
+                proc.get("create_time_iso") or proc.get("CreateTime"),
+                "vol_psscan",
+                "memory",
+                f"recovered process object: {name} pid={pid}",
+                tcid_psscan,
+                {"pid": pid, "image_name": name},
+            )
         print(f"  vol_psscan: {psscan_count} processes")
+
+        # Tool 4: psxview — only useful when process views disagree.
+        tcid_psxview = tcid_psscan
+        psxview = []
+        if ps_seen != psscan_count:
+            psxview_out = rust.call_tool(
+                "vol_psxview",
+                {
+                    "case_id": self.handle["id"],
+                    "memory_path": self.evidence,
+                    "limit": 500,
+                },
+            )
+            if "_error" in psxview_out:
+                print(f"  vol_psxview error: {psxview_out['_error']['message'][:80]}")
+                psxview_out = {"processes": [], "processes_seen": 0}
+            psxview = psxview_out.get("processes", [])
+            tcid_psxview = self._record_tool(
+                py,
+                "vol_psxview",
+                self._hash_obj(psxview_out),
+                {"processes_seen": psxview_out.get("processes_seen", len(psxview))},
+            )
+            print(f"  vol_psxview: {len(psxview)} rows")
 
         # Synthesize findings
         # Finding 1 — pslist=0 + psscan>0 = DKOM signal
@@ -432,7 +903,7 @@ class Investigation:
                 {
                     "case_id": self.handle["id"],
                     "finding_id": "f-A-dkom",
-                    "tool_call_id": tcid_pslist,
+                    "tool_call_id": tcid_psxview,
                     "artifact_path": self.evidence,
                     "description": (
                         f"Process linked-list returns 0 processes via vol_pslist "
@@ -486,11 +957,14 @@ class Investigation:
         uncommon = []
         if isinstance(psscan, list):
             for p in psscan:
-                name = (p.get("ImageFileName") or "").lower()
+                name = (p.get("image_name") or p.get("ImageFileName") or "").lower()
                 if name and name not in self.COMMON_WIN_PROCS:
                     uncommon.append(p)
         if uncommon:
-            sample = ", ".join(p["ImageFileName"] for p in uncommon[:5])
+            sample = ", ".join(
+                (p.get("image_name") or p.get("ImageFileName") or "?")
+                for p in uncommon[:5]
+            )
             self.findings_pool_b.append(
                 {
                     "case_id": self.handle["id"],
@@ -511,6 +985,9 @@ class Investigation:
         # Save psscan for the report
         self.local_artifacts["psscan_json"] = json.dumps(
             psscan or [], separators=(",", ":")
+        )
+        self.local_artifacts["psxview_json"] = json.dumps(
+            psxview or [], separators=(",", ":")
         )
 
     def investigate_evtx(self, rust: SshMcpClient, py: SshMcpClient) -> None:
@@ -535,6 +1012,17 @@ class Investigation:
             {"row_count": len(rows), "records_seen": seen, "parse_errors": pe},
         )
         print(f"  evtx_query: {len(rows)}/{seen} rows, {pe} parse errors")
+        for row in rows[:500]:
+            event_id = row.get("event_id")
+            record_id = row.get("record_id")
+            self._timeline_add(
+                row.get("ts") or row.get("timestamp") or row.get("timestamp_iso"),
+                "evtx_query",
+                "evtx",
+                f"event id {event_id} record {record_id}",
+                tcid,
+                {"event_id": event_id, "record_id": record_id},
+            )
 
         # EID histogram for finding synthesis
         from collections import Counter
@@ -684,8 +1172,8 @@ class Investigation:
         artifact_class_for_tool = {
             "vol_pslist": "memory",
             "vol_psscan": "memory",
+            "vol_psxview": "memory",
             "vol_malfind": "memory",
-            "vol_psscan_direct": "memory",
             "evtx_query": "evtx",
             "hayabusa_scan": "evtx",
             "mft_timeline": "mft",
@@ -841,6 +1329,14 @@ class Investigation:
         kept: int,
         downgraded: int,
     ) -> str:
+        timeline = sorted(self.timeline_events, key=lambda e: e["ts"])
+        case_completeness = self._case_completeness()
+        attack_coverage = build_attack_coverage(
+            self.tool_calls, merged, case_completeness
+        )
+        next_actions = build_next_actions(
+            merged, attack_coverage, case_completeness, timeline
+        )
         verdict_obj = {
             "case_id": self.handle["id"],
             "run_id": self.run_id,
@@ -870,6 +1366,18 @@ class Investigation:
                 "soul_md_downgraded": downgraded,
             },
             "findings": merged,
+            "case_completeness": case_completeness,
+            "attack_coverage": attack_coverage,
+            "next_actions": next_actions,
+            "timeline_summary": {
+                "event_count": len(timeline),
+                "first_ts": timeline[0]["ts"] if timeline else None,
+                "last_ts": timeline[-1]["ts"] if timeline else None,
+                "artifact_classes": sorted(
+                    {e["artifact_class"] for e in timeline if e.get("artifact_class")}
+                ),
+                "exports": ["timeline.json", "timeline.csv"],
+            },
             "cryptographic_attestation": {
                 "merkle_root_hex": mf["merkle_root_hex"],
                 "audit_log_final_hash": mf["audit_log_final_hash"],
@@ -932,6 +1440,15 @@ class Investigation:
             (local_dir / "psscan.json").write_text(
                 self.local_artifacts["psscan_json"], encoding="utf-8"
             )
+        if "psxview_json" in self.local_artifacts:
+            (local_dir / "psxview.json").write_text(
+                self.local_artifacts["psxview_json"], encoding="utf-8"
+            )
+        timeline = sorted(self.timeline_events, key=lambda e: e["ts"])
+        (local_dir / "timeline.json").write_text(
+            json.dumps(timeline, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        write_timeline_csv(timeline, local_dir / "timeline.csv")
         return local_dir
 
     # ------------------------------------------------------------------

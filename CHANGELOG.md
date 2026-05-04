@@ -48,12 +48,23 @@ once the first `v0.x` is cut on the `v-submit` tag.
 
 ### Added — automation surface
 
+- **Case completeness + unified timeline output.** `find-evil-auto`
+  now writes a `case_completeness` matrix and `timeline_summary` into
+  `verdict.json`, persists normalized timeline events to
+  `timeline.json`, and renders both into `REPORT.md` / PDF. This gives
+  analysts a quick view of what evidence classes were available,
+  which were touched, and how missing artifacts affect confidence.
+- **ATT&CK coverage, timeline CSV, and next analyst actions.**
+  `find-evil-auto` now adds an `attack_coverage` matrix and
+  `next_actions` queue to `verdict.json`, writes analyst-friendly
+  `timeline.csv` beside `timeline.json`, and renders the coverage and
+  next-action tables into `REPORT.md` / PDF.
 - **`scripts/find-evil-auto`** Tesla-mode single-command orchestrator
   (commit `4b38d27`). Detects evidence type, spawns both MCP servers
   inside the SIFT VM via SSH stdio, runs the per-type playbook,
   synthesizes Pool A/B Findings, runs the full ACH stack
   (detect_contradictions → judge_findings → correlate_findings →
-  judge_selfscore → manifest_finalize → ots_stamp), writes
+  judge_selfscore → manifest_finalize), writes
   `verdict.json` + signed manifest + audit chain + PDF report.
   No interactive Claude Code session required.
 - **`scripts/fleet_investigate.py` + `scripts/fleet_correlate.py` +
@@ -71,6 +82,11 @@ once the first `v0.x` is cut on the `v-submit` tag.
   walker — `pslist=0` + `psscan>0` is the textbook MITRE T1014
   Rootkit signature. Spec #2 §6 enumerated 11; this brings the
   shipped count to 12.
+- **13th Rust MCP tool: `vol_psxview`**. Wraps Volatility 3's
+  `windows.psxview` for cross-view process enumeration after a
+  `vol_pslist` / `vol_psscan` divergence. This closes the SRL-2018
+  DC report's DKOM corroboration gap and brings the shipped MCP
+  surface to 24 tools (13 Rust + 11 Python).
 - **`scripts/install.sh`** (commit `291828f`). Pre-flight + build
   script: detects three Claude credential modes per Amendment A1
   §3.2 (`CLAUDE_CODE_OAUTH_TOKEN` / interactive `~/.claude/` /

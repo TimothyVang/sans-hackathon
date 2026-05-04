@@ -308,6 +308,12 @@ def fig_findings_table(findings: list[dict[str, Any]], out: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def md_cell(value: Any) -> str:
+    if isinstance(value, list):
+        value = ", ".join(str(v) for v in value)
+    return str(value or "").replace("\n", " ").replace("|", "\\|")
+
+
 def write_markdown(
     case_dir: Path,
     manifest: dict[str, Any],
@@ -319,6 +325,11 @@ def write_markdown(
     verdict: str,
     has_psscan: bool,
     audit: list[dict[str, Any]] | None = None,
+    completeness: dict[str, Any] | None = None,
+    attack_coverage: dict[str, Any] | None = None,
+    next_actions: list[dict[str, Any]] | None = None,
+    timeline: list[dict[str, Any]] | None = None,
+    timeline_csv_exists: bool = False,
 ) -> Path:
     md = case_dir / "REPORT.md"
     fa = manifest["audit_log_final_hash"]
@@ -376,6 +387,105 @@ def write_markdown(
             "![Process creation timeline](figures/psscan_timeline.png)\n"
         )
 
+    completeness_section = ""
+    if completeness:
+        rows = [
+            "| Artifact Class | Available | Touched | Tools | Confidence Impact |",
+            "|---|:---:|:---:|---|---|",
+        ]
+        for check in completeness.get("checks", []):
+            rows.append(
+                "| {artifact_class} | {available} | {touched} | `{tools}` | {impact} |".format(
+                    artifact_class=check.get("artifact_class", "?"),
+                    available="yes" if check.get("available") else "no",
+                    touched="yes" if check.get("touched") else "no",
+                    tools=", ".join(check.get("tools", [])) or "none",
+                    impact=check.get("confidence_impact", ""),
+                )
+            )
+        completeness_section = (
+            "\n## Case Completeness\n\n"
+            f"{completeness.get('summary', '')}\n\n" + "\n".join(rows) + "\n\n"
+        )
+
+    attack_section = ""
+    if attack_coverage:
+        rows = [
+            "| Technique | Tactic | Status | Tools Observed | Gap / Analyst Value |",
+            "|---|---|---|---|---|",
+        ]
+        status_label = {
+            "finding": "finding",
+            "covered_no_finding": "covered, no finding",
+            "available_not_examined": "available, not examined",
+            "blind_spot": "blind spot",
+        }
+        for row in attack_coverage.get("targets", []):
+            technique = (
+                f"{row.get('technique_id', '?')} "
+                f"{row.get('technique_name', '')}".strip()
+            )
+            if row.get("finding_confidence"):
+                status = (
+                    f"{status_label.get(row.get('status'), row.get('status'))} "
+                    f"({row.get('finding_confidence')})"
+                )
+            else:
+                status = status_label.get(row.get("status"), row.get("status", "?"))
+            tools = ", ".join(row.get("tools_observed") or []) or "none"
+            gap = row.get("gap") or row.get("analyst_value", "")
+            rows.append(
+                f"| {md_cell(technique)} | {md_cell(row.get('tactic', ''))} | "
+                f"{md_cell(status)} | `{md_cell(tools)}` | {md_cell(gap)} |"
+            )
+        attack_section = (
+            "\n## ATT&CK Coverage\n\n"
+            f"{attack_coverage.get('summary', '')}\n\n" + "\n".join(rows) + "\n\n"
+        )
+
+    actions_section = ""
+    if next_actions:
+        rows = [
+            "| Priority | Action | Why | Based On | Expected Evidence |",
+            "|---|---|---|---|---|",
+        ]
+        for item in next_actions[:5]:
+            rows.append(
+                f"| {md_cell(item.get('priority', ''))} | "
+                f"{md_cell(item.get('action', ''))} | "
+                f"{md_cell(item.get('why', ''))} | "
+                f"{md_cell(item.get('based_on', []))} | "
+                f"{md_cell(item.get('expected_evidence', ''))} |"
+            )
+        actions_section = "\n## Next 5 Analyst Actions\n\n" + "\n".join(rows) + "\n\n"
+
+    timeline_section = ""
+    if timeline:
+        timeline_exports = "`timeline.json`"
+        if timeline_csv_exists:
+            timeline_exports += " and analyst-friendly `timeline.csv`"
+        rows = [
+            "| UTC Time | Source | Artifact Class | Description | Tool Call |",
+            "|---|---|---|---|---|",
+        ]
+        for event in timeline[:25]:
+            rows.append(
+                "| {ts} | `{source}` | {artifact_class} | {desc} | `{tcid}` |".format(
+                    ts=event.get("ts", "?"),
+                    source=event.get("source", "?"),
+                    artifact_class=event.get("artifact_class", "?"),
+                    desc=event.get("description", "")[:120],
+                    tcid=event.get("tool_call_id", "?"),
+                )
+            )
+        timeline_section = (
+            "\n## Unified Timeline\n\n"
+            f"Normalized timeline events: {len(timeline)}. "
+            f"First 25 events shown below; full data is in {timeline_exports}.\n\n"
+            + "\n".join(rows)
+            + "\n\n"
+        )
+
     md.write_text(
         f"""# Find Evil! — Automated Investigation Report
 
@@ -409,6 +519,14 @@ def write_markdown(
 ## Findings overview
 
 ![Findings table](figures/findings_table.png)
+
+{actions_section}
+
+{completeness_section}
+
+{attack_section}
+
+{timeline_section}
 
 ## Findings detail
 
@@ -595,6 +713,25 @@ def render_report(
         except json.JSONDecodeError:
             pass
 
+    verdict_obj = {}
+    verdict_path = case_dir / "verdict.json"
+    if verdict_path.exists():
+        try:
+            verdict_obj = json.loads(verdict_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            verdict_obj = {}
+
+    timeline = []
+    timeline_path = case_dir / "timeline.json"
+    if timeline_path.exists():
+        try:
+            loaded_timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
+            if isinstance(loaded_timeline, list):
+                timeline = loaded_timeline
+        except json.JSONDecodeError:
+            timeline = []
+    timeline_csv_exists = (case_dir / "timeline.csv").exists()
+
     md = write_markdown(
         case_dir,
         manifest,
@@ -606,6 +743,11 @@ def render_report(
         verdict,
         has_psscan,
         audit=audit,
+        completeness=verdict_obj.get("case_completeness", {}),
+        attack_coverage=verdict_obj.get("attack_coverage", {}),
+        next_actions=verdict_obj.get("next_actions", []),
+        timeline=timeline,
+        timeline_csv_exists=timeline_csv_exists,
     )
     html, pdf = render_html_pdf(md)
     return pdf if pdf else html

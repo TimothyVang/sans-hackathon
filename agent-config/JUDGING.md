@@ -46,8 +46,8 @@ non-negotiable + SOUL.md hard rule). One deep persistence chain across
 > security boundaries are enforced and whether they were tested for
 > bypass.
 
-**Demonstrate via:** the typed Rust MCP tool surface (Spec #2 §6, 11
-tools). No `execute_shell`, no path traversal, every tool serializes
+**Demonstrate via:** the typed Rust MCP tool surface (13 shipped
+tools, including `vol_psscan` and `vol_psxview` for DKOM cross-validation). No `execute_shell`, no path traversal, every tool serializes
 typed Input/Output. Architectural enforcement points:
 - Read-only evidence opener (libewf in `case_open`, no mutation path).
 - SHA-256 verification of image at open and at every tool re-execution.

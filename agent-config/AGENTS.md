@@ -33,7 +33,7 @@ the typed MCP surface to look at:
 - Scheduled tasks (`evtx_query` event ID 4698, `registry_query`)
 - WMI subscriptions, IFEO debugger hijacks (`registry_query`)
 - LSASS-resident modules, driver tampering (`vol_pslist` +
-  `vol_psscan` + `vol_malfind`)
+  `vol_psscan` + `vol_psxview` + `vol_malfind`)
 - Prefetch + Amcache for execution provenance (`prefetch_parse`)
 
 Pool A's bias means it weights persistence-shaped evidence higher
@@ -128,7 +128,7 @@ Single-source claims auto-downgrade. Outcome is `kept` or
   staying), Pool B reads it as exfil-precursor (RDP from a host
   that just downloaded a tool).
 - **Live-process questions** → both pools run `vol_pslist` +
-  `vol_psscan` + `vol_malfind`. Pool A flags processes by
+  `vol_psscan` + `vol_psxview` + `vol_malfind`. Pool A flags processes by
   persistence path (run from `Temp`, lives in `services.exe`
   child tree); Pool B flags them by network behavior (cmdline
   contains internet IPs, has open sockets).

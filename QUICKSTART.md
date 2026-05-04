@@ -46,7 +46,7 @@ claude
 bash scripts/find-evil-sift
 ```
 
-`.mcp.json` (or `.mcp.json.sift`, swapped automatically) tells Claude Code to spawn both MCP servers — `findevil-mcp` (Rust, 12 typed DFIR tools) and `findevil-agent-mcp` (Python, 11 typed crypto/ACH/memory/ACP tools).
+`.mcp.json` (or `.mcp.json.sift`, swapped automatically) tells Claude Code to spawn both MCP servers — `findevil-mcp` (Rust, 13 typed DFIR tools) and `findevil-agent-mcp` (Python, 11 typed crypto/ACH/memory/ACP tools).
 
 In the session, prompt:
 
@@ -79,8 +79,8 @@ What it does in one command (no interactive prompts):
 2. Opens both MCP servers inside the SIFT VM via SSH stdio
 3. case_open → tool sequence per type → audit chain → judge → correlator → manifest_finalize
 4. Synthesizes Pool A (persistence-biased) and Pool B (exfil-biased) findings deterministically from tool outputs
-5. Writes `verdict.json` with the verdict (`SUSPICIOUS` / `NO_EVIL` / `INDETERMINATE` — see [`docs/verdict-semantics.md`](docs/verdict-semantics.md))
-6. Generates a fully-templated PDF investigation report (figures + findings + chain-of-custody attestation)
+5. Writes `verdict.json` with the verdict (`SUSPICIOUS` / `NO_EVIL` / `INDETERMINATE` — see [`docs/verdict-semantics.md`](docs/verdict-semantics.md)), case completeness, ATT&CK coverage, and next analyst actions
+6. Generates a fully-templated PDF investigation report (figures + findings + ATT&CK coverage + chain-of-custody attestation)
 
 Output (on host):
 ```
@@ -88,6 +88,8 @@ tmp/auto-runs/auto-<uuid>/
 ├── audit.jsonl
 ├── run.manifest.json
 ├── verdict.json
+├── timeline.json
+├── timeline.csv
 ├── REPORT.md / .html / .pdf
 └── figures/
 ```

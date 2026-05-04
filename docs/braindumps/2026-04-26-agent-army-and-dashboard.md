@@ -18,7 +18,7 @@
 
 > "Greenfield" interpretation in this doc: the *orchestration shape* (who talks to whom,
 > via what protocol, in what order, with what memory) is up for fresh design. The existing
-> primitives — `findevil-mcp` (Rust, 12 DFIR tools), `findevil-agent-mcp` (Python, 10
+> primitives — `findevil-mcp` (Rust, 13 DFIR tools), `findevil-agent-mcp` (Python, 11
 > crypto/ACH tools), the audit JSONL hash chain, `agent-config/` role definitions — are
 > the **foundation**, not the shackle. Flagged as a decision in §6 below.
 
@@ -97,7 +97,7 @@ The "agent army" largely exists — it just isn't dressed in sprites yet:
   orchestrator. Already a harness, not a `/loop`.
 - **`scripts/autonomous-loop.py`** — queue-driven `claude -p` spawner. Lightweight non-`/loop`
   runner already settled (memory: `feedback_use_harness_not_loop.md`).
-- **`findevil-mcp`** (Rust, 12 typed DFIR tools) + **`findevil-agent-mcp`** (Python, 10
+- **`findevil-mcp`** (Rust, 13 typed DFIR tools) + **`findevil-agent-mcp`** (Python, 11
   crypto/ACH tools). Auto-spawned via `.mcp.json`.
 - **`docs/false-positives.md`** — three FP-prevention layers + four operational habits, already
   documented (CONFIRMED > INFERRED > HYPOTHESIS hierarchy, ACH pool-vs-pool, ≥2 artifact rule).

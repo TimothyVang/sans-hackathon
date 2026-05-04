@@ -59,10 +59,11 @@ Memory tells you what was *running*, not just what was *installed*.
 | 1 | `case_open` | SHA-256 + case_id | both |
 | 2 | `vol_pslist` | Process list from `PsActiveProcessHead` (active-list walk) | both |
 | 3 | `vol_psscan` | EPROCESS pool-memory signature scan — finds blocks unlinked from the active list | both |
-| 4 | `vol_malfind` | RWX VADs + MZ headers in unexpected places (code injection) | both |
-| 5 | `yara_scan` | YARA over the raw memory image — catches in-memory-only payloads | B |
+| 4 | `vol_psxview` | Cross-view process enumeration — identifies which process views miss recovered processes | both |
+| 5 | `vol_malfind` | RWX VADs + MZ headers in unexpected places (code injection) | both |
+| 6 | `yara_scan` | YARA over the raw memory image — catches in-memory-only payloads | B |
 
-**The `vol_pslist` + `vol_psscan` pair is mandatory, not optional.** pslist walks the kernel's active list; psscan signature-scans EPROCESS pool memory for blocks unlinked from that list. **Divergence between the two outputs IS the forensic finding** — `pslist=0` + `psscan>0` is the textbook MITRE ATT&CK T1014 (Rootkit) DKOM signature. Always emit a `vol_psscan` call after `vol_pslist`, even if pslist returned a healthy count, so the audit chain has both for cross-validation.
+**The `vol_pslist` + `vol_psscan` pair is mandatory, not optional.** pslist walks the kernel's active list; psscan signature-scans EPROCESS pool memory for blocks unlinked from that list. **Divergence between the two outputs IS the forensic finding** — `pslist=0` + `psscan>0` is the textbook MITRE ATT&CK T1014 (Rootkit) DKOM signature. Always emit a `vol_psscan` call after `vol_pslist`, even if pslist returned a healthy count, so the audit chain has both for cross-validation. When the pair diverges, run `vol_psxview` next to identify which process-enumeration views miss each recovered PID.
 
 After memory: if a disk image for the same host is available, **cross-reference** PIDs from `vol_pslist` against `prefetch_parse` run lists. A process running in memory with no Prefetch entry is a strong signal of an unprefetched (likely manual or scripted) execution — surface as a Finding.
 
@@ -135,5 +136,5 @@ Even in unattended mode, halt and surface to the analyst when:
 ## What this playbook is NOT
 
 - **Not a script.** The supervisor is the agent; this file is its prior. If a case looks weird, deviate.
-- **Not exhaustive of DFIR.** It covers what the 12 typed Rust MCP tools can reach. If the case needs Plaso/log2timeline, Sleuthkit's `fls`/`icat`, Bulk Extractor, network-capture analysis, or browser-history extraction, those are out of our automation scope today; surface that as a gap to the analyst.
+- **Not exhaustive of DFIR.** It covers what the 13 typed Rust MCP tools can reach. If the case needs Plaso/log2timeline, Sleuthkit's `fls`/`icat`, Bulk Extractor, network-capture analysis, or browser-history extraction, those are out of our automation scope today; surface that as a gap to the analyst.
 - **Not a substitute for SOUL.md or AGENTS.md.** Read those first; this file is the operational layer that sits below the epistemic and role-definition layers.
