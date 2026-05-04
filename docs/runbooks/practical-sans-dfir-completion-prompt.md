@@ -4,7 +4,7 @@ Date: 2026-05-04
 
 Use this prompt in a coding-agent session to finish Find Evil! as a practical SANS DFIR investigation tool. It intentionally mirrors the rigor of a large milestone execution prompt: parallel discovery, vertical slices, real validation, a measurable definition of done, and a final evidence table.
 
-This prompt is explicitly not an attestation or ledger milestone. Preserve existing audit and run-metadata behavior because the code already depends on it, but do not add, redesign, or polish evidence-signing or external timestamping features. A5-removed timestamping tools stay removed.
+This prompt is explicitly not an attestation or ledger milestone. Treat existing audit logs and run manifests as reproducibility metadata that current code may already emit; do not add, redesign, or polish evidence-signing or external timestamping features. A5-removed timestamping tools stay removed.
 
 ## Copy/Paste Prompt
 
@@ -24,7 +24,7 @@ Current architecture constraints:
 
 - Claude Code is the primary interface under Amendment A2.
 - Rust MCP server exposes typed DFIR tools only.
-- Python MCP server exposes support tools for audit, ACH, memory, and handoff.
+- Python MCP server exposes support tools for ACH, memory, handoff, and existing audit/run metadata.
 - Evidence is read-only.
 - AGPL/GPL DFIR tools remain subprocess-only.
 - No execute_shell MCP tool.
@@ -51,15 +51,19 @@ Reference inputs for this prompt: [SANS SIFT Workstation](https://www.sans.org/t
 - Velociraptor is the collection baseline: when supplied as collections or zip output, treat it as endpoint state evidence and connect collected artifacts to timeline and ATT&CK coverage instead of ignoring it.
 - Plaso/log2timeline and Timesketch are timeline baselines: practical DFIR output should produce normalized, importable timelines that analysts can pivot, tag, annotate, and correlate across artifact classes.
 
-Current known blockers to verify or fix before 100 percent:
+Fix-first order:
 
-- Benign EVTX must not produce SUSPICIOUS solely because records parsed successfully.
-- Correlator kept/downgraded results must affect final findings and verdict input, not only summary counters.
-- vol_psxview should trigger on pslist/psscan PID or process-set divergence, not only count divergence.
-- agent-config/TOOLS.md argument names must match actual MCP schemas.
+1. Benign EVTX must not become SUSPICIOUS solely because records parsed successfully.
+2. Correlator downgrade/keep results must affect final findings and verdict input, not only summary counters.
+3. vol_psxview must trigger on pslist/psscan PID or process-set divergence, not count only.
+4. agent-config/TOOLS.md argument names must match actual MCP schemas.
+5. Report caveats must prevent overclaiming Sigma hits, memory-only execution, missing disk/network evidence, and covered_no_finding coverage.
+
+Additional blockers to verify before 100 percent:
+
 - docs/false-positives.md must not say psxview is absent from MCP.
 - docs/verdict-semantics.md must not describe multi-host recurrence as two artifact classes.
-- Report reproducibility/tamper examples must not mutate the original manifest in place.
+- If existing reproducibility/tamper examples remain, they must not mutate original outputs in place; copy outputs before any tamper demonstration.
 - Untracked files must be reviewed before commit; private onboarding or team-only notes should not ship accidentally.
 
 Non-negotiable outcome:
@@ -94,7 +98,9 @@ Operators must be able to inspect, validate, and continue a case across:
 - false-positive prevention guidance
 - reproducible validation commands
 
-Do not claim 100 percent complete unless implementation, docs, tests, validation, and final review below are done.
+For this prompt, 100 percent does not mean every disk artifact parser is fully automated in headless mode. It means memory and EVTX are automated and tested; disk evidence is either handled through existing typed tools when mounted/extracted artifacts are available, or reported honestly as case_open-only with concrete read-only SIFT next actions for deep disk review. Full disk deep dive may remain an interactive/SIFT workflow, but the report must make that boundary explicit.
+
+Do not claim 100 percent complete unless implementation, docs, tests, validation, final review, and the disk-scope rule above are satisfied.
 
 Execution mode:
 
@@ -196,7 +202,7 @@ Quality bar:
 - Keep new names and new tools to the minimum needed.
 - Write tests against behavior, not implementation details.
 - Do not add a new MCP tool unless existing typed tools cannot cover the evidence need.
-- Do not expand the attestation or reproducibility story.
+- Do not expand attestation. Keep reproducibility practical: commands run, output paths, and existing run metadata.
 - Treat generated reports, timelines, and evidence outputs as local artifacts unless explicitly intended for docs.
 - Keep production runtime independent from test-only fixtures.
 
@@ -377,7 +383,7 @@ Anti-overbuild constraints:
 
 Preferred architecture for this milestone:
 
-- Source of truth: typed MCP tool outputs and audit records already produced by the investigation path.
+- Source of truth: typed MCP tool outputs and current run metadata already produced by the investigation path.
 - Memory evidence: vol_pslist, vol_psscan, vol_psxview, vol_malfind.
 - EVTX evidence: evtx_query and hayabusa_scan where available.
 - Disk evidence: mft_timeline, usnjrnl_query, registry_query, prefetch_parse, yara_scan where available; otherwise explicit current-limit language.
@@ -442,8 +448,8 @@ Verdict fields:
   timeline_summary
 
 Host artifacts:
-  audit.jsonl
-  run.manifest.json
+  audit.jsonl if emitted by the existing path
+  run.manifest.json if emitted by the existing path
   verdict.json
   timeline.json
   timeline.csv
@@ -537,6 +543,7 @@ DFIR red lines:
 - Never turn a process name anomaly into malware attribution without corroboration.
 - Never call DKOM/T1014 CONFIRMED solely from one process view.
 - Never claim exfiltration without network or equivalent corroborating evidence.
+- Never describe covered_no_finding as clean, not malicious, disproven, cleared, or absence of the technique; it only means available tools ran and found no qualifying evidence under current coverage.
 - Never expose raw secrets, credentials, API keys, tokens, or evidence-local sensitive data in docs.
 
 Task 1: Tool Surface and Drift Cleanup
@@ -692,7 +699,7 @@ Checklist:
 
 - Memory, EVTX, disk/filesystem, and network evidence classes are represented.
 - ATT&CK status distinguishes finding, covered_no_finding, available_not_examined, and blind_spot.
-- covered_no_finding does not mean a technique is disproven.
+- covered_no_finding is explained as limited coverage, never as not malicious, clean, cleared, disproven, or absence of the technique.
 - Next actions are capped and prioritized.
 
 Deliverables:
@@ -753,7 +760,7 @@ Implement:
 - Render Unified Timeline with timeline.csv reference.
 - Render Findings detail with confidence, pool, MITRE, tool_call_id, and artifact path.
 - Add false-positive caveats where relevant, either in report text or linked docs.
-- Make report reproducibility examples non-destructive: copy files before tamper experiments.
+- If existing report reproducibility/tamper examples remain, make them non-destructive: copy files before tamper experiments.
 
 Checklist:
 

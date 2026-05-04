@@ -314,6 +314,37 @@ def md_cell(value: Any) -> str:
     return str(value or "").replace("\n", " ").replace("|", "\\|")
 
 
+def build_false_positive_caveats(
+    merged: list[dict[str, Any]],
+    completeness: dict[str, Any] | None,
+    attack_coverage: dict[str, Any] | None,
+) -> list[str]:
+    caveats = [
+        "Sigma/Hayabusa rule hits, if present, are triage leads that require raw EVTX review, tuning, and corroboration before compromise claims.",
+    ]
+    targets = attack_coverage.get("targets", []) if attack_coverage else []
+    if any(row.get("status") == "covered_no_finding" for row in targets):
+        caveats.append(
+            "ATT&CK `covered_no_finding` means scoped tools ran without qualifying evidence; it does not mean clean, cleared, disproven, or absence of the technique."
+        )
+    checks = {
+        c.get("artifact_class"): c for c in (completeness or {}).get("checks", [])
+    }
+    if not checks.get("network", {}).get("touched"):
+        caveats.append(
+            "Network telemetry was not touched in this run, so exfiltration and C2 are neither proven nor disproven."
+        )
+    if not checks.get("disk/filesystem", {}).get("touched"):
+        caveats.append(
+            "Disk/filesystem artifacts were not deeply parsed in this run; memory-only or EVTX-only observations do not prove execution."
+        )
+    if any(f.get("confidence") == "HYPOTHESIS" for f in merged):
+        caveats.append(
+            "HYPOTHESIS findings are single-source or speculative leads and should not drive response actions without further artifact corroboration."
+        )
+    return caveats
+
+
 def write_markdown(
     case_dir: Path,
     manifest: dict[str, Any],
@@ -330,6 +361,7 @@ def write_markdown(
     next_actions: list[dict[str, Any]] | None = None,
     timeline: list[dict[str, Any]] | None = None,
     timeline_csv_exists: bool = False,
+    evtx_summary: dict[str, Any] | None = None,
 ) -> Path:
     md = case_dir / "REPORT.md"
     fa = manifest["audit_log_final_hash"]
@@ -416,7 +448,7 @@ def write_markdown(
         ]
         status_label = {
             "finding": "finding",
-            "covered_no_finding": "covered, no finding",
+            "covered_no_finding": "covered, no finding (limited)",
             "available_not_examined": "available, not examined",
             "blind_spot": "blind spot",
         }
@@ -441,6 +473,26 @@ def write_markdown(
         attack_section = (
             "\n## ATT&CK Coverage\n\n"
             f"{attack_coverage.get('summary', '')}\n\n" + "\n".join(rows) + "\n\n"
+        )
+
+    evtx_section = ""
+    if evtx_summary:
+        top = (
+            ", ".join(
+                f"EID {row.get('event_id')} x{row.get('count')}"
+                for row in evtx_summary.get("top_event_ids", [])[:5]
+            )
+            or "none"
+        )
+        channels = ", ".join(evtx_summary.get("channels", [])) or "none"
+        evtx_section = (
+            "\n## EVTX Summary\n\n"
+            f"* Records seen: {evtx_summary.get('records_seen', 0)}\n"
+            f"* Rows returned: {evtx_summary.get('row_count', 0)}\n"
+            f"* Parse errors: {evtx_summary.get('parse_errors', 0)}\n"
+            f"* Channels: {channels}\n"
+            f"* Top Event IDs: {top}\n"
+            f"* Verdict contribution: {evtx_summary.get('verdict_contribution', 'none')} — {evtx_summary.get('reason', '')}\n\n"
         )
 
     actions_section = ""
@@ -486,6 +538,13 @@ def write_markdown(
             + "\n\n"
         )
 
+    caveats = build_false_positive_caveats(merged, completeness, attack_coverage)
+    caveat_section = (
+        "\n## False-positive caveats\n\n"
+        + "\n".join(f"* {c}" for c in caveats)
+        + "\n\n"
+    )
+
     md.write_text(
         f"""# Find Evil! — Automated Investigation Report
 
@@ -526,7 +585,11 @@ def write_markdown(
 
 {attack_section}
 
+{evtx_section}
+
 {timeline_section}
+
+{caveat_section}
 
 ## Findings detail
 
@@ -560,8 +623,9 @@ A tamper test against this manifest's `merkle_root_hex` (overwrite with `ff…ff
 not run automatically. To execute it:
 
 ```bash
-python -c "import json,pathlib;p=pathlib.Path('run.manifest.json');d=json.loads(p.read_text());d['merkle_root_hex']='ff'*32;p.write_text(json.dumps(d,indent=2,sort_keys=True))"
-manifest_verify run.manifest.json    # → overall=False, with diagnostic
+python -c "import shutil;shutil.copyfile('run.manifest.json','run.manifest.tamper.json')"
+python -c "import json,pathlib;p=pathlib.Path('run.manifest.tamper.json');d=json.loads(p.read_text());d['merkle_root_hex']='ff'*32;p.write_text(json.dumps(d,indent=2,sort_keys=True))"
+manifest_verify run.manifest.tamper.json    # → overall=False, with diagnostic
 ```
 
 ---
@@ -748,6 +812,7 @@ def render_report(
         next_actions=verdict_obj.get("next_actions", []),
         timeline=timeline,
         timeline_csv_exists=timeline_csv_exists,
+        evtx_summary=verdict_obj.get("evtx_summary"),
     )
     html, pdf = render_html_pdf(md)
     return pdf if pdf else html

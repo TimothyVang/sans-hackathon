@@ -19,9 +19,9 @@ Returns: `{id, image_path, image_hash, size_bytes, opened_at}`
 Use when: starting an investigation. **Must be called first** — every subsequent tool needs the `case_id`. The image hash is the first audit-chain leaf; if the agent passes `expected_sha256` and it doesn't match, `case_open` errors before any other tool runs.
 
 ### evtx_query
-Args: `{case_id, evtx_path, event_ids?: int[], xpath?: str, since_iso?, until_iso?, limit?}`
-Returns: `{events[], rows_seen, parse_errors}`
-Use when: account/logon/service/scheduled-task/process-creation questions. In-process via `evtx = 0.11.2` (~1600× faster than python-evtx). `event_ids` filter is the cheap path; `xpath` allows arbitrary XPath 1.0 against the rendered XML. Always pair Type 3 (Network logon) findings with the source IP — internal RFC1918 is almost always benign.
+Args: `{case_id, evtx_path, eids?: int[], xpath?: str, limit?}`
+Returns: `{rows[], row_count, records_seen, parse_errors}`
+Use when: account/logon/service/scheduled-task/process-creation questions. In-process via `evtx = 0.11.2` (~1600× faster than python-evtx). `eids` is the cheap EventID filter; `xpath` is accepted for forward compatibility but not applied by the shipped Rust tool today. Always pair Type 3 (Network logon) findings with the source IP — internal RFC1918 is almost always benign.
 
 ### prefetch_parse
 Args: `{case_id, prefetch_path}`
@@ -29,9 +29,9 @@ Returns: `{executable_name, run_count, last_run_times[], volumes[], file_referen
 Use when: confirming execution. Every `.pf` file proves the named binary ran on this host at the named UTC times — not just "was registered." Prefer this over Amcache (which is *catalog*-registration time, not execution).
 
 ### mft_timeline
-Args: `{case_id, mft_path, start_iso?, end_iso?, path_glob?, limit?}`
+Args: `{case_id, mft_path, since_iso?, until_iso?, limit?}`
 Returns: `{rows[], rows_seen, parse_errors}` where each row is `{ts, src_attr ($SI/$FN), path, size, inode, is_allocated}`
-Use when: filesystem creation/modification ordering, especially for "what changed in the compromise window?" Prefer `$FN` over `$SI` (anti-forensics tooling stomps `$SI`, rarely `$FN`). `path_glob` accepts standard glob (`*`, `?`, `**`). Read `is_allocated` to detect deleted files.
+Use when: filesystem creation/modification ordering, especially for "what changed in the compromise window?" Prefer `$FN` over `$SI` (anti-forensics tooling stomps `$SI`, rarely `$FN`). Read `is_allocated` to detect deleted files.
 
 ### registry_query
 Args: `{case_id, hive_path, key_path, value_name?, recursive?, depth?, limit?}`
@@ -39,12 +39,12 @@ Returns: `{entries[]}` with `{key, name, type, data}` formatted by RegValue type
 Use when: persistence questions (Run/RunOnce, Services, IFEO, AppInit_DLLs), user-context (NTUSER.DAT shellbags, MRUs), ShimCache, BAM. Pass the primary hive only; transaction logs (`.LOG1` / `.LOG2`) are not auto-merged. `recursive=true` walks depth-first capped at 16 by default.
 
 ### yara_scan
-Args: `{case_id, target_path, rules_paths[], recursive?, max_matches_per_rule?, max_total_matches?, limit?}`
+Args: `{case_id, target_path, rules_path, recursive?, limit?}`
 Returns: `{matches[], files_scanned, rules_compiled, scan_errors}`
 Use when: IOC matching. In-process via `yara-x = 1.12.0` (BSD-3-Clause, VirusTotal pure-Rust YARA). Each match shows `{rule_name, namespace, tags, pattern_matches[]}` with offset+length+64-byte hex preview. **Always cite the rule name in findings.** Prefer YARA-Forge `core` tier (curated low-FP); `extended`/`community` tiers without corroboration are FP-prone.
 
 ### usnjrnl_query
-Args: `{case_id, journal_path, since_iso?, until_iso?, reasons[]?, mft_entry?, parent_mft_entry?, limit?}`
+Args: `{case_id, usnjrnl_path, since_iso?, until_iso?, reasons[]?, limit?}`
 Returns: `{entries[], records_seen, parse_errors, row_count, major_version}`
 Use when: tracking filesystem changes the MFT can't show (deleted-file event sequences, rename chains, hard-link manipulation). `reasons[]` filters by USN reason flag names (FILE_CREATE, FILE_DELETE, RENAME_NEW_NAME, etc.; case-insensitive). Multi-GB journals stream — no OOM.
 
@@ -84,12 +84,12 @@ Use when: any of Velociraptor's 200+ DFIR artifacts (`Windows.Forensics.Prefetch
 
 ### audit_append
 Args: `{path, kind, payload}`
-Returns: `{record, prev_hash, new_hash, seq}`
+Returns: `{seq, ts, kind, prev_hash, line_hash}`
 Use when: writing any record to the hash-chained audit log. Every tool call, finding emission, agent message, judge selfscore record goes here. The `prev_hash` is auto-computed.
 
 ### audit_verify
 Args: `{path}`
-Returns: `{ok: bool, record_count, broken_seq?, broken_field?}`
+Returns: `{ok: bool, record_count, error}`
 Use when: replaying an audit chain to confirm integrity. Walk every `prev_hash` SHA-256 link; first mismatch reports the seq + field. The `manifest_verify` tool calls this internally.
 
 ### manifest_finalize
@@ -98,13 +98,13 @@ Returns: `{leaf_count, merkle_root_hex, signature_payload_sha256}` — the on-di
 Use when: closing a case. Builds the rs_merkle tree over every audit-log leaf, signs with sigstore (or `signer="stub"` in dev), writes `run.manifest.json`. Terminal crypto-custody step under Amendment A5 (the OpenTimestamps + Bitcoin anchor that previously followed was removed — see `docs/cryptographic-attestation.md` for the FRE 902(14) trade-off).
 
 ### manifest_verify
-Args: `{manifest_path}`
+Args: `{manifest_path, audit_log_path?}`
 Returns: `{overall: bool, audit_chain_ok, merkle_root_ok, signature_present, ...}`
 Use when: any third party wants offline verification. Replays the audit chain → recomputes the Merkle root from `leaves[]` → checks signature presence. Tampering with `merkle_root_hex` produces a precise diagnostic naming both the declared and rebuilt roots.
 
 ### verify_finding
 Args: `{finding, tool_call_index, findevil_mcp_command: list[str]}`
-Returns: `{action: 'approved'|'rejected'|'downgraded', replay_record}`
+Returns: `{action, finding_id, reason, replay_tool_name, replay_expected_sha256, replay_actual_sha256, replay_matched, replay_error}`
 Use when: re-running a finding's cited `tool_call_id` to confirm the original output's SHA-256 still matches. The verifier spawns its own short-lived findevil-mcp child process — same binary, same args, same hash, byte-for-byte. Budget 30s/finding per Spec #2 §8.1.
 
 ### detect_contradictions
@@ -113,13 +113,13 @@ Returns: `{contradictions[], pool_a_count, pool_b_count}`
 Use when: surfacing Pool A vs Pool B disagreements BEFORE judging. Same-`tool_call_id` findings with different `confidence` levels or contradicting `mitre_technique` labels emit. **Surface the contradictions first; the analyst sees them before the judge merges.**
 
 ### judge_findings
-Args: `{pool_a_findings, pool_b_findings, pool_a_verifier_actions, pool_b_verifier_actions}`
-Returns: `{merged[], budget_exceeded: bool}`
+Args: `{pool_a_findings, pool_b_findings, pool_a_verifier_actions, pool_b_verifier_actions, budget_seconds?}`
+Returns: `{merged[], budget_exceeded: bool, budget_detail}`
 Use when: credibility-weighted merge after verification. Each pool's score = `base_confidence × pool_credibility`. Pools that produced corroborating CONFIRMED findings build credibility; pools that produced HYPOTHESIS-only get downweighted.
 
 ### correlate_findings
 Args: `{findings}`
-Returns: `{outcomes[]}` where each outcome is `{action: 'kept'|'downgraded', reason}`
+Returns: `{refined[], outcomes[]}` where each outcome is `{finding_id, action: 'kept'|'downgraded'|'rejected', reason}`
 Use when: enforcing the SOUL.md ≥2-artifact-class rule. A finding claiming "X executed" must cite ≥2 distinct artifact classes (Prefetch + Amcache+ShimCache, or EDR + memory). Single-source claims auto-downgrade.
 
 ### memory_remember

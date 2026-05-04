@@ -57,7 +57,10 @@ def main() -> int:
     compute_verdict = lambda merged: fea.Investigation.compute_verdict(None, merged)  # noqa: E731
     detect_evidence_type = fea.detect_evidence_type
     build_attack_coverage = fea.build_attack_coverage
+    build_evtx_summary = fea.build_evtx_summary
     build_next_actions = fea.build_next_actions
+    evtx_rows_to_findings = fea.evtx_rows_to_findings
+    process_sets_diverge = fea.process_sets_diverge
     write_timeline_csv = fea.write_timeline_csv
     print("=" * 60)
     print("Find Evil! — verdict + evidence/process policy smoke")
@@ -190,6 +193,75 @@ def main() -> int:
             print(f"         actual  : {actual!r}")
             failures += 1
 
+    # ----- EVTX parse success is summary/timeline, not suspicion -------
+    benign_evtx_rows = [
+        {
+            "event_id": 4624,
+            "ts": "2026-05-04T00:00:00Z",
+            "channel": "Security",
+            "record_id": 1,
+            "data": {"Event": {"System": {"EventID": 4624}}},
+        },
+        {
+            "event_id": 4634,
+            "ts": "2026-05-04T00:01:00Z",
+            "channel": "Security",
+            "record_id": 2,
+            "data": {"Event": {"System": {"EventID": 4634}}},
+        },
+    ]
+    benign_summary = build_evtx_summary(benign_evtx_rows, 2, 0)
+    benign_findings = evtx_rows_to_findings(
+        benign_evtx_rows, "tc-evtx", "case-evtx", "Security.evtx"
+    )
+    suspicious_rows = [
+        {
+            "event_id": 1102,
+            "ts": "2026-05-04T00:02:00Z",
+            "channel": "Security",
+            "record_id": 3,
+            "data": {"Event": {"System": {"EventID": 1102}}},
+        }
+    ]
+    suspicious_findings = evtx_rows_to_findings(
+        suspicious_rows, "tc-evtx", "case-evtx", "Security.evtx"
+    )
+    evtx_cases = [
+        (
+            "benign EVTX summary counts records",
+            benign_summary.get("records_seen"),
+            2,
+        ),
+        (
+            "benign EVTX parse success creates no findings",
+            len(benign_findings),
+            0,
+        ),
+        (
+            "benign EVTX findings produce NO_EVIL",
+            compute_verdict(benign_findings),
+            "NO_EVIL",
+        ),
+        (
+            "audit-log clear EVTX creates a finding",
+            len(suspicious_findings),
+            1,
+        ),
+        (
+            "audit-log clear EVTX can drive SUSPICIOUS",
+            compute_verdict(suspicious_findings),
+            "SUSPICIOUS",
+        ),
+    ]
+    for label, actual, expected in evtx_cases:
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] evtx: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
     # ----- ATT&CK coverage + next-actions process layer -------------
     process_checks = 0
     completeness = {
@@ -233,12 +305,141 @@ def main() -> int:
             by_tid["T1041"].get("status"),
             "blind_spot",
         ),
+        (
+            "covered_no_finding caveat uses limited-coverage wording",
+            "limited coverage" in by_tid["T1003"].get("gap", ""),
+            True,
+        ),
     ]
     for label, actual, expected in coverage_cases:
         process_checks += 1
         ok = actual == expected
         marker = "OK  " if ok else "FAIL"
         print(f"  [{marker}] coverage: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
+    # ----- Correlator refined findings drive final verdict input ------
+
+    class FakeReasonClient:
+        def __init__(self) -> None:
+            self.pre = {
+                "case_id": "case-corr",
+                "finding_id": "f-corr",
+                "tool_call_id": "tc-corr",
+                "artifact_path": "Amcache.hve",
+                "description": "Binary executed according to Amcache only.",
+                "confidence": "CONFIRMED",
+                "pool_origin": "A",
+                "mitre_technique": None,
+            }
+            self.refined = [{**self.pre, "confidence": "INFERRED"}]
+
+        def call_tool(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+            if name == "detect_contradictions":
+                return {"contradictions": []}
+            if name == "judge_findings":
+                return {"merged": [{"finding": self.pre}]}
+            if name == "correlate_findings":
+                return {
+                    "refined": self.refined,
+                    "outcomes": [
+                        {
+                            "finding_id": "f-corr",
+                            "action": "downgraded",
+                            "reason": "single artifact execution claim",
+                        }
+                    ],
+                }
+            raise AssertionError(f"unexpected tool call: {name}")
+
+    fake_py = FakeReasonClient()
+    inv = fea.Investigation("Security.evtx", unattended=True, with_report=False)
+    inv.handle = {"id": "case-corr"}
+    corr_merged, _, corr_kept, corr_downgraded = inv.reason(fake_py)
+    corr_cases = [
+        (
+            "correlator refined confidence is returned",
+            corr_merged[0].get("confidence"),
+            "INFERRED",
+        ),
+        ("correlator downgraded count is surfaced", corr_downgraded, 1),
+        (
+            "downgraded non-severe finding no longer drives SUSPICIOUS",
+            compute_verdict(corr_merged),
+            "INDETERMINATE",
+        ),
+        ("correlator kept count remains zero", corr_kept, 0),
+    ]
+    for label, actual, expected in corr_cases:
+        process_checks += 1
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] correlation: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
+    # ----- Process-view divergence triggers psxview policy -----------
+    process_divergence_cases = [
+        (
+            "count divergence triggers psxview",
+            process_sets_diverge(
+                [{"pid": 4, "image_name": "System"}],
+                [
+                    {"pid": 4, "image_name": "System"},
+                    {"pid": 100, "image_name": "smss.exe"},
+                ],
+                1,
+                2,
+            )[0],
+            True,
+        ),
+        (
+            "same-count different PID sets trigger psxview",
+            process_sets_diverge(
+                [
+                    {"pid": 4, "image_name": "System"},
+                    {"pid": 100, "image_name": "smss.exe"},
+                ],
+                [
+                    {"pid": 4, "image_name": "System"},
+                    {"pid": 200, "image_name": "smss.exe"},
+                ],
+                2,
+                2,
+            )[0],
+            True,
+        ),
+        (
+            "same-count different process identities trigger psxview",
+            process_sets_diverge(
+                [{"pid": 100, "image_name": "svchost.exe"}],
+                [{"pid": 100, "image_name": "evil.exe"}],
+                1,
+                1,
+            )[0],
+            True,
+        ),
+        (
+            "matching process views skip psxview",
+            process_sets_diverge(
+                [{"pid": 4, "image_name": "System"}],
+                [{"pid": 4, "image_name": "System"}],
+                1,
+                1,
+            )[0],
+            False,
+        ),
+    ]
+    for label, actual, expected in process_divergence_cases:
+        process_checks += 1
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] psxview: {label}")
         if not ok:
             print(f"         expected: {expected!r}")
             print(f"         actual  : {actual!r}")
@@ -291,7 +492,7 @@ def main() -> int:
 
     print()
     print("=" * 60)
-    total = len(cases) + len(et_cases) + process_checks
+    total = len(cases) + len(et_cases) + len(evtx_cases) + process_checks
     if failures == 0:
         print(f"OK - all {total} verdict + evidence/process cases pass.")
         print("=" * 60)

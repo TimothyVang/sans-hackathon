@@ -8,6 +8,9 @@
 - UsnJrnl wraps; gaps are normal, not suspicious by themselves.
 - EVTX EID 4624 Type 3 = network logon; Type 10 = RemoteInteractive (RDP).
 - Sysmon EID 1 ProcessGuid is the correlation key, not PID.
+- Sigma/Hayabusa hits are triage leads until the raw EVTX and a corroborating artifact class support the claim.
+- Memory-only process or injection evidence does not prove disk execution or exfiltration.
+- `covered_no_finding` means scoped tools ran without qualifying evidence; it is not clean, cleared, disproven, or absence of the technique.
 
 ## Attacker tradecraft priors
 - LOLBins to check first: rundll32, regsvr32, mshta, wmic, certutil, bitsadmin.

@@ -165,7 +165,7 @@ The process-name distribution is consistent with a Windows Server 2008 R2 Domain
 * `Microsoft.Active...` — Active Directory Web Services (truncated by Vol3 to 14 chars)
 * `mmc.exe` (×2) — admin sessions noted above
 
-No obviously-named persistence implants are visible at this layer (no `svhost.exe`, no `lssas.exe`, no random-letter binaries). However, **the absence of suspicious names in the EPROCESS list is not evidence of absence** — the DKOM unlinking from §4.3 means the canonical linked list is unreliable, and any rootkit-hidden process would not appear here even via psscan if its `EPROCESS` block has been overwritten or reallocated. The corroborating step is `windows.psxview` (cross-references multiple process-listing methods) which is currently outside the Find Evil! tool surface (a documented limitation — see §8).
+No obviously-named persistence implants are visible at this layer (no `svhost.exe`, no `lssas.exe`, no random-letter binaries). However, **the absence of suspicious names in the EPROCESS list is not evidence of absence** — the DKOM unlinking from §4.3 means the canonical linked list is unreliable, and any rootkit-hidden process would not appear here even via psscan if its `EPROCESS` block has been overwritten or reallocated. The corroborating step is `vol_psxview`, now part of the typed MCP surface, which cross-references multiple process-listing methods.
 
 ### 4.6 vol_malfind — code injection scan
 

@@ -56,9 +56,10 @@ decides which.
 If a fleet has many INDETERMINATE hosts (10/22 in the
 `fleet-20260426T055440Z` run), the cross-host correlations in
 `FLEET_REPORT.pdf` are usually more useful than triaging each
-host's HYPOTHESES individually — they elevate cross-fleet patterns
-to INFERRED-grade by construction (a process name on ≥2 hosts is
-two artifact classes by SOUL.md's ≥2-source rule).
+host's HYPOTHESES individually. Cross-host recurrence is a
+correlation lead, not a second artifact class; execution or
+compromise claims still need artifact-class corroboration on the
+affected host.
 
 ### `NO_EVIL`
 
@@ -92,6 +93,10 @@ Honest disclosure (echoing `docs/false-positives.md`):
   (CONFIRMED > INFERRED > HYPOTHESIS). The verdict aggregates;
   the per-finding tiers are how you decide which claim to act on
   first.
+- **Not a claim that parsed EVTX rows are suspicious by themselves.**
+  EVTX row counts, Event ID histograms, and normalized timeline rows
+  are coverage/summary data. They become verdict-driving findings
+  only when the event semantics support an analyst-reviewable claim.
 - **Not a final-and-binding judgement.** The verdict is computed
   deterministically from the merged findings; it is not an
   "intelligent recommendation". The intelligence is in the
