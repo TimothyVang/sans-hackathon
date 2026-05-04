@@ -24,7 +24,7 @@ The divergences (matching CLAUDE.md "Spec/code divergences"):
   §1  Rust 1.83 -> 1.88                bad: rust:1.83-bookworm
   §2  Cargo.lock committed             declarative; nothing to scan
   §3  findevil_agent.cli dropped (A2)  bad: python -m findevil_agent.cli
-  §4  Rust MCP tool count is 12        bad: "11 typed Rust"
+  §4  Rust MCP tool count is 13        bad: "11 typed Rust" / "12 typed Rust"
   §5  rmcp not a runtime dep           bad: live `rmcp = "=...` (uncommented)
   §6  swarm pkg = findevil_swarm       bad: python -m services.swarm.main
   §7  A3 MemoryStore phrase-quote      doc-only; no shipped wrong-pattern
@@ -189,17 +189,17 @@ DIVERGENCES = [
     },
     {
         "id": "#4",
-        "label": "Rust MCP tool count is 12 (vol_psscan added for DKOM)",
+        "label": "Rust MCP tool count is 13 (vol_psscan + vol_psxview added for DKOM)",
         "regex": re.compile(
-            r"(?:11\s+typed\s+Rust|"
-            r"11\s+DFIR\s+tools|"
-            r"all\s+11\s+Rust|"
-            r"findevil-mcp.*?\(11\s+(?:typed|DFIR|tools))"
+            r"(?:1[12]\s+typed\s+Rust|"
+            r"1[12]\s+DFIR\s+tools|"
+            r"all\s+1[12]\s+Rust|"
+            r"findevil-mcp.*?\(1[12]\s+(?:typed|DFIR|tools))"
         ),
         "allowed_in_path": (),
         "remediation": (
-            "vol_psscan was added in commit 0de2e53 for DKOM "
-            "cross-validation against vol_pslist. Tool count is 12. "
+            "vol_psscan and vol_psxview are shipped for DKOM "
+            "cross-validation against vol_pslist. Tool count is 13. "
             "See CLAUDE.md 'Spec/code divergences' §4."
         ),
     },

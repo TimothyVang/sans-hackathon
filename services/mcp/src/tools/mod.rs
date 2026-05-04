@@ -27,6 +27,7 @@ pub mod vel_collect;
 pub mod vol_malfind;
 pub mod vol_pslist;
 pub mod vol_psscan;
+pub mod vol_psxview;
 pub mod yara_scan;
 
 /// Convenience re-exports.
@@ -59,6 +60,9 @@ pub use vol_pslist::{
 };
 pub use vol_psscan::{
     vol_psscan, VolPsscanError, VolPsscanInput, VolPsscanOutput, VolPsscanProcess,
+};
+pub use vol_psxview::{
+    vol_psxview, VolPsxviewError, VolPsxviewInput, VolPsxviewOutput, VolPsxviewRow,
 };
 pub use yara_scan::{
     path_looks_like_yara_rules, yara_scan, YaraError, YaraInput, YaraMatch, YaraOutput,

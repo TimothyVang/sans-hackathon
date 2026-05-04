@@ -76,9 +76,15 @@ DIVERGENCE_CASES = [
         1,
     ),
     (
-        "12 typed Rust is correct",
+        "12 typed Rust active drift",
         2,
         "wraps 12 typed Rust MCP tools",
+        1,
+    ),
+    (
+        "13 typed Rust is correct",
+        2,
+        "wraps 13 typed Rust MCP tools",
         0,
     ),
     (

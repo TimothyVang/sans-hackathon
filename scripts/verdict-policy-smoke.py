@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -55,8 +56,11 @@ def main() -> int:
     # method passing None for self; Python doesn't care.
     compute_verdict = lambda merged: fea.Investigation.compute_verdict(None, merged)  # noqa: E731
     detect_evidence_type = fea.detect_evidence_type
+    build_attack_coverage = fea.build_attack_coverage
+    build_next_actions = fea.build_next_actions
+    write_timeline_csv = fea.write_timeline_csv
     print("=" * 60)
-    print("Find Evil! — verdict + evidence-type policy smoke")
+    print("Find Evil! — verdict + evidence/process policy smoke")
     print("=" * 60)
 
     cases: list[tuple[str, list[dict[str, Any]], str]] = [
@@ -186,16 +190,115 @@ def main() -> int:
             print(f"         actual  : {actual!r}")
             failures += 1
 
+    # ----- ATT&CK coverage + next-actions process layer -------------
+    process_checks = 0
+    completeness = {
+        "checks": [
+            {"artifact_class": "memory", "available": True, "touched": True},
+            {"artifact_class": "evtx", "available": False, "touched": False},
+            {
+                "artifact_class": "disk/filesystem",
+                "available": False,
+                "touched": False,
+            },
+            {"artifact_class": "network", "available": False, "touched": False},
+        ]
+    }
+    tool_calls = [
+        {"tool": "case_open"},
+        {"tool": "vol_pslist"},
+        {"tool": "vol_psscan"},
+        {"tool": "vol_psxview"},
+        {"tool": "vol_malfind"},
+    ]
+    findings = [
+        {"confidence": "INFERRED", "mitre_technique": "T1014"},
+        {"confidence": "CONFIRMED", "mitre_technique": "T1055"},
+    ]
+    coverage = build_attack_coverage(tool_calls, findings, completeness)
+    by_tid = {r["technique_id"]: r for r in coverage["targets"]}
+    coverage_cases = [
+        (
+            "T1014 finding is marked finding-level coverage",
+            by_tid["T1014"].get("status"),
+            "finding",
+        ),
+        (
+            "T1055 preserves best finding confidence",
+            by_tid["T1055"].get("finding_confidence"),
+            "CONFIRMED",
+        ),
+        (
+            "T1041 exfil remains a blind spot without network telemetry",
+            by_tid["T1041"].get("status"),
+            "blind_spot",
+        ),
+    ]
+    for label, actual, expected in coverage_cases:
+        process_checks += 1
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] coverage: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
+    actions = build_next_actions(findings, coverage, completeness, [])
+    action_cases = [
+        ("next actions are capped at five", len(actions), 5),
+        (
+            "DKOM follow-up is prioritized first",
+            actions[0].get("based_on"),
+            ["T1014"],
+        ),
+    ]
+    for label, actual, expected in action_cases:
+        process_checks += 1
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] action: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        csv_path = Path(tmp) / "timeline.csv"
+        write_timeline_csv(
+            [
+                {
+                    "ts": "2026-05-04T00:00:00Z",
+                    "source": "vol_psscan",
+                    "artifact_class": "memory",
+                    "description": "process start",
+                    "tool_call_id": "tc-003",
+                    "details": {"pid": 4},
+                }
+            ],
+            csv_path,
+        )
+        text = csv_path.read_text(encoding="utf-8")
+    process_checks += 1
+    ok = "details_json" in text and "tc-003" in text and '""pid"":4' in text
+    marker = "OK  " if ok else "FAIL"
+    print(
+        "  [{marker}] timeline: CSV export includes details_json".format(marker=marker)
+    )
+    if not ok:
+        print(f"         csv text: {text!r}")
+        failures += 1
+
     print()
     print("=" * 60)
-    total = len(cases) + len(et_cases)
+    total = len(cases) + len(et_cases) + process_checks
     if failures == 0:
-        print(f"OK - all {total} verdict + evidence-type cases pass.")
+        print(f"OK - all {total} verdict + evidence/process cases pass.")
         print("=" * 60)
         return 0
     print(f"FAIL - {failures} of {total} cases failed.")
     print("If the change is intentional, update both:")
-    print("  - scripts/find_evil_auto.py (compute_verdict / detect_evidence_type)")
+    print("  - scripts/find_evil_auto.py (verdict / evidence / process helpers)")
     print("  - scripts/verdict-policy-smoke.py expected outputs")
     print("  - docs/verdict-semantics.md per-verdict trigger list")
     print("=" * 60)

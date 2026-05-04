@@ -43,7 +43,7 @@ These are read by the agent at investigation start (per CLAUDE.md "Agent investi
 | `agent-config/SOUL.md` | **ACTIVE** | Mission + epistemic hierarchy (CONFIRMED > INFERRED > HYPOTHESIS) + FRE 902(14) stance + cross-artifact rule + no-attribution rule. |
 | `agent-config/AGENTS.md` | **ACTIVE** | Supervisor / Pool A / Pool B / judge / verifier / correlator role descriptions. |
 | `agent-config/PLAYBOOK.md` | **ACTIVE** | Tool sequences per evidence type (`.e01`, `.mem`, `.evtx`, Velociraptor `.zip`, mixed dirs). |
-| `agent-config/TOOLS.md` | **ACTIVE** | Typed tool surface — 12 Rust + 11 Python MCP tools. |
+| `agent-config/TOOLS.md` | **ACTIVE** | Typed tool surface — 13 Rust + 11 Python MCP tools. |
 | `agent-config/MEMORY.md` | **ACTIVE** | Tier-1 DFIR caveats (Amcache LastModified ≠ execution, ShimCache order changed at Win8.1, Logon Type 3 vs 10, etc.). |
 | `agent-config/HEARTBEAT.md` | **ACTIVE** | Per-iteration self-check loop. |
 | `agent-config/JUDGING.md` | **ACTIVE** | SANS Find Evil! 2026 rubric (6 criteria, verbatim) + end-of-investigation self-score checklist that emits `kind=judge_selfscore` audit records. |
@@ -85,6 +85,7 @@ All five plans shipped. Each carries a RETIRED banner naming where the live code
 | `ci-smoke-checklist.md` | **ACTIVE** | End-to-end pipeline verification before submission. |
 | `dockerfile-a2-decision.md` | **RESEARCH** (decision archive) | Cut the in-container `find-evil` wrapper + `.deb` packaging (PR #4, 2026-04-27, "Option B"). Body retained as decision record. |
 | `github-remote-bootstrap.md` | **ACTIVE** | Pre-submission ops doc for setting up the public GitHub repo URL Devpost requires. |
+| `practical-sans-dfir-completion-prompt.md` | **ACTIVE** | Strict copy/paste coding-agent prompt for finishing practical SANS DFIR investigation outputs without new crypto work. |
 
 ## `docs/design-briefs/`
 

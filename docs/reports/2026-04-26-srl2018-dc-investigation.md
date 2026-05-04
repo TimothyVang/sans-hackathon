@@ -75,7 +75,7 @@ Raw memory dumps acquired with `dc3dd` from `/mnt/<host>/<host>/pmem/pmem` on 20
 
 ### 3.3 Hash-chained audit log
 
-Every tool call writes a record to `audit.jsonl` containing `prev_hash` (SHA-256 of the previous record's canonical JSON), enforcing append-only semantics. Six records exist for this investigation:
+Every tool call writes a record to `audit.jsonl` containing `prev_hash` (SHA-256 of the previous record's canonical JSON), enforcing append-only semantics. The abbreviated manifest excerpt originally archived with this reference report contains six records from the custody-finalization path:
 
 | seq | kind | tool_call_id |
 |:---:|:--|:--|
@@ -86,7 +86,7 @@ Every tool call writes a record to `audit.jsonl` containing `prev_hash` (SHA-256
 | 4 | tool_call_output | tc-2 |
 | 5 | agent_message (supervisor commentary) | — |
 
-The chain's terminal record, when canonicalized and SHA-256ed, produces the value committed to the run manifest as `audit_log_final_hash` (§5).
+The chain's terminal record, when canonicalized and SHA-256ed, produces the value committed to the run manifest as `audit_log_final_hash` (§5). The DKOM analysis in §4.3 is based on the preserved Volatility 3 `windows.pslist` and `windows.psscan` outputs summarized there; a regenerated report should include those Volatility tool-call rows directly in this table so the finding-to-`tool_call_id` path is visible without consulting sidecar evidence files.
 
 ---
 
@@ -228,7 +228,7 @@ This is the live result reproducible from the run artifacts at `/home/sansforens
 
 In the spirit of Heuer's emphasis on epistemic honesty [^heuer-1999], the limitations of this investigation are documented explicitly:
 
-**8.1 Tool surface coverage.** Find Evil! wraps 12 typed Rust MCP tools (`vol_psscan` was added after `vol_pslist` for DKOM cross-validation) and 10 typed Python MCP tools. SIFT Workstation ships hundreds of DFIR tools. The following SIFT capabilities are *not* in the agent's tool surface today:
+**8.1 Tool surface coverage.** Find Evil! wraps 13 typed Rust MCP tools (`vol_psscan` and `vol_psxview` were added after `vol_pslist` for DKOM cross-validation) and 11 typed Python MCP tools. SIFT Workstation ships hundreds of DFIR tools. The following SIFT capabilities are *not* in the agent's tool surface today:
 
 * Plaso / `log2timeline` — full filesystem super-timeline (a major gap)
 * The Sleuth Kit (`fls`, `icat`, `mmls`, `blkls`) — raw filesystem navigation
@@ -236,7 +236,7 @@ In the spirit of Heuer's emphasis on epistemic honesty [^heuer-1999], the limita
 * Eric Zimmerman tools (`MFTECmd`, `PECmd`, `RECmd`, `LECmd`, `JLECmd`)
 * Browser history (Hindsight, sqlite-based DB extraction)
 * Network capture analysis (`tshark`, Zeek, `tcpdump`)
-* 98 of Volatility 3's 100+ plugins (we wrap `pslist` + `malfind`)
+* Most of Volatility 3's 100+ plugins (we wrap `pslist`, `psscan`, `psxview`, and `malfind`)
 * Reverse engineering (`radare2`, `gdb`, `ghidra`) — fundamentally interactive, not amenable to MCP request/response shape
 * REMnux malware-analysis layer
 
@@ -266,7 +266,7 @@ The narrow tool surface is **architecturally deliberate** [§2] — the typed MC
 **Overall verdict: SUSPICIOUS, requires deeper analysis.** The DKOM signature is sufficient evidence to escalate to a full incident response, including:
 
 * Memory-resident YARA scan against the raw `.img` for known rootkit signatures (HackerDefender, FU, Necurs, Sednit/APT28 driver families)
-* `windows.psxview` cross-reference against `_EPROCESS`, `_PspCidTable`, `_KPRCB.WaitListHead`, `_KPRCB.NextThread`, and process VADs to identify which specific PIDs are unlinked
+* `windows.psxview` cross-reference against `_EPROCESS`, `_PspCidTable`, `_KPRCB.WaitListHead`, `_KPRCB.NextThread`, and process VADs to identify which specific PIDs are unlinked (`vol_psxview` is now in the typed MCP surface)
 * Disk-image analysis of `\Windows\System32\drivers\` for unsigned or non-Microsoft .sys files modified in the suspected compromise window
 * Cross-referencing this DC's memory artifacts with the other 21 hosts in the dataset for lateral-movement evidence
 

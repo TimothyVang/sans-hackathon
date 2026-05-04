@@ -163,7 +163,7 @@ goldens/
 │   ├── expected-findings.json    (ground truth — populated from manual walkthrough)
 │   ├── run-manifest.json         (cryptographically-signed)
 │   ├── audit.jsonl               (hash-chained audit log)
-│   └── run-manifest.ots          (OpenTimestamps Bitcoin receipt)
+│   └── run.manifest.json         (post-A5 signed manifest; no OTS receipt)
 ├── nist-hacking-case/
 │   └── …same layout…
 ├── otrf-apt3-mordor/

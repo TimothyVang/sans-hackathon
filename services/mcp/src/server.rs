@@ -43,9 +43,9 @@ use crate::tools::{
     case_open, evtx_query::evtx_query, hayabusa_scan::hayabusa_scan, mft_timeline::mft_timeline,
     prefetch_parse::prefetch_parse, registry_query::registry_query, usnjrnl_query::usnjrnl_query,
     vel_collect::vel_collect, vol_malfind::vol_malfind, vol_pslist::vol_pslist,
-    vol_psscan::vol_psscan, yara_scan::yara_scan, CaseOpenInput, EvtxQueryInput, HayabusaInput,
-    MftInput, PrefetchInput, RegistryInput, UsnJrnlInput, VelCollectInput, VolMalfindInput,
-    VolPslistInput, VolPsscanInput, YaraInput,
+    vol_psscan::vol_psscan, vol_psxview::vol_psxview, yara_scan::yara_scan, CaseOpenInput,
+    EvtxQueryInput, HayabusaInput, MftInput, PrefetchInput, RegistryInput, UsnJrnlInput,
+    VelCollectInput, VolMalfindInput, VolPslistInput, VolPsscanInput, VolPsxviewInput, YaraInput,
 };
 use crate::CRATE_VERSION;
 
@@ -502,6 +502,34 @@ fn build_registry() -> Vec<ToolEntry> {
             handler: |args| dispatch_vol_psscan(args),
         },
         ToolEntry {
+            name: "vol_psxview",
+            description: "Run Volatility 3's `windows.psxview` plugin against a memory image \
+                 to cross-reference multiple process-enumeration methods. Use after \
+                 vol_pslist + vol_psscan diverge: psxview shows which recovered \
+                 processes are visible to pslist, psscan, thread/process, PspCid, \
+                 CSRSS, session, and desktop-thread views. This is the direct \
+                 corroborating tool for DKOM process hiding. \
+                 Use AFTER case_open. memory_path is the image. pid_filter narrows \
+                 to specific PIDs. Default limit 10000. \
+                 Returns processes[] (pid, image_name, offset_v, pslist, psscan, \
+                 thrdproc, pspcid, csrss, session, deskthrd, exit_time_iso?) + \
+                 processes_seen + stderr_tail. Same Volatility binary discovery as \
+                 vol_pslist ($VOLATILITY_BIN env var first, then PATH lookup). \
+                 ERRORS: MemoryNotFound / MemoryNotRegular (verify path), \
+                 BinaryNotFound (install via `pip install volatility3`), \
+                 SubprocessFailed (check stderr_tail), OutputParse (rare; indicates \
+                 a Vol3 version mismatch).",
+            annotations: ToolAnnotations {
+                title: "Cross-check Process Views (Volatility psxview)",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
+            schema: || schema_for::<VolPsxviewInput>(),
+            handler: |args| dispatch_vol_psxview(args),
+        },
+        ToolEntry {
             name: "vel_collect",
             description: "Run a Velociraptor artifact via `velociraptor artifacts collect` and \
                  stream the resulting rows. Generic trampoline over Velociraptor's 200+ \
@@ -825,6 +853,20 @@ fn dispatch_vol_psscan(args: Value) -> Result<Value, ToolError> {
     }
 }
 
+fn dispatch_vol_psxview(args: Value) -> Result<Value, ToolError> {
+    let input: VolPsxviewInput = parse_args(args)?;
+    match vol_psxview(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(
+            e @ (crate::tools::VolPsxviewError::MemoryNotFound(_)
+            | crate::tools::VolPsxviewError::MemoryNotRegular(_)),
+        ) => Err(ToolError::InvalidParams(format!("{e}"))),
+        Err(e) => Err(ToolError::Internal(format!("vol_psxview: {e}"))),
+    }
+}
+
 fn dispatch_vol_malfind(args: Value) -> Result<Value, ToolError> {
     let input: VolMalfindInput = parse_args(args)?;
     // Same: MemoryNotFound / MemoryNotRegular are user-input.
@@ -952,6 +994,7 @@ mod tests {
             "vol_pslist",
             "vol_malfind",
             "vol_psscan",
+            "vol_psxview",
             "vel_collect",
         ];
         assert_eq!(names.len(), expected.len());

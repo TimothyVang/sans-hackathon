@@ -4,7 +4,7 @@ The agent has access to two MCP servers, both auto-spawned by Claude Code via `.
 
 | Server | Lang | Tools |
 |---|---|---|
-| `findevil-mcp` | Rust (`services/mcp/`) | 12 typed DFIR tools |
+| `findevil-mcp` | Rust (`services/mcp/`) | 13 typed DFIR tools |
 | `findevil-agent-mcp` | Python (`services/agent_mcp/`) | 11 crypto + ACH + memory + ACP tools (post-A5; the `ots_stamp` + `ots_verify` pair was removed) |
 
 Every successful tool call carries `_meta.output_sha256` (hex SHA-256 of the canonical JSON output). Findings cite tool calls by `tool_call_id`. The verifier vetoes any finding that doesn't.
@@ -62,6 +62,11 @@ Use when: enumerating processes from a memory image via the kernel's active list
 Args: `{case_id, memory_path, pid_filter?: int[], limit?}`
 Returns: `{processes[], processes_seen, stderr_tail}` — same shape as `vol_pslist` but with `offset_v` (EPROCESS virtual address)
 Use when: cross-validating `vol_pslist` for DKOM detection. psscan signature-scans EPROCESS pool memory, finding orphaned `_EPROCESS` blocks unlinked from the active list. **The redundancy is deliberate** — divergence between pslist and psscan IS the rootkit finding.
+
+### vol_psxview
+Args: `{case_id, memory_path, pid_filter?: int[], limit?}`
+Returns: `{processes[], processes_seen, stderr_tail}` where each process is `{pid, image_name, offset_v?, pslist?, psscan?, thrdproc?, pspcid?, csrss?, session?, deskthrd?, exit_time_iso?}`
+Use when: corroborating DKOM process hiding after `vol_pslist` and `vol_psscan` diverge. `psxview` cross-references multiple process-enumeration views so the analyst can see which views miss a process and which views still recover it. This is the direct follow-up for the SRL-2018 DC finding.
 
 ### vol_malfind
 Args: `{case_id, memory_path, pid_filter?: int[], limit?}`

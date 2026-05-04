@@ -17,11 +17,11 @@
 
 Four claims, all exercised on every CI run:
 
-1. **A typed MCP tool surface, no `execute_shell`.** 23 narrow Pydantic-validated tools — 12 Rust DFIR (`case_open`, `evtx_query`, `vol_pslist`/`vol_psscan`, `vol_malfind`, `mft_timeline`, `hayabusa_scan`, `yara_scan`, `usnjrnl_query`, `registry_query`, `prefetch_parse`, `vel_collect`) plus 11 Python crypto/ACH/memory/handoff. EVTX parsed in-process via the omerbenamram/evtx Rust crate; AGPL/GPL tools (Hayabusa, Volatility3, Velociraptor) invoked as subprocesses only — Apache-2.0 submission tree stays clean.
+1. **A typed MCP tool surface, no `execute_shell`.** 24 narrow Pydantic-validated tools — 13 Rust DFIR (`case_open`, `evtx_query`, `vol_pslist`/`vol_psscan`/`vol_psxview`, `vol_malfind`, `mft_timeline`, `hayabusa_scan`, `yara_scan`, `usnjrnl_query`, `registry_query`, `prefetch_parse`, `vel_collect`) plus 11 Python crypto/ACH/memory/handoff. EVTX parsed in-process via the omerbenamram/evtx Rust crate; AGPL/GPL tools (Hayabusa, Volatility3, Velociraptor) invoked as subprocesses only — Apache-2.0 submission tree stays clean.
 
 2. **Cryptographic chain of custody with FRE 902(14) framing.** Three composed primitives: hash-chained audit JSONL (`prev_hash` per record) → `rs_merkle` Merkle root over canonical-JSON tool outputs → sigstore signature with Rekor transparency-log inclusion proof. Verifiable offline by `manifest_verify` — no network, no third-party servers. (Pre-A5 the chain tail-anchored to Bitcoin via OpenTimestamps; removed because judges scoring offline can't exercise the network call or wait for Bitcoin attestation maturation. Trade-off documented in [`docs/cryptographic-attestation.md`](docs/cryptographic-attestation.md).)
 
-3. **Analysis of Competing Hypotheses as agent topology.** Two pools investigate the same evidence with opposing priors (persistence-biased vs. exfil-biased). Disagreements emit as `kind=contradiction` audit records *before* the judge merges — surfaced as first-class output, not hidden in consensus. Heuer's 1970s intelligence-analysis framework applied as live agent architecture, not a rebrand of single-agent voting.
+3. **Analysis of Competing Hypotheses as agent topology.** Two pools investigate the same evidence with opposing priors (persistence-biased vs. exfil-biased). Disagreements emit as `kind=contradiction` audit records *before* the judge merges — surfaced as first-class output, not hidden in consensus. The report also includes case-completeness and ATT&CK coverage matrices, `timeline.json` / `timeline.csv` normalized from tool outputs, and the next 5 analyst actions so analysts can see what evidence was missing before trusting the verdict. Heuer's 1970s intelligence-analysis framework applied as live agent architecture, not a rebrand of single-agent voting.
 
 4. **Self-score inside the cryptographic attestation.** The agent emits 6 `kind=judge_selfscore` audit records (one per SANS rubric criterion) *before* `manifest_finalize`. Because they land before the Merkle tree closes, the agent's own self-assessment is part of the signed manifest — `grep '"kind":"judge_selfscore"' audit.jsonl` and you have the agent's own score against the same rubric you're using.
 
@@ -66,7 +66,7 @@ Per-mode walkthrough + SIFT-VM setup recipe lives in [QUICKSTART.md](QUICKSTART.
 .
 ├── agent-config/             — runtime DFIR agent identity (SOUL/AGENTS/PLAYBOOK/
 │                               TOOLS/MEMORY/HEARTBEAT/JUDGING)
-├── services/mcp/             — Rust MCP server (12 typed DFIR tools)
+├── services/mcp/             — Rust MCP server (13 typed DFIR tools)
 ├── services/agent_mcp/       — Python MCP server (11 crypto/ACH/memory/ACP tools)
 ├── services/agent/           — findevil_agent package (M2 crypto + M4 ACH primitives)
 ├── services/swarm/           — overnight build swarm (Option B per Amendment A1)

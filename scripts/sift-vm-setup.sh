@@ -3,7 +3,7 @@
 #
 # Goal: bring the VM to a state where the Windows host can SSH in and
 # spawn our two MCP servers (findevil-mcp + findevil-agent-mcp), with
-# all 12 Rust DFIR tools reachable (Volatility3, Hayabusa, Velociraptor,
+# all 13 Rust DFIR tools reachable (Volatility3, Hayabusa, Velociraptor,
 # YARA already shipped in SIFT; the in-process parsers come with our
 # Rust crate). The 12th tool is `vol_psscan` — paired with `vol_pslist`
 # for DKOM cross-validation.
