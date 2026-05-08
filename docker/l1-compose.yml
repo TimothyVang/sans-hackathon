@@ -36,7 +36,14 @@ services:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
-      RUSTFLAGS: "-D warnings"
+      # The product release profile keeps thin-LTO/codegen-units=1 in
+      # Cargo.toml. L1 is a constrained correctness gate, so override only
+      # the container release link to stay inside Docker Desktop memory caps.
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      # lld uses substantially less memory than GNU ld for the Rust MCP
+      # test/release links, which keeps local Docker Desktop L1 viable.
+      RUSTFLAGS: "-D warnings -C link-arg=-fuse-ld=lld -C link-arg=-Wl,-z,nostart-stop-gc"
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
       UV_CACHE_DIR: /home/dev/.cache/uv
