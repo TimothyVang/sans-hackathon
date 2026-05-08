@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import re
 import sys
+from os import walk
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -285,23 +286,14 @@ def _is_excluded(path: Path) -> bool:
 
 def _list_active_files() -> list[Path]:
     """All text files we should scan (markdown + Python + Rust + sh + toml + yml)."""
-    suffixes = (
-        "*.md",
-        "*.py",
-        "*.rs",
-        "*.sh",
-        "*.toml",
-        "*.yml",
-        "*.yaml",
-        "*.json",
-        "*.bash",
-    )
+    suffixes = {".bash", ".json", ".md", ".py", ".rs", ".sh", ".toml", ".yaml", ".yml"}
     out: list[Path] = []
-    for pat in suffixes:
-        for p in REPO.rglob(pat):
-            if not p.is_file():
-                continue
-            if _is_excluded(p):
+    for root, dirs, files in walk(REPO):
+        root_path = Path(root)
+        dirs[:] = [d for d in dirs if d not in EXCLUDED_PATH_PARTS]
+        for filename in files:
+            p = root_path / filename
+            if p.suffix not in suffixes or _is_excluded(p):
                 continue
             out.append(p)
     # Also include the extension-less launchers.

@@ -12,7 +12,9 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
-    PATH=/root/.cargo/bin:/root/.fnm:/root/.local/bin:${PATH}
+    CARGO_HOME=/usr/local/cargo \
+    RUSTUP_HOME=/usr/local/rustup \
+    PATH=/usr/local/cargo/bin:/usr/local/fnm:/usr/local/bin:${PATH}
 
 # System deps matching BUILD_PLAN_v2.md §10 week-1 skeleton + Spec #2 §4.1
 # (rmcp + evtx + duckdb) + Spec #2 §4.2 (Python agent with sigstore/OTS).
@@ -51,21 +53,24 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         --default-toolchain 1.88.0 \
         --profile minimal \
         --component clippy,rustfmt \
- && /root/.cargo/bin/rustup --version \
- && /root/.cargo/bin/cargo --version
+ && /usr/local/cargo/bin/rustup --version \
+ && /usr/local/cargo/bin/cargo --version
 
-# Node 20 via fnm + pnpm 9.12.0 via corepack.
-RUN curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir /root/.fnm --skip-shell \
- && /root/.fnm/fnm install 20 \
- && /root/.fnm/fnm default 20 \
- && ln -sf /root/.fnm/aliases/default/bin/node /usr/local/bin/node \
- && ln -sf /root/.fnm/aliases/default/bin/npm  /usr/local/bin/npm \
- && ln -sf /root/.fnm/aliases/default/bin/npx  /usr/local/bin/npx \
- && corepack enable \
- && corepack prepare pnpm@9.12.0 --activate \
- && ln -sf "$(corepack --prefix /usr/local prepare pnpm@9.12.0 --activate 2>/dev/null; readlink -f $(command -v pnpm) 2>/dev/null || command -v pnpm)" /usr/local/bin/pnpm || true \
- && node --version \
- && pnpm --version
+# Node 20 via fnm + pnpm 9.12.0 via npm. Some fnm-provided Node
+# builds do not expose corepack until the shell environment is reloaded,
+# so use the explicit npm path instead of assuming PATH/corepack state.
+RUN curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir /usr/local/fnm --skip-shell \
+ && bash -lc 'eval "$(/usr/local/fnm/fnm env --shell bash)" \
+    && fnm install 20 \
+    && fnm default 20 \
+    && npm install -g pnpm@9.12.0 \
+    && ln -sf "$(command -v node)" /usr/local/bin/node \
+    && ln -sf "$(command -v npm)" /usr/local/bin/npm \
+    && ln -sf "$(command -v npx)" /usr/local/bin/npx \
+    && ln -sf "$(command -v pnpm)" /usr/local/bin/pnpm \
+    && ln -sf "$(command -v pnpx)" /usr/local/bin/pnpx \
+    && node --version \
+    && pnpm --version'
 
 # Python packaging: uv for env+lockfile (matches CLAUDE.md conventions).
 # Pinned per https://astral.sh/uv release notes around the plan date.
@@ -77,8 +82,22 @@ ARG DEV_UID=1000
 ARG DEV_GID=1000
 RUN groupadd --gid "${DEV_GID}" dev \
  && useradd --uid "${DEV_UID}" --gid "${DEV_GID}" --create-home --shell /bin/bash dev \
- && mkdir -p /workspace \
- && chown -R dev:dev /workspace /root/.cargo /root/.fnm || true
+ && mkdir -p \
+    /workspace \
+    /home/dev/.cargo/git \
+    /home/dev/.cargo/registry \
+    /home/dev/.cargo-target \
+    /home/dev/.cache/uv \
+    /home/dev/.local/share/pnpm/store \
+ && chown -R dev:dev \
+    /workspace \
+    /home/dev/.cargo \
+    /home/dev/.cargo-target \
+    /home/dev/.cache \
+    /home/dev/.local \
+    /usr/local/cargo \
+    /usr/local/rustup \
+    /usr/local/fnm || true
 
 WORKDIR /workspace
 

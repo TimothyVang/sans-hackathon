@@ -9,6 +9,7 @@ import {
   CODEX_PRESETS,
   type CodexMode,
 } from "@/lib/codex-presets";
+import { DashboardNav } from "@/components/DashboardNav";
 
 type ChatRole = "operator" | "codex" | "system";
 
@@ -140,7 +141,8 @@ export default function CodexPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#0f172a] px-4 py-6 text-slate-100 md:px-8">
+    <main className="min-h-screen overflow-x-hidden bg-[#0f172a] px-4 py-6 text-slate-100 md:px-8">
+      <DashboardNav active="codex" variant="dark" />
       <div className="mx-auto max-w-7xl">
         <header className="grid gap-4 rounded-3xl border border-cyan-300/30 bg-slate-950/80 p-6 shadow-2xl shadow-cyan-950/30 md:grid-cols-[1.3fr_0.7fr]">
           <div>
@@ -288,6 +290,12 @@ export default function CodexPage() {
                 className="rounded-xl border border-slate-600 px-5 py-3 font-bold text-slate-200 transition hover:border-cyan-300"
               >
                 Audit dashboard
+              </a>
+              <a
+                href="/debug"
+                className="rounded-xl border border-slate-600 px-5 py-3 font-bold text-slate-200 transition hover:border-cyan-300"
+              >
+                Debug stream
               </a>
             </div>
 
