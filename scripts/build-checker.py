@@ -286,7 +286,12 @@ def git_bytes(*args: str, check: bool = False) -> bytes:
 
 def is_non_code_runtime_path(path: bytes) -> bool:
     normalized = path.replace(b"\\", b"/")
-    return normalized.startswith((b".omx/", b"tmp/"))
+    return normalized.startswith(
+        (b".omx/", b"tmp/", b"release-assets/", b"apps/web/dist/")
+    ) or normalized in {
+        b"benchmark-results.csv",
+        b"find-evil-submission.zip",
+    }
 
 
 def build_fingerprint() -> dict[str, str]:
