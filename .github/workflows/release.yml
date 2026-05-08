@@ -8,7 +8,7 @@ name: Release
 
 on:
   push:
-    tags: ['v[0-9]*', 'v-submit']
+    tags: ['v[0-9]*', 'v-submit', 'v-smoke', 'v-submit-smoke']
 
 permissions:
   contents: write
@@ -42,7 +42,11 @@ jobs:
           if [[ "${GREEN:-0}" -gt 0 ]]; then
             echo "l3_green=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning::No l3-nightly green run on ${{ github.sha }}. Release will proceed in pre-Week-2 mode (guarded jobs will skip their real work)."
+            if [[ "${GITHUB_REF_NAME}" != "v-smoke" && "${GITHUB_REF_NAME}" != "v-submit-smoke" ]]; then
+              echo "::error::No l3-nightly green run on ${{ github.sha }}. Final release tags require L3 evidence."
+              exit 1
+            fi
+            echo "::warning::No l3-nightly green run on ${{ github.sha }}. Smoke release will continue, but this is not submission-ready."
             echo "l3_green=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -97,15 +101,12 @@ jobs:
         with: { version: 9.12.0 }
       - name: Build report.html
         run: |
-          if [[ -f pnpm-workspace.yaml ]] && [[ -d apps/web ]]; then
-            pnpm install --frozen-lockfile
-            # Vite library build of the offline report; falls through to
-            # stub if apps/web hasn't landed yet.
-            pnpm --filter @findevil/web run build:lib || echo "report.html build stub (pre-Week-5)"
-            cp apps/web/dist/report.html . 2>/dev/null || echo "<html><body>report.html (stub pre-release)</body></html>" > report.html
-          else
-            echo "<html><body>report.html placeholder — pnpm workspace not yet initialized</body></html>" > report.html
-          fi
+          test -f pnpm-workspace.yaml
+          test -d apps/web
+          pnpm install --frozen-lockfile
+          pnpm --filter @findevil/web run build:lib
+          cp apps/web/dist/report.html report.html
+          python3 scripts/validate-submission-assets.py --report report.html
           ls -lh report.html
       - name: Upload report.html
         uses: actions/upload-artifact@v4

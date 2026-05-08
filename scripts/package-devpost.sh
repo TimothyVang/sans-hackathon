@@ -6,10 +6,13 @@
 #
 #   - DEMO_VIDEO_URL env var set (checked)
 #   - RELEASE_TAG env var (defaults to 'v-submit')
-#   - release-assets/ containing report.html and optional legacy .deb (from
+#   - RELEASE_ASSETS_DIR env var (defaults to release-assets/) containing report.html and optional legacy .deb (from
 #     `gh release download`)
-#   - benchmark-results.csv at cwd (produced by json-to-benchmark-csv.py)
+#   - BENCHMARK_CSV env var (defaults to benchmark-results.csv at cwd, produced by json-to-benchmark-csv.py)
 #   - LICENSE + docs/templates/devpost-readme.md from the repo
+#
+# Strict mode is the default. Set FINDEVIL_DEVPOST_MODE=smoke only for
+# non-final workflow rehearsal; smoke mode is rejected for RELEASE_TAG=v-submit.
 
 set -euo pipefail
 
@@ -17,19 +20,43 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 
 OUT_ZIP="${OUT_ZIP:-find-evil-submission.zip}"
+RELEASE_ASSETS_DIR="${RELEASE_ASSETS_DIR:-release-assets}"
+BENCHMARK_CSV="${BENCHMARK_CSV:-benchmark-results.csv}"
 STAGE_DIR="$(mktemp -d)"
 trap 'rm -rf "${STAGE_DIR}"' EXIT
 
 log() { printf '[package-devpost] %s\n' "$*" >&2; }
 
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN=python3
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN=python
+else
+  log "ERROR: python3/python not found on PATH"
+  exit 127
+fi
+
 # ---------------------------------------------------------------------
 # Pre-flight.
 # ---------------------------------------------------------------------
-: "${DEMO_VIDEO_URL:?DEMO_VIDEO_URL not set — run: gh variable set DEMO_VIDEO_URL --body '<url>'}"
-
 RELEASE_TAG="${RELEASE_TAG:-v-submit}"
 ACCURACY="${ACCURACY:-0}"
 DATE="${DATE:-$(date -u +%Y-%m-%d)}"
+FINDEVIL_DEVPOST_MODE="${FINDEVIL_DEVPOST_MODE:-strict}"
+case "${FINDEVIL_DEVPOST_MODE}" in
+  strict|smoke) ;;
+  *) log "ERROR: FINDEVIL_DEVPOST_MODE must be strict or smoke"; exit 1 ;;
+esac
+if [[ "${RELEASE_TAG}" == "v-submit" && "${FINDEVIL_DEVPOST_MODE}" != "strict" ]]; then
+  log "ERROR: smoke mode is forbidden for RELEASE_TAG=v-submit"
+  exit 1
+fi
+if [[ "${FINDEVIL_DEVPOST_MODE}" == "strict" ]]; then
+  : "${DEMO_VIDEO_URL:?DEMO_VIDEO_URL not set — run: gh variable set DEMO_VIDEO_URL --body '<url>'}"
+else
+  DEMO_VIDEO_URL="${DEMO_VIDEO_URL:-https://example.invalid/findevil-smoke-demo}"
+  log "WARN: smoke mode enabled; generated package is NOT submission-ready"
+fi
 
 # ---------------------------------------------------------------------
 # 1. README-submission.md via envsubst.
@@ -65,9 +92,9 @@ cp LICENSE "${STAGE_DIR}/LICENSE"
 # ---------------------------------------------------------------------
 # 4. Optional legacy .deb — from release-assets/ if an older release provided one.
 # ---------------------------------------------------------------------
-deb=$(ls release-assets/*.deb 2>/dev/null | head -n1 || true)
+deb=$(ls "${RELEASE_ASSETS_DIR}"/*.deb 2>/dev/null | head -n1 || true)
 if [[ -z "${deb}" ]]; then
-  log "WARN: no .deb in release-assets/; submission zip will omit it"
+  log "WARN: no .deb in ${RELEASE_ASSETS_DIR}/; submission zip will omit it"
 else
   cp "${deb}" "${STAGE_DIR}/"
 fi
@@ -75,20 +102,29 @@ fi
 # ---------------------------------------------------------------------
 # 5. report.html — from release-assets/.
 # ---------------------------------------------------------------------
-if [[ -f release-assets/report.html ]]; then
-  cp release-assets/report.html "${STAGE_DIR}/"
+if [[ -f "${RELEASE_ASSETS_DIR}/report.html" ]]; then
+  cp "${RELEASE_ASSETS_DIR}/report.html" "${STAGE_DIR}/"
+elif [[ "${FINDEVIL_DEVPOST_MODE}" == "smoke" ]]; then
+  log "WARN: no report.html in ${RELEASE_ASSETS_DIR}; creating smoke-only report"
+  cat > "${STAGE_DIR}/report.html" <<'EOF'
+<!doctype html><html><body><h1>Find Evil smoke package placeholder</h1><p>Not valid for final submission.</p></body></html>
+EOF
 else
-  log "WARN: no report.html in release-assets/"
+  log "ERROR: no report.html in ${RELEASE_ASSETS_DIR}/"
+  exit 1
 fi
 
 # ---------------------------------------------------------------------
 # 6. benchmark-results.csv.
 # ---------------------------------------------------------------------
-if [[ -f benchmark-results.csv ]]; then
-  cp benchmark-results.csv "${STAGE_DIR}/"
-else
-  log "WARN: no benchmark-results.csv; creating stub"
+if [[ -f "${BENCHMARK_CSV}" ]]; then
+  cp "${BENCHMARK_CSV}" "${STAGE_DIR}/benchmark-results.csv"
+elif [[ "${FINDEVIL_DEVPOST_MODE}" == "smoke" ]]; then
+  log "WARN: no ${BENCHMARK_CSV}; creating smoke-only stub"
   echo 'fixture,findings_matched' > "${STAGE_DIR}/benchmark-results.csv"
+else
+  log "ERROR: no ${BENCHMARK_CSV}"
+  exit 1
 fi
 
 # ---------------------------------------------------------------------
@@ -123,9 +159,37 @@ if [[ "${missing}" -gt 0 ]]; then
   exit 1
 fi
 
+if [[ "${FINDEVIL_DEVPOST_MODE}" == "strict" ]]; then
+  "${PYTHON_BIN}" scripts/validate-submission-assets.py \
+    --demo-url "${DEMO_VIDEO_URL}" \
+    --benchmark "${STAGE_DIR}/benchmark-results.csv" \
+    --report "${STAGE_DIR}/report.html" \
+    --stage-dir "${STAGE_DIR}"
+else
+  log "WARN: skipping strict artifact validator in smoke mode"
+fi
+
 # ---------------------------------------------------------------------
 # Zip.
 # ---------------------------------------------------------------------
-(cd "${STAGE_DIR}" && zip -q -r "${REPO_ROOT}/${OUT_ZIP}" .)
+if command -v zip >/dev/null 2>&1; then
+  (cd "${STAGE_DIR}" && zip -q -r "${REPO_ROOT}/${OUT_ZIP}" .)
+else
+  log "WARN: zip not found; using Python zipfile fallback"
+  "${PYTHON_BIN}" - "${STAGE_DIR}" "${REPO_ROOT}/${OUT_ZIP}" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+stage = pathlib.Path(sys.argv[1])
+out = pathlib.Path(sys.argv[2])
+with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    for path in sorted(p for p in stage.rglob("*") if p.is_file()):
+        zf.write(path, path.relative_to(stage).as_posix())
+PY
+fi
 ls -lh "${REPO_ROOT}/${OUT_ZIP}"
+if [[ "${FINDEVIL_DEVPOST_MODE}" == "strict" ]]; then
+  "${PYTHON_BIN}" scripts/validate-submission-assets.py --zip "${OUT_ZIP}"
+fi
 log "done: ${OUT_ZIP}"
