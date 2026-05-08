@@ -13,8 +13,9 @@ Usage::
 
     python scripts/rust-mcp-smoke.py [--release]
 
-The default uses the debug binary at target/debug/findevil-mcp;
-``--release`` switches to target/release/findevil-mcp.
+The default uses the debug binary under ``target/``;
+``--release`` switches to the release binary. If ``CARGO_TARGET_DIR`` is set,
+the binary is resolved from that directory instead of the repository ``target/``.
 """
 
 from __future__ import annotations
@@ -155,7 +156,14 @@ def main() -> int:
 
     bin_dir = "release" if args.release else "debug"
     bin_name = "findevil-mcp.exe" if sys.platform == "win32" else "findevil-mcp"
-    binary = REPO / "target" / bin_dir / bin_name
+    target_root = Path(os.environ.get("CARGO_TARGET_DIR", REPO / "target"))
+    if not target_root.is_absolute():
+        target_root = REPO / target_root
+    binary = target_root / bin_dir / bin_name
+    if not binary.is_file() and sys.platform != "win32":
+        windows_binary = binary.with_name("findevil-mcp.exe")
+        if windows_binary.is_file():
+            binary = windows_binary
 
     if not binary.is_file():
         fatal(

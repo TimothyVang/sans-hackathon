@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CorrelatorSprite } from "@/components/sprites/CorrelatorSprite";
+import { DashboardNav } from "@/components/DashboardNav";
 import { JudgeSprite } from "@/components/sprites/JudgeSprite";
 import { PoolASprite } from "@/components/sprites/PoolASprite";
 import { PoolBSprite } from "@/components/sprites/PoolBSprite";
@@ -145,7 +146,8 @@ export default function DashboardPage() {
         : "#ef4444";
 
   return (
-    <main className="min-h-screen p-8">
+    <main className="min-h-screen overflow-x-hidden p-4 md:p-8">
+      <DashboardNav active="audit" />
       <div className="nes-container with-title is-centered max-w-5xl mx-auto">
         <p className="title">Find Evil!</p>
         <p>The agent army at work — live audit stream from a case.</p>
@@ -223,13 +225,7 @@ export default function DashboardPage() {
         Single-column collapse on narrow viewports; not pixel-perfect.
       */}
       <div className="max-w-5xl mx-auto mt-8">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "1rem",
-          }}
-        >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <PoolASprite state={roleStates.pool_a} />
           <PoolBSprite state={roleStates.pool_b} />
         </div>
@@ -245,13 +241,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="max-w-5xl mx-auto mt-8 text-sm">
-        <a href="/debug" className="nes-text is-primary">
-          [Open the /debug raw-events stream viewer]
-        </a>
-        <a href="/codex" className="nes-text is-success ml-3">
-          [Open the Codex investigation cockpit]
-        </a>
-        <span className="ml-3 text-xs opacity-70">
+        <span className="text-xs opacity-70">
           Sprites are placeholder NES.css visuals; final art lands with the
           Claude Design pass (A3 §1.2).
         </span>

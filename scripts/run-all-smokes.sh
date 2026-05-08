@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# scripts/run-all-smokes.sh — run every smoke that L1 runs, outside docker.
+# scripts/run-all-smokes.sh — run local smoke/lint/test gates outside docker.
 #
 # A developer iterating locally on the typed MCP surface, find-evil-auto's
 # verdict policy, fleet_correlate's filter logic, or the demo script's
 # timing should not have to wait for a docker compose build to find out
-# they broke something. This script runs the same 5 smokes that
-# docker/l1-compose.yml runs, in the same order, with a one-line
-# status per smoke and a final tally.
+# they broke something. This script complements docker/l1-compose.yml
+# with a fast local gate and final tally; Docker still runs broader
+# cargo/pytest/pnpm checks in an Ubuntu container.
 #
 # Usage:
 #   bash scripts/run-all-smokes.sh
@@ -14,8 +14,8 @@
 # Exits 0 if every smoke passed; non-zero if any failed.
 #
 # Pre-flight: requires `cargo build --release -p findevil-mcp` (the Rust
-# smoke spawns target/release/findevil-mcp) and `uv sync` in
-# services/agent_mcp (the agent_mcp smoke spawns the Python MCP server).
+# smoke resolves the release binary under `${CARGO_TARGET_DIR:-target}`) and
+# `uv sync` in services/agent_mcp (the agent_mcp smoke spawns the Python MCP server).
 
 set -uo pipefail
 
@@ -75,9 +75,9 @@ echo "=========================================="
 
 # 1. Rust MCP server end-to-end.
 run_smoke \
-    "rust-mcp-smoke (12-tool dispatch + error paths)" \
-    "python3 scripts/rust-mcp-smoke.py" \
-    "[ -x target/release/findevil-mcp ] || [ -x target/release/findevil-mcp.exe ]"
+    "rust-mcp-smoke (13-tool dispatch + error paths)" \
+    "python3 scripts/rust-mcp-smoke.py --release" \
+    '[ -x "${CARGO_TARGET_DIR:-target}/release/findevil-mcp" ] || [ -x "${CARGO_TARGET_DIR:-target}/release/findevil-mcp.exe" ]'
 
 # 2. Python agent_mcp end-to-end (synthetic).
 run_smoke \
@@ -166,8 +166,8 @@ if [ "${failed}" -eq 0 ]; then
     exit 0
 fi
 echo "${c_red}FAIL${c_off} - ${passed} passed, ${skipped} skipped, ${failed} failed (of ${total})"
-echo "Same smoke set runs in CI via docker/l1-compose.yml. If a smoke"
-echo "fails locally and passes in CI, check toolchain versions:"
+echo "The CI-equivalent gate runs via docker/l1-compose.yml. If a smoke"
+echo "fails locally and passes in Docker/CI, check toolchain versions:"
 echo "  cargo build --release -p findevil-mcp  (Rust 1.88 per rust-toolchain.toml)"
 echo "  uv sync --extra dev (Python 3.11 in services/agent_mcp)"
 echo "=========================================="

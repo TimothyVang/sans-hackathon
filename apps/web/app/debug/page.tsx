@@ -12,6 +12,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { DashboardNav } from "@/components/DashboardNav";
+
 interface AuditLine {
   seq: number;
   kind: string;
@@ -122,7 +124,8 @@ export default function DebugPage() {
         : "#ef4444";
 
   return (
-    <main className="min-h-screen p-8">
+    <main className="min-h-screen overflow-x-hidden p-4 md:p-8">
+      <DashboardNav active="debug" />
       <div className="nes-container with-title is-rounded max-w-4xl mx-auto">
         <p className="title">/debug — audit.jsonl SSE stream viewer</p>
         <p className="text-sm">

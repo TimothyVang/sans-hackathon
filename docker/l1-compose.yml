@@ -26,11 +26,16 @@ services:
       # Share cargo / pnpm / uv caches across runs for speed.
       - l1-cargo-registry:/home/dev/.cargo/registry
       - l1-cargo-git:/home/dev/.cargo/git
-      - l1-cargo-target:/workspace/target
+      - l1-cargo-target:/home/dev/.cargo-target
       - l1-uv-cache:/home/dev/.cache/uv
       - l1-pnpm-store:/home/dev/.local/share/pnpm/store
     environment:
       CARGO_HOME: /home/dev/.cargo
+      CARGO_TARGET_DIR: /home/dev/.cargo-target
+      CARGO_BUILD_JOBS: "1"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
       RUSTFLAGS: "-D warnings"
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
@@ -58,15 +63,15 @@ services:
         # (services/agent, services/agent_mcp, services/swarm) so we iterate.
         python_any=false
         for proj in services/agent services/agent_mcp services/swarm; do
-          if [ -f "$proj/pyproject.toml" ]; then
+          if [ -f "$$proj/pyproject.toml" ]; then
             python_any=true
-            echo "== ($proj) uv sync --extra dev =="
-            (cd "$proj" && (uv sync --extra dev --frozen 2>/dev/null || uv sync --extra dev))
-            echo "== ($proj) uv run pytest -xvs --cov =="
-            (cd "$proj" && uv run pytest -xvs --cov)
+            echo "== ($$proj) uv sync --extra dev =="
+            (cd "$$proj" && (uv sync --extra dev --frozen 2>/dev/null || uv sync --extra dev))
+            echo "== ($$proj) uv run pytest -xvs --cov =="
+            (cd "$$proj" && uv run pytest -xvs --cov)
           fi
         done
-        if [ "$python_any" = "false" ]; then
+        if [ "$$python_any" = "false" ]; then
           echo "-- no Python projects yet, skipping --"
         fi
 
@@ -82,17 +87,17 @@ services:
         fi
 
         # End-to-end MCP smoke. cargo build --release above already
-        # produced target/release/findevil-mcp; agent_mcp's uv venv
+        # produced the release findevil-mcp in Cargo's target dir; agent_mcp's uv venv
         # was synced. Both smokes spawn the server as a subprocess
         # over stdio JSON-RPC and assert tool registration + error
         # paths. Failure here is more informative than a unit-test
         # failure because it catches integration drift between the
         # tool registration table, the dispatcher, and the
         # ToolAnnotations schema all at once.
-        if [ -x target/release/findevil-mcp ] && [ -f scripts/rust-mcp-smoke.py ]; then
+        if [ -x "$${CARGO_TARGET_DIR:-target}/release/findevil-mcp" ] && [ -f scripts/rust-mcp-smoke.py ]; then
           echo "== scripts/rust-mcp-smoke.py (Rust MCP end-to-end) =="
-          # rust-mcp-smoke spawns target/release/findevil-mcp directly
-          python3 scripts/rust-mcp-smoke.py
+          # rust-mcp-smoke honors CARGO_TARGET_DIR when present.
+          python3 scripts/rust-mcp-smoke.py --release
         else
           echo "-- skipping rust-mcp-smoke (binary or script absent) --"
         fi
