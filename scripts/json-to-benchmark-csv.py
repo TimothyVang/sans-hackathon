@@ -48,13 +48,11 @@ def load_records(path: Path) -> list[dict]:
 
 def _record_from_file(p: Path) -> dict:
     try:
-        data = json.loads(p.read_text(encoding="utf-8"))
+        data = json.loads(p.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError:
         return {c: "" for c in CSV_COLUMNS} | {"source_file": str(p)}
     return {
-        "fixture": data.get("fixture")
-        or data.get("case_id")
-        or p.stem.removesuffix("-verdict"),
+        "fixture": fixture_name(data, p),
         "findings_matched": data.get("finding_count")
         or len(data.get("findings", []) or []),
         "findings_expected": data.get("findings_expected", ""),
@@ -68,6 +66,16 @@ def _record_from_file(p: Path) -> dict:
         "contradictions_auto_resolved": data.get("contradictions_auto_resolved", ""),
         "source_file": str(p),
     }
+
+
+def fixture_name(data: dict, p: Path) -> str:
+    explicit = data.get("fixture")
+    if explicit:
+        return explicit
+    filename_fixture = p.stem.removesuffix("-verdict")
+    if filename_fixture and filename_fixture != "verdict":
+        return filename_fixture
+    return data.get("case_id") or filename_fixture
 
 
 def main(argv: list[str]) -> int:

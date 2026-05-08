@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev --turbo",
     "build": "next build",
+    "build:lib": "python3 ../../scripts/build-offline-report.py --out dist/report.html",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

@@ -7,7 +7,7 @@ name: Devpost Submit
 
 on:
   push:
-    tags: ['v-submit']
+    tags: ['v-submit', 'v-submit-smoke']
 
 permissions:
   contents: write
@@ -56,10 +56,13 @@ jobs:
         env:
           DEMO_VIDEO_URL: ${{ vars.DEMO_VIDEO_URL }}
         run: |
-          if [[ -z "${DEMO_VIDEO_URL}" ]]; then
+          if [[ -z "${DEMO_VIDEO_URL}" && "${GITHUB_REF_NAME}" == "v-submit" ]]; then
             echo "::error::DEMO_VIDEO_URL is empty. Set with:"
             echo "::error::  gh variable set DEMO_VIDEO_URL --body 'https://youtu.be/<id>'"
             exit 1
+          fi
+          if [[ -z "${DEMO_VIDEO_URL}" ]]; then
+            echo "::warning::DEMO_VIDEO_URL is empty; smoke package will use smoke-only placeholder"
           fi
 
       - name: Download release artifacts
@@ -67,7 +70,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p release-assets
-          gh release download v-submit --dir release-assets --pattern '*' || true
+          gh release download "${GITHUB_REF_NAME}" --dir release-assets --pattern '*'
           ls -lh release-assets/
 
       - name: Download latest weekly L3 verdicts
@@ -78,15 +81,23 @@ jobs:
           # Most recent successful weekly-golden run.
           run_id=$(gh run list \
             --workflow=l3-weekly-goldens.yml \
-            --status=success --limit=1 --json databaseId --jq '.[0].databaseId')
+            --status=success --limit=1 --json databaseId --jq '.[0].databaseId' || true)
+          if [[ -z "${run_id:-}" && "${GITHUB_REF_NAME}" == "v-submit" ]]; then
+            echo "::error::No successful weekly L3 verdict run found for final submission"
+            exit 1
+          fi
           if [[ -n "${run_id:-}" ]]; then
-            gh run download "${run_id}" --name l3-weekly-verdicts --dir logs/l3 || true
+            gh run download "${run_id}" --name l3-weekly-verdicts --dir logs/l3
           fi
 
       - name: Convert verdicts to CSV
         run: |
-          python3 scripts/json-to-benchmark-csv.py logs/l3 > benchmark-results.csv || \
+          if [[ "${GITHUB_REF_NAME}" == "v-submit-smoke" && -z "$(find logs/l3 -name '*-verdict.json' -print -quit)" ]]; then
             echo 'fixture,findings_matched' > benchmark-results.csv
+          else
+            python3 scripts/json-to-benchmark-csv.py logs/l3 > benchmark-results.csv
+            python3 scripts/validate-submission-assets.py --benchmark benchmark-results.csv
+          fi
           cat benchmark-results.csv
 
       - name: Run package-devpost.sh
@@ -95,6 +106,7 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
           ACCURACY: ${{ vars.LAST_KNOWN_ACCURACY || '0' }}
           DATE: ${{ github.event.head_commit.timestamp || github.event.ref }}
+          FINDEVIL_DEVPOST_MODE: ${{ github.ref_name == 'v-submit-smoke' && 'smoke' || 'strict' }}
         run: |
           bash scripts/package-devpost.sh
           ls -lh find-evil-submission.zip
@@ -103,7 +115,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload v-submit find-evil-submission.zip --clobber
+          gh release upload "${GITHUB_REF_NAME}" find-evil-submission.zip --clobber
 
       - name: Slack #releases
         if: env.SLACK_WEBHOOK_RELEASES != ''
