@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
     libclang-dev \
+    lld \
     python3.11 \
     python3.11-venv \
     python3.11-dev \
