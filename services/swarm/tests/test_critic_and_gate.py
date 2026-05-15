@@ -212,18 +212,27 @@ class TestWatchdog:
             "CI runs on Linux."
         ),
     )
-    def test_fires_callback_on_deadline(self) -> None:
+    def test_fires_callback_on_deadline(self, monkeypatch: pytest.MonkeyPatch) -> None:
         fired = []
+        signaled = []
+        monkeypatch.setattr(
+            "findevil_swarm.watchdog._signal_process_group",
+            lambda: signaled.append(True),
+        )
         w = Watchdog(deadline_seconds=1, on_fire=lambda: fired.append(True))
         w.arm()
         time.sleep(1.5)
-        if w.fired:
-            assert fired == [True]
+        assert w.fired is True
+        assert fired == [True]
+        assert signaled == [True]
 
     def test_seconds_remaining_counts_down(self) -> None:
         w = Watchdog(deadline_seconds=10)
         assert w.seconds_remaining() == 10
         w.arm()
-        time.sleep(0.05)
-        remaining = w.seconds_remaining()
-        assert remaining < 10 and remaining > 9
+        try:
+            time.sleep(0.05)
+            remaining = w.seconds_remaining()
+            assert remaining < 10 and remaining > 9
+        finally:
+            w.cancel()

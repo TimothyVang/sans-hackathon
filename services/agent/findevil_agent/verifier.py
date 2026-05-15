@@ -31,23 +31,30 @@ requires for replay.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 from findevil_agent.events import Finding, VerifierAction
-from findevil_agent.mcp_client import McpClient, McpRpcError, ToolCallResult
+from findevil_agent.mcp_client import McpClient
+from findevil_agent.replay import (
+    ReplayArtifact,
+    ReplayPool,
+    missing_replay_artifact,
+    replay_tool_call,
+)
 
 
-@dataclass(frozen=True)
 class CallReplay:
-    """Outcome of one tool re-run during verification."""
+    """Backward-compatible view over :class:`ReplayArtifact`."""
 
-    tool_name: str
-    arguments: dict[str, Any]
-    expected_sha256: str
-    actual_sha256: str | None
-    matched: bool
-    error: str | None = None
+    def __init__(self, artifact: ReplayArtifact, arguments: dict[str, Any] | None = None) -> None:
+        self.artifact = artifact
+        self.tool_name = artifact.tool_name or ""
+        self.arguments = arguments or {}
+        self.expected_sha256 = artifact.expected_sha256 or ""
+        self.actual_sha256 = artifact.actual_sha256
+        self.matched = bool(artifact.matched)
+        self.error = artifact.error
+        self.drift_class = artifact.drift_class
 
 
 def reverify_finding(
@@ -55,6 +62,8 @@ def reverify_finding(
     *,
     mcp: McpClient,
     tool_call_index: dict[str, dict[str, Any]],
+    replay_pool: ReplayPool | None = None,
+    force_fresh: bool = False,
 ) -> tuple[VerifierAction, CallReplay | None]:
     """Re-run the single tool call cited by ``finding`` and decide
     approve / reject / downgrade.
@@ -65,44 +74,50 @@ def reverify_finding(
     invoking the verifier.
     """
     if not finding.tool_call_id:
+        reason = "missing tool_call_id (Spec #2 invariant)"
+        artifact = missing_replay_artifact(
+            tool_call_id=None, drift_class="missing_citation", reason=reason
+        )
         return (
             VerifierAction(
                 case_id=finding.case_id,
                 action="rejected",
                 finding_id=finding.finding_id,
-                reason="missing tool_call_id (Spec #2 invariant)",
+                reason=reason,
             ),
-            None,
+            CallReplay(artifact),
         )
 
     record = tool_call_index.get(finding.tool_call_id)
     if record is None:
+        reason = f"tool_call_id {finding.tool_call_id!r} not found in audit log"
+        artifact = missing_replay_artifact(
+            tool_call_id=finding.tool_call_id,
+            drift_class="missing_audit_record",
+            reason=reason,
+        )
         return (
             VerifierAction(
                 case_id=finding.case_id,
                 action="rejected",
                 finding_id=finding.finding_id,
-                reason=f"tool_call_id {finding.tool_call_id!r} not found in audit log",
+                reason=reason,
             ),
-            None,
+            CallReplay(artifact),
         )
 
-    tool_name = str(record.get("tool_name", ""))
     arguments = dict(record.get("arguments") or {})
     expected = str(record.get("output_sha256", ""))
 
-    replay: CallReplay
-    try:
-        result: ToolCallResult = mcp.call_tool(tool_name, arguments)
-    except McpRpcError as exc:
-        replay = CallReplay(
-            tool_name=tool_name,
-            arguments=arguments,
-            expected_sha256=expected,
-            actual_sha256=None,
-            matched=False,
-            error=f"mcp rpc error code={exc.code}: {exc}",
-        )
+    artifact = replay_tool_call(
+        tool_call_id=finding.tool_call_id,
+        record=record,
+        mcp=mcp,
+        replay_pool=replay_pool,
+        force_fresh=force_fresh,
+    )
+    replay = CallReplay(artifact, arguments)
+    if artifact.drift_class == "replay_error":
         return (
             VerifierAction(
                 case_id=finding.case_id,
@@ -113,15 +128,7 @@ def reverify_finding(
             replay,
         )
 
-    matched = result.output_sha256 == expected
-    replay = CallReplay(
-        tool_name=tool_name,
-        arguments=arguments,
-        expected_sha256=expected,
-        actual_sha256=result.output_sha256,
-        matched=matched,
-    )
-    if matched:
+    if artifact.drift_class == "exact_match":
         return (
             VerifierAction(
                 case_id=finding.case_id,
@@ -141,7 +148,7 @@ def reverify_finding(
             finding_id=finding.finding_id,
             reason=(
                 f"tool re-run output_sha256 drift "
-                f"(expected={expected[:12]}…, got={result.output_sha256[:12]}…)"
+                f"(expected={expected[:12]}…, got={(artifact.actual_sha256 or '')[:12]}…)"
             ),
         ),
         replay,
@@ -153,16 +160,24 @@ def verify_findings(
     *,
     mcp: McpClient,
     tool_call_index: dict[str, dict[str, Any]],
+    replay_pool: ReplayPool | None = None,
+    force_fresh: bool = False,
 ) -> list[tuple[Finding, VerifierAction, CallReplay | None]]:
     """Verify a batch of findings. Returns aligned (finding, action, replay) tuples.
 
-    Uses the same ``mcp`` client for every re-run, serializing the
-    calls. Spec #2 §8.1 budgets this stage at ~30s per finding;
-    parallel re-runs are a future optimization.
+    Uses the same ``mcp`` client for every re-run. Callers that need
+    cache/concurrency primitives can pass a ``ReplayPool`` built over
+    that client; the default path remains serial and minimal.
     """
     out: list[tuple[Finding, VerifierAction, CallReplay | None]] = []
     for finding in findings:
-        action, replay = reverify_finding(finding, mcp=mcp, tool_call_index=tool_call_index)
+        action, replay = reverify_finding(
+            finding,
+            mcp=mcp,
+            tool_call_index=tool_call_index,
+            replay_pool=replay_pool,
+            force_fresh=force_fresh,
+        )
         out.append((finding, action, replay))
     return out
 

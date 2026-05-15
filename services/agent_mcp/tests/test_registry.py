@@ -21,13 +21,14 @@ EXPECTED_TOOL_NAMES = {
     "memory_remember",
     "memory_recall",
     "pool_handoff",
+    "expert_miss_capture",
 }
 
 
 class TestRegistry:
-    def test_all_specs_returns_eleven_tools(self) -> None:
+    def test_all_specs_returns_twelve_tools(self) -> None:
         specs = all_specs()
-        assert len(specs) == 11
+        assert len(specs) == 12
 
     def test_all_specs_returns_only_tool_specs(self) -> None:
         specs = all_specs()

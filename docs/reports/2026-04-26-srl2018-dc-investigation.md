@@ -228,19 +228,19 @@ This is the live result reproducible from the run artifacts at `/home/sansforens
 
 In the spirit of Heuer's emphasis on epistemic honesty [^heuer-1999], the limitations of this investigation are documented explicitly:
 
-**8.1 Tool surface coverage.** Find Evil! wraps 13 typed Rust MCP tools (`vol_psscan` and `vol_psxview` were added after `vol_pslist` for DKOM cross-validation) and 11 typed Python MCP tools. SIFT Workstation ships hundreds of DFIR tools. The following SIFT capabilities are *not* in the agent's tool surface today:
+**8.1 Tool surface coverage.** Find Evil! now wraps 19 typed Rust MCP tools (`vol_psscan` and `vol_psxview` were added after `vol_pslist` for DKOM cross-validation, with disk and network/log triage tools added later) and 12 typed Python MCP tools. SIFT Workstation ships hundreds of DFIR tools. The following SIFT capabilities are *not* in the agent's tool surface today:
 
 * Plaso / `log2timeline` — full filesystem super-timeline (a major gap)
 * The Sleuth Kit (`fls`, `icat`, `mmls`, `blkls`) — raw filesystem navigation
 * Bulk Extractor — regex-driven email/CC/URL extraction
 * Eric Zimmerman tools (`MFTECmd`, `PECmd`, `RECmd`, `LECmd`, `JLECmd`)
 * Browser history (Hindsight, sqlite-based DB extraction)
-* Network capture analysis (`tshark`, Zeek, `tcpdump`)
+* Broad interactive network capture analysis (`tcpdump` and ad hoc packet carving; typed `pcap_triage`, `zeek_summary`, and `sysmon_network_query` wrappers cover bounded triage only)
 * Most of Volatility 3's 100+ plugins (we wrap `pslist`, `psscan`, `psxview`, and `malfind`)
 * Reverse engineering (`radare2`, `gdb`, `ghidra`) — fundamentally interactive, not amenable to MCP request/response shape
 * REMnux malware-analysis layer
 
-The narrow tool surface is **architecturally deliberate** [§2] — the typed MCP surface forbids `execute_shell` and each tool is independently auditable. Expanding the surface is mechanical (~30–60 minutes per tool wrapper, following the same pattern as the existing 11) but trades breadth for the safety/auditability claim.
+The narrow tool surface is **architecturally deliberate** [§2] — the typed MCP surface forbids `execute_shell` and each tool is independently auditable. Expanding the surface is mechanical but trades breadth for the safety/auditability claim.
 
 **8.2 Single-host investigation.** This report covers the Domain Controller memory image only. The other 21 memory captures and 4 disk images remain unanalyzed. A complete investigation would lateralize across all hosts to identify the attack's full footprint.
 

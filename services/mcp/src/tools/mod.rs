@@ -17,11 +17,14 @@
 //!     under `services/mcp/tests/`.
 
 pub mod case_open;
+pub mod disk;
 pub mod evtx_query;
 pub mod hayabusa_scan;
 pub mod mft_timeline;
+pub mod pcap_triage;
 pub mod prefetch_parse;
 pub mod registry_query;
+pub mod sysmon_network_query;
 pub mod usnjrnl_query;
 pub mod vel_collect;
 pub mod vol_malfind;
@@ -29,9 +32,15 @@ pub mod vol_pslist;
 pub mod vol_psscan;
 pub mod vol_psxview;
 pub mod yara_scan;
+pub mod zeek_summary;
 
 /// Convenience re-exports.
 pub use case_open::{case_open, CaseHandle, CaseOpenError, CaseOpenInput};
+pub use disk::{
+    disk_extract_artifacts, disk_mount, disk_unmount, DiskError, DiskExtractArtifactsInput,
+    DiskExtractArtifactsOutput, DiskMode, DiskMountInput, DiskMountOutput, DiskUnmountInput,
+    DiskUnmountOutput, ExtractedDiskArtifact, SessionResource,
+};
 pub use evtx_query::{
     evtx_query, path_looks_like_evtx, EvtxError, EvtxQueryInput, EvtxQueryOutput, EvtxRow,
 };
@@ -41,12 +50,19 @@ pub use hayabusa_scan::{
 pub use mft_timeline::{
     mft_timeline, path_looks_like_mft, MftEntryRow, MftError, MftInput, MftOutput,
 };
+pub use pcap_triage::{
+    path_looks_like_pcap, pcap_triage, PcapTriageError, PcapTriageInput, PcapTriageOutput,
+};
 pub use prefetch_parse::{
     path_looks_like_prefetch, prefetch_parse, PrefetchError, PrefetchInput, PrefetchOutput,
 };
 pub use registry_query::{
     path_looks_like_hive, registry_query, RegistryEntry, RegistryError, RegistryInput,
     RegistryOutput, RegistryValue,
+};
+pub use sysmon_network_query::{
+    path_looks_like_sysmon_evtx, sysmon_network_query, SysmonNetworkError, SysmonNetworkInput,
+    SysmonNetworkOutput, SysmonNetworkRow,
 };
 pub use usnjrnl_query::{
     path_looks_like_usnjrnl, usnjrnl_query, UsnJrnlEntry, UsnJrnlError, UsnJrnlInput, UsnJrnlOutput,
@@ -67,4 +83,8 @@ pub use vol_psxview::{
 pub use yara_scan::{
     path_looks_like_yara_rules, yara_scan, YaraError, YaraInput, YaraMatch, YaraOutput,
     YaraPatternMatch,
+};
+pub use zeek_summary::{
+    path_looks_like_zeek_log, zeek_summary, ZeekCount, ZeekSummaryError, ZeekSummaryInput,
+    ZeekSummaryOutput,
 };

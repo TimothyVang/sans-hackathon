@@ -73,7 +73,7 @@ The 11 variants:
 - `HypothesisUpdate` — MITRE board drive
 - `ContradictionFound` — emits BEFORE the judge reconciles; the architectural moat
 
-Every event is Pydantic-frozen, `extra="forbid"`. `event_id` auto-fills as UUID4; `ts` auto-fills as UTC ISO-8601 with trailing `Z`. TypeScript types for `apps/web/lib/events.ts` are generated via `pydantic-to-typescript` (follow-up task).
+Every event is Pydantic-frozen, `extra="forbid"`. `event_id` auto-fills as UUID4; `ts` auto-fills as UTC ISO-8601 with trailing `Z`. TypeScript types for `apps/web/lib/events.ts` are generated with `pnpm --filter @findevil/web codegen:events`.
 
 ## For swarm workers
 

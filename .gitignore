@@ -38,6 +38,7 @@ venv/
 
 # Node / Next.js
 node_modules/
+.pnpm-store/
 .next/
 out/
 dist/
@@ -70,15 +71,21 @@ Thumbs.db
 # Build artifacts
 /build/
 /dist/
+/release-assets/
+/benchmark-results.csv
+/find-evil-submission.zip
 
 # Logs
 *.log
 
 # Local state
+/.omx/
 /state/
 /checkpoints/
 *.sqlite
 *.sqlite-journal
+.coverage
+coverage/
 
 # External reference clones (research-only, never ship in submission)
 /openclaw/

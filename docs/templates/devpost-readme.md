@@ -14,11 +14,11 @@
 
 ## What it does
 
-Find Evil! investigates Windows host evidence (`.e01` disk images, memory captures, EVTX logs) end-to-end and produces a signed verdict (`SUSPICIOUS` / `INDETERMINATE` / `NO_EVIL`) with four load-bearing properties:
+Find Evil! automates repeatable Windows host DFIR mechanics for memory captures, EVTX logs, mounted/extracted disk artifacts, and raw disk-image custody registration. It produces an evidence-bound verdict (`SUSPICIOUS` / `INDETERMINATE` / `NO_EVIL`) plus an expert-signoff packet with four load-bearing properties. Raw disk images supplied alone are custody-registered today; disk-content conclusions require mounted or extracted artifacts.
 
-1. **A typed MCP tool surface, no `execute_shell`.** 24 narrow Pydantic-validated tools — 13 Rust DFIR (`case_open`, `evtx_query`, `vol_pslist`/`vol_psscan`/`vol_psxview`, `vol_malfind`, `mft_timeline`, `hayabusa_scan`, `yara_scan`, `usnjrnl_query`, `registry_query`, `prefetch_parse`, `vel_collect`) plus 11 Python crypto/ACH/memory/handoff. EVTX parsed in-process via the omerbenamram/evtx Rust crate (~1600× faster than python-evtx); AGPL/GPL tools (Hayabusa, Volatility3, Velociraptor) invoked through subprocess boundaries only — Apache-2.0 submission tree stays clean.
+1. **A typed MCP tool surface, no `execute_shell`.** 31 narrow Pydantic-validated tools — 19 Rust DFIR (`case_open`, `disk_mount`/`disk_extract_artifacts`/`disk_unmount`, `evtx_query`, `vol_pslist`/`vol_psscan`/`vol_psxview`, `vol_malfind`, `mft_timeline`, `hayabusa_scan`, `yara_scan`, `usnjrnl_query`, `registry_query`, `prefetch_parse`, `vel_collect`, `sysmon_network_query`, `zeek_summary`, `pcap_triage`) plus 12 Python crypto/ACH/memory/handoff/expert-feedback tools. EVTX parsed in-process via the omerbenamram/evtx Rust crate (~1600× faster than python-evtx); AGPL/GPL tools (Hayabusa, Volatility3, Velociraptor) invoked through subprocess boundaries only — Apache-2.0 submission tree stays clean.
 
-2. **Cryptographic chain of custody supporting a FRE 902(14) self-authenticating-evidence claim.** Three composed primitives: hash-chained audit JSONL (`prev_hash` per record) → `rs_merkle` Merkle root over canonical-JSON tool outputs → sigstore signature with Rekor transparency-log inclusion proof. Verifiable offline by `manifest_verify` — no network, no third-party servers. (Pre-A5 the chain tail-anchored to Bitcoin via OpenTimestamps; removed because judges scoring offline can't exercise the network call. Trade-off: `docs/cryptographic-attestation.md`.)
+2. **Cryptographic chain of custody supporting a FRE 902(14) self-authenticating-evidence claim.** Three composed primitives: hash-chained audit JSONL (`prev_hash` per record) → `rs_merkle` Merkle root over canonical-JSON tool outputs → manifest signature metadata. Production signing can use Sigstore/Rekor; local offline automation may use a clearly identified stub signer and is not customer-releasable without expert approval. `manifest_verify` verifies the audit chain and Merkle root offline. (Pre-A5 the chain tail-anchored to Bitcoin via OpenTimestamps; removed because judges scoring offline can't exercise the network call. Trade-off: `docs/cryptographic-attestation.md`.)
 
 3. **Analysis of Competing Hypotheses as agent topology.** Two pools investigate the same evidence with opposing priors (persistence-biased vs. exfil-biased). Disagreements emit as `kind=contradiction` audit records *before* the judge merges — surfaced as first-class output, not hidden in consensus. Heuer's 1970s intelligence-analysis framework applied as live agent architecture.
 
@@ -32,8 +32,8 @@ Five trust boundaries (see `docs/architecture.md` for Mermaid diagrams):
 Evidence vault (read-only .e01)
   → SIFT tool subprocesses (unprivileged, sandboxed)
   → Two typed MCP servers
-      • findevil-mcp (Rust)         — 13 DFIR tools, no execute_shell
-      • findevil-agent-mcp (Python) — 11 crypto/ACH/memory/ACP tools
+      • findevil-mcp (Rust)         — 19 DFIR tools, no execute_shell
+      • findevil-agent-mcp (Python) — 12 crypto/ACH/memory/ACP/expert-feedback tools
   → Claude Code agent loop (supervisor + forked Pool A/B subagents
     + verifier + judge + correlator + contradiction surface)
   → Crypto chain-of-custody (audit hash chain + rs_merkle + sigstore)
@@ -79,7 +79,9 @@ claude
 # Claude Code, ChatGPT) — no network, no third-party servers.
 ```
 
-Headless single-shot: `bash scripts/find-evil-auto <evidence-path> --unattended`. Multi-host fleet: `python scripts/fleet_investigate.py && python scripts/fleet_correlate.py && python scripts/render_fleet_report.py`.
+Headless single-shot: `bash scripts/find-evil-auto <evidence-path> --unattended`. Add `--run-summary <path>` to write a machine-readable JSON pointer to the run directory, artifact paths, report QA, release-gate/expert-signoff state, readiness state, blockers, and warnings. Multi-host fleet: `python scripts/fleet_investigate.py && python scripts/fleet_correlate.py && python scripts/render_fleet_report.py`.
+
+For expert-review packaging on native Windows, run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/readiness-gate.ps1 -Mode Full -EvidencePath <path-inside-sift-vm> -RunL1Docker`. It writes `readiness-summary.json`, `readiness-packet-manifest.json`, and `readiness-packet.zip` under `tmp/readiness-gates/<run-id>/`. Fixed `-RunId` reruns refresh generated packet contents and may use a timestamped local-build child run. `READY_FOR_EXPERT_REVIEW` means human expert review can begin; automation does not mark customer release ready.
 
 ## Accuracy report
 

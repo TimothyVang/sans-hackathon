@@ -1,6 +1,6 @@
 # Spec #2 — The Product: FIND EVIL! Automated DFIR Pipeline
 
-> **Status: SHIPPED (with A2 + A5 amendments).** The 7-layer architecture, 12 typed Rust MCP tools, M2 crypto stack (3-tier post-A5), M4 ACH agent layer (Pool A/B + judge + verifier + correlator + contradiction node) all live. The pre-A2 LangGraph runtime + FastAPI service were never built (per A2). The Bitcoin/OpenTimestamps tier was removed (per A5). Live entry: `scripts/find-evil` / `scripts/find-evil-auto`.
+> **Status: SHIPPED (with A2 + A5 amendments and later tool additions).** The current Product ships 19 typed Rust MCP tools, 12 typed Python MCP tools, the M2 crypto stack (3-tier post-A5), and the M4 ACH agent layer (Pool A/B + judge + verifier + correlator + contradiction node). The pre-A2 LangGraph runtime + FastAPI service were never built (per A2). The Bitcoin/OpenTimestamps tier was removed (per A5). Live entry: `scripts/find-evil` / `scripts/find-evil-auto`. Original sections below may preserve design-era tool counts; `CLAUDE.md` and executable registries are authoritative for shipped counts.
 
 **Date:** 2026-04-25
 **Status (original):** Design — awaiting user approval (Gate 4) — superseded by status banner above

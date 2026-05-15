@@ -11,6 +11,7 @@ on:
     tags: ['v[0-9]*', 'v-submit', 'v-smoke', 'v-submit-smoke']
 
 permissions:
+  actions: read
   contents: write
   packages: write  # ghcr.io push
   id-token: write  # OIDC for cosign (if we add image signing later)
@@ -27,6 +28,7 @@ jobs:
         id: verify
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           # Look for a successful l3-nightly run whose head SHA matches
@@ -37,16 +39,15 @@ jobs:
             --status=success \
             --limit=5 \
             --json headSha,databaseId \
-            --jq --arg sha "${{ github.sha }}" \
-              '[.[] | select(.headSha == $sha)] | length')
+            --jq "[.[] | select(.headSha == \"${TARGET_SHA}\")] | length")
           if [[ "${GREEN:-0}" -gt 0 ]]; then
             echo "l3_green=true" >> "$GITHUB_OUTPUT"
           else
             if [[ "${GITHUB_REF_NAME}" != "v-smoke" && "${GITHUB_REF_NAME}" != "v-submit-smoke" ]]; then
-              echo "::error::No l3-nightly green run on ${{ github.sha }}. Final release tags require L3 evidence."
+              echo "::error::No l3-nightly green run on ${TARGET_SHA}. Final release tags require L3 evidence."
               exit 1
             fi
-            echo "::warning::No l3-nightly green run on ${{ github.sha }}. Smoke release will continue, but this is not submission-ready."
+            echo "::warning::No l3-nightly green run on ${TARGET_SHA}. Smoke release will continue, but this is not submission-ready."
             echo "l3_green=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -75,8 +76,14 @@ jobs:
         id: tags
         run: |
           OWNER_LC="${GITHUB_REPOSITORY_OWNER,,}"
-          echo "image=ghcr.io/${OWNER_LC}/find-evil:${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          echo "latest=ghcr.io/${OWNER_LC}/find-evil:latest" >> "$GITHUB_OUTPUT"
+          {
+            echo "tags<<EOF"
+            echo "ghcr.io/${OWNER_LC}/find-evil:${GITHUB_REF_NAME}"
+            if [[ "${GITHUB_REF_NAME}" != "v-smoke" && "${GITHUB_REF_NAME}" != "v-submit-smoke" ]]; then
+              echo "ghcr.io/${OWNER_LC}/find-evil:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
       - name: Build + push
         uses: docker/build-push-action@v6
         with:
@@ -84,7 +91,7 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.tags.outputs.image }},${{ steps.tags.outputs.latest }}
+          tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false

@@ -10,7 +10,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use findevil_mcp::{case_open, CaseHandle, CaseOpenError, CaseOpenInput};
+use findevil_mcp::{
+    case_open, disk_extract_artifacts, disk_mount, disk_unmount, CaseHandle, CaseOpenError,
+    CaseOpenInput, DiskExtractArtifactsInput, DiskMode, DiskMountInput, DiskUnmountInput,
+};
 
 /// Global lock that serializes env-var manipulation across every
 /// test in this file. Cargo runs tests in parallel by default and
@@ -201,4 +204,128 @@ fn case_open_two_calls_produce_distinct_case_ids() {
     let h2 = case_open(&input).unwrap();
     assert_ne!(h1.id, h2.id, "case_ids are per-call UUIDs");
     assert_eq!(h1.image_hash, h2.image_hash, "same bytes hash the same");
+}
+
+#[test]
+fn disk_mount_extract_unmount_uses_session_resource_ledger_in_mock_mode() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let _home = HomeGuard::set(tmp.path());
+    let image = write_evidence_image(tmp.path(), b"fake disk image bytes");
+    let handle = case_open(&CaseOpenInput {
+        image_path: image.clone(),
+        expected_sha256: None,
+        label: Some("disk-ledger".to_string()),
+    })
+    .expect("case_open ok");
+
+    let mount_root = tmp.path().join("mock-mounted-root");
+    fs::create_dir_all(mount_root.join("Windows/System32/config")).unwrap();
+    fs::create_dir_all(mount_root.join("Windows/Prefetch")).unwrap();
+    fs::write(mount_root.join("$MFT"), b"mft bytes").unwrap();
+    fs::write(
+        mount_root.join("Windows/Prefetch/CMD.EXE-12345678.pf"),
+        b"pf",
+    )
+    .unwrap();
+    fs::write(mount_root.join("Windows/System32/config/SOFTWARE"), b"hive").unwrap();
+
+    let mounted = disk_mount(&DiskMountInput {
+        case_id: handle.id.clone(),
+        image_path: image,
+        mount_point: Some(mount_root.clone()),
+        mode: DiskMode::Mock,
+    })
+    .expect("mock mount succeeds");
+    assert_eq!(mounted.status, "mounted");
+    assert_eq!(mounted.fs_root, mount_root);
+    assert!(mounted.ledger_path.is_file());
+
+    let extracted = disk_extract_artifacts(&DiskExtractArtifactsInput {
+        case_id: handle.id.clone(),
+        mount_id: mounted.mount_id.clone(),
+        artifact_kinds: vec![],
+        limit: 20,
+        max_artifact_bytes: 1024,
+    })
+    .expect("extract artifacts");
+    let classes: Vec<&str> = extracted
+        .artifacts
+        .iter()
+        .map(|a| a.artifact_class.as_str())
+        .collect();
+    assert!(classes.contains(&"mft"), "classes={classes:?}");
+    assert!(classes.contains(&"prefetch"), "classes={classes:?}");
+    assert!(classes.contains(&"registry"), "classes={classes:?}");
+    assert_eq!(extracted.artifacts_skipped_oversize, 0);
+    assert_eq!(extracted.max_artifact_bytes, 1024);
+    for artifact in &extracted.artifacts {
+        assert!(artifact.extracted_path.is_file());
+        assert!(artifact.extracted_path.starts_with(&extracted.output_dir));
+    }
+
+    let unmounted = disk_unmount(&DiskUnmountInput {
+        case_id: handle.id,
+        mount_id: mounted.mount_id,
+        mode: DiskMode::Mock,
+    })
+    .expect("mock unmount succeeds");
+    assert_eq!(unmounted.status, "unmounted");
+
+    let ledger_text = fs::read_to_string(handle.case_dir.join("session_resources.json")).unwrap();
+    assert!(ledger_text.contains("disk_mount"));
+    assert!(ledger_text.contains("disk_extract_artifacts"));
+    assert!(ledger_text.contains("unmounted"));
+}
+
+#[test]
+fn disk_extract_artifacts_skips_oversized_yara_targets() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let _home = HomeGuard::set(tmp.path());
+    let image = write_evidence_image(tmp.path(), b"fake disk image bytes");
+    let handle = case_open(&CaseOpenInput {
+        image_path: image.clone(),
+        expected_sha256: None,
+        label: Some("disk-oversize".to_string()),
+    })
+    .expect("case_open ok");
+
+    let mount_root = tmp.path().join("mock-mounted-root");
+    fs::create_dir_all(mount_root.join("Users/Alice/AppData/Local/Temp")).unwrap();
+    let small = mount_root.join("Users/Alice/AppData/Local/Temp/small.bin");
+    let large = mount_root.join("Users/Alice/AppData/Local/Temp/large.bin");
+    fs::write(&small, b"small").unwrap();
+    fs::write(&large, b"this file is too large for the smoke max").unwrap();
+
+    let mounted = disk_mount(&DiskMountInput {
+        case_id: handle.id.clone(),
+        image_path: image,
+        mount_point: Some(mount_root),
+        mode: DiskMode::Mock,
+    })
+    .expect("mock mount succeeds");
+
+    let extracted = disk_extract_artifacts(&DiskExtractArtifactsInput {
+        case_id: handle.id,
+        mount_id: mounted.mount_id,
+        artifact_kinds: vec![],
+        limit: 20,
+        max_artifact_bytes: 8,
+    })
+    .expect("extract artifacts");
+
+    assert_eq!(extracted.artifacts_skipped_oversize, 1);
+    assert!(
+        extracted
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.source_path == small),
+        "small YARA target should still be extracted"
+    );
+    assert!(
+        extracted
+            .artifacts
+            .iter()
+            .all(|artifact| artifact.source_path != large),
+        "oversized YARA target should not be copied"
+    );
 }

@@ -18,7 +18,8 @@ import json
 import subprocess
 import sys
 from datetime import datetime
-from pathlib import Path
+from html import escape
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import matplotlib
@@ -380,6 +381,69 @@ def fig_timeline_overview(events: list[dict[str, Any]], out: Path) -> bool:
     return True
 
 
+def fig_attack_story_timeline(attack_story: dict[str, Any], out: Path) -> bool:
+    beats = attack_story.get("attack_chain", []) if attack_story else []
+    fig, ax = plt.subplots(figsize=(12, 1.8 + 0.6 * max(1, len(beats))))
+    ax.axis("off")
+    if not beats:
+        ax.text(
+            0.5,
+            0.5,
+            "No finding-backed attack-story beats available",
+            ha="center",
+            va="center",
+            fontsize=11,
+            color="#777",
+        )
+        fig.savefig(out)
+        plt.close(fig)
+        return False
+
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, len(beats) + 1)
+    colors = {
+        "CONFIRMED": "#c62828",
+        "INFERRED": "#ef6c00",
+        "HYPOTHESIS": "#6a1b9a",
+    }
+    for idx, beat in enumerate(beats[:8], 1):
+        y = len(beats[:8]) - idx + 0.6
+        confidence = str(beat.get("confidence") or "HYPOTHESIS")
+        color = colors.get(confidence, "#1565c0")
+        ax.scatter(0.7, y, s=180, color=color, edgecolor="black", linewidth=0.6)
+        ax.text(
+            0.7,
+            y,
+            str(beat.get("order") or idx),
+            ha="center",
+            va="center",
+            color="white",
+            fontsize=8,
+            fontweight="bold",
+        )
+        title = str(beat.get("title") or "Finding-backed story beat")[:85]
+        tcid = beat.get("tool_call_id") or "?"
+        mitre = beat.get("mitre_technique") or "n/a"
+        ts = beat.get("timestamp_utc") or "time not normalized"
+        ax.text(
+            1.1, y + 0.13, title, ha="left", va="center", fontsize=9, fontweight="bold"
+        )
+        ax.text(
+            1.1,
+            y - 0.17,
+            f"{confidence} | {mitre} | {tcid} | {ts}",
+            ha="left",
+            va="center",
+            fontsize=8,
+            color="#444",
+        )
+    ax.set_title("How they got hacked - evidence-bound attack story")
+    fig.tight_layout()
+    fig.savefig(out)
+    plt.close(fig)
+    return True
+
+
 def fig_practitioner_coverage(coverage: dict[str, Any], out: Path) -> bool:
     lanes = coverage.get("lanes", {}) if coverage else {}
     fig, ax = plt.subplots(figsize=(12, 2.4 + 0.35 * max(1, len(lanes))))
@@ -465,7 +529,37 @@ def fig_process_view_comparison(tool_calls: list[dict[str, Any]], out: Path) -> 
 def md_cell(value: Any) -> str:
     if isinstance(value, list):
         value = ", ".join(str(v) for v in value)
-    return str(value or "").replace("\n", " ").replace("|", "\\|")
+    text = escape(str(value or ""), quote=False)
+    for old, new in (
+        ("\\", "\\\\"),
+        ("`", "'"),
+        ("\r", " "),
+        ("\n", " "),
+        ("|", "\\|"),
+        ("[", "\\["),
+        ("]", "\\]"),
+        ("(", "\\("),
+        (")", "\\)"),
+    ):
+        text = text.replace(old, new)
+    return text
+
+
+def safe_visual_asset(case_dir: Path, asset: Any) -> str | None:
+    asset_s = str(asset or "").replace("\\", "/")
+    path = PurePosixPath(asset_s)
+    if (
+        len(path.parts) != 2
+        or path.parts[0] != "figures"
+        or path.suffix.lower() != ".png"
+        or any(part in {"", ".."} for part in path.parts)
+    ):
+        return None
+    local = (case_dir / path.parts[0] / path.parts[1]).resolve()
+    figures_dir = (case_dir / "figures").resolve()
+    if not local.is_relative_to(figures_dir) or not local.exists():
+        return None
+    return asset_s
 
 
 def build_false_positive_caveats(
@@ -479,14 +573,14 @@ def build_false_positive_caveats(
     targets = attack_coverage.get("targets", []) if attack_coverage else []
     if any(row.get("status") == "covered_no_finding" for row in targets):
         caveats.append(
-            "ATT&CK `covered_no_finding` means scoped tools ran without qualifying evidence; it does not mean clean, cleared, disproven, or absence of the technique."
+            "ATT&CK `covered_no_finding` means scoped tools ran without qualifying evidence; it is not environment-wide assurance about that technique."
         )
     checks = {
         c.get("artifact_class"): c for c in (completeness or {}).get("checks", [])
     }
     if not checks.get("network", {}).get("touched"):
         caveats.append(
-            "Network telemetry was not touched in this run, so exfiltration and C2 are neither proven nor disproven."
+            "Network telemetry was not touched in this run, so exfiltration and C2 cannot be assessed from these artifacts."
         )
     if not checks.get("disk/filesystem", {}).get("touched"):
         caveats.append(
@@ -497,6 +591,146 @@ def build_false_positive_caveats(
             "HYPOTHESIS findings are single-source or speculative leads and should not drive response actions without further artifact corroboration."
         )
     return caveats
+
+
+def _artifact_check(
+    completeness: dict[str, Any] | None, artifact_class: str
+) -> dict[str, Any]:
+    for check in (completeness or {}).get("checks", []):
+        if check.get("artifact_class") == artifact_class:
+            return check
+    return {}
+
+
+def _format_tools(tools: Any) -> str:
+    if isinstance(tools, list):
+        return ", ".join(str(tool) for tool in tools) or "none recorded"
+    return str(tools or "none recorded")
+
+
+def build_scope_interpretation_section(
+    completeness: dict[str, Any] | None,
+    attack_coverage: dict[str, Any] | None,
+) -> str:
+    network = _artifact_check(completeness, "network")
+    disk = _artifact_check(completeness, "disk/filesystem")
+    coverage_targets = (attack_coverage or {}).get("targets", [])
+    exfil_targets = [
+        row
+        for row in coverage_targets
+        if row.get("technique_id") in {"T1041", "T1048", "T1020"}
+        or "exfil" in str(row.get("technique_name", "")).lower()
+    ]
+
+    network_touched = bool(network.get("touched"))
+    network_available = bool(network.get("available"))
+    disk_touched = bool(disk.get("touched"))
+    disk_available = bool(disk.get("available"))
+    network_proves = (
+        "Typed network telemetry was parsed by the listed tools, so network-derived leads can be tied to those tool outputs."
+        if network_touched
+        else "Network telemetry was not parsed by typed network tools in this run."
+    )
+    network_not_prove = (
+        "It does not by itself prove exfiltration, C2, or environment-wide network scope; those claims require finding-specific collection/staging plus network, tool, or data-movement evidence."
+        if network_touched
+        else "It does not evaluate C2 or exfiltration from network artifacts, and it must not be read as network assurance."
+    )
+    disk_proves = (
+        "Disk/filesystem artifacts were parsed by the listed tools, so persistence, file, registry, Prefetch, or timeline statements can cite those outputs when Findings do so."
+        if disk_touched
+        else "Disk evidence, if supplied, is represented only as availability/custody unless mounted or extracted artifacts were parsed by typed tools."
+    )
+    disk_not_prove = (
+        "It does not by itself prove execution; execution claims still require at least two artifact classes, not Amcache/ShimCache-style presence alone."
+        if disk_touched
+        else "It does not support disk-content conclusions, execution conclusions, or persistence conclusions without extracted/mounted artifact output."
+    )
+    exfil_status = (
+        ", ".join(
+            f"{row.get('technique_id')}={row.get('status')}"
+            for row in exfil_targets[:3]
+        )
+        or "no exfiltration-specific ATT&CK target recorded"
+    )
+
+    lines = [
+        "\n## Evidence Scope Interpretation\n",
+        "This section states what the rendered coverage can and cannot prove. Limited coverage is not customer assurance about unexamined systems, techniques, or artifact classes.\n",
+        "### Network Evidence Summary\n",
+        f"* Available from supplied evidence: `{network_available}`",
+        f"* Parsed/touched by typed tools: `{network_touched}`",
+        f"* Tools: `{md_cell(_format_tools(network.get('tools')))}`",
+        f"* Confidence impact: {md_cell(network.get('confidence_impact', 'network coverage not recorded'))}",
+        f"* Exfiltration coverage target status: {md_cell(exfil_status)}",
+        f"* **What this proves:** {network_proves}",
+        f"* **What this does not prove:** {network_not_prove}",
+        "\n### Disk Artifact Coverage Summary\n",
+        f"* Available from supplied evidence: `{disk_available}`",
+        f"* Parsed/touched by typed tools: `{disk_touched}`",
+        f"* Tools: `{md_cell(_format_tools(disk.get('tools')))}`",
+        f"* Confidence impact: {md_cell(disk.get('confidence_impact', 'disk/filesystem coverage not recorded'))}",
+        f"* **What this proves:** {disk_proves}",
+        f"* **What this does not prove:** {disk_not_prove}",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def build_readiness_section(
+    report_qa: dict[str, Any] | None,
+    release_gate: dict[str, Any] | None,
+) -> str:
+    if not report_qa and not release_gate:
+        return ""
+    failed = (release_gate or {}).get("failed_checks", []) or [
+        check.get("check_id")
+        for check in (report_qa or {}).get("checks", [])
+        if check.get("status") == "FAIL"
+    ]
+    warnings = (release_gate or {}).get("warning_checks", []) or [
+        check.get("check_id")
+        for check in (report_qa or {}).get("checks", [])
+        if check.get("status") == "WARN"
+    ]
+    blockers = (release_gate or {}).get("release_blockers") or (report_qa or {}).get(
+        "customer_release_blockers", []
+    )
+    why_not_ready = (report_qa or {}).get("why_not_ready", [])
+    expert_decision = (release_gate or {}).get(
+        "expert_decision", (report_qa or {}).get("expert_decision", "pending")
+    )
+    packet_state = (release_gate or {}).get(
+        "packet_state", (report_qa or {}).get("packet_state", "unknown")
+    )
+    customer_releasable = (release_gate or {}).get(
+        "customer_releasable", (report_qa or {}).get("customer_releasable", False)
+    )
+    ready_for_expert = (report_qa or {}).get("ready_for_expert_signoff", False)
+    ready_for_pdf = (release_gate or {}).get(
+        "ready_for_customer_pdf", (report_qa or {}).get("ready_for_customer_pdf", False)
+    )
+    blocker_lines = "\n".join(f"* {md_cell(item)}" for item in blockers)
+    warning_lines = "\n".join(f"* {md_cell(item)}" for item in warnings)
+    failed_lines = "\n".join(f"* {md_cell(item)}" for item in failed)
+    why_lines = "\n".join(f"* {md_cell(item)}" for item in why_not_ready)
+    return (
+        "\n## Readiness State\n\n"
+        f"* Packet state: `{md_cell(packet_state)}`\n"
+        f"* Ready for expert review/signoff: `{ready_for_expert}`\n"
+        f"* Expert-review status: `{md_cell(expert_decision)}`\n"
+        f"* Ready for customer PDF: `{ready_for_pdf}`\n"
+        f"* Customer releasable: `{customer_releasable}`\n\n"
+        "### Blockers\n\n"
+        + (blocker_lines or "* No release blockers were recorded by the QA gate.")
+        + "\n\n### Failed Checks\n\n"
+        + (failed_lines or "* No failed checks were recorded by the QA gate.")
+        + "\n\n### Warnings\n\n"
+        + (warning_lines or "* No warning checks were recorded by the QA gate.")
+        + "\n\n### Why This Is Not Ready, If Applicable\n\n"
+        + (why_lines or "* No additional readiness caveats were recorded.")
+        + "\n\n"
+    )
 
 
 def write_markdown(
@@ -521,7 +755,12 @@ def write_markdown(
     analysis_limitations: list[str] | None = None,
     evidence_cards: list[dict[str, Any]] | None = None,
     bibliography: list[dict[str, Any]] | None = None,
+    attack_story: dict[str, Any] | None = None,
+    report_qa: dict[str, Any] | None = None,
+    expert_doctrine: dict[str, Any] | None = None,
+    release_gate: dict[str, Any] | None = None,
     has_timeline_fig: bool = False,
+    has_attack_story_fig: bool = False,
     has_practitioner_fig: bool = False,
     has_process_view_fig: bool = False,
 ) -> Path:
@@ -558,21 +797,171 @@ def write_markdown(
                 + "\n\n---\n"
             )
 
+    attack_story_section = ""
+    if attack_story:
+        fig_block = (
+            "![How they got hacked timeline](figures/attack_story_timeline.png)\n\n"
+            if has_attack_story_fig
+            else ""
+        )
+        can_say = attack_story.get("what_we_can_say", []) or []
+        cannot_say = attack_story.get("what_we_cannot_say", []) or []
+        decisions = attack_story.get("recommended_next_decisions", []) or []
+        beats = attack_story.get("attack_chain", []) or []
+        beat_lines = []
+        for beat in beats[:8]:
+            beat_lines.extend(
+                [
+                    f"### Beat {beat.get('order', '?')}: {md_cell(beat.get('title', 'Finding-backed story beat'))}",
+                    f"* Time: `{md_cell(beat.get('timestamp_utc') or 'not normalized')}`",
+                    f"* Confidence: `{md_cell(beat.get('confidence', ''))}`",
+                    f"* MITRE: `{md_cell(beat.get('mitre_technique') or 'n/a')}`",
+                    f"* Tool call: `{md_cell(beat.get('tool_call_id') or 'n/a')}`",
+                    f"* Artifact classes: `{md_cell(beat.get('artifact_classes', []))}`",
+                    f"* Caveat: {md_cell(beat.get('caveat', 'Expert review required.'))}",
+                    "",
+                ]
+            )
+        if not beat_lines:
+            beat_lines.append(
+                "*No finding-backed attack-story beats were produced in this run.*\n"
+            )
+        attack_story_section = (
+            "\n## Executive Attack Story\n\n"
+            f"**Headline:** {md_cell(attack_story.get('headline', ''))}\n\n"
+            f"{md_cell(attack_story.get('customer_summary', ''))}\n\n"
+            f"**How they got in:** {md_cell(attack_story.get('how_they_got_in', ''))}\n\n"
+            f"**Root cause:** {md_cell(attack_story.get('root_cause', ''))}\n\n"
+            f"**Business impact:** {md_cell(attack_story.get('business_impact', ''))}\n\n"
+            + fig_block
+            + "### What We Can Say\n\n"
+            + "\n".join(f"* {md_cell(item)}" for item in can_say)
+            + "\n\n### What We Cannot Prove\n\n"
+            + "\n".join(f"* {md_cell(item)}" for item in cannot_say)
+            + "\n\n### Recommended Next Decisions\n\n"
+            + (
+                "\n".join(f"* {md_cell(item)}" for item in decisions)
+                or "* Expert review before customer release."
+            )
+            + "\n\n### Finding-Backed Story Beats\n\n"
+            + "\n".join(beat_lines)
+            + "\n"
+        )
+
+    qa_section = ""
+    if report_qa:
+        rows = ["| Check | Status | Summary |", "|---|---|---|"]
+        for check in report_qa.get("checks", []):
+            rows.append(
+                f"| `{md_cell(check.get('check_id', ''))}` | "
+                f"{md_cell(check.get('status', ''))} | "
+                f"{md_cell(check.get('summary', ''))} |"
+            )
+        qa_section = (
+            "\n## QA / Expert Signoff\n\n"
+            f"* Overall QA status: `{report_qa.get('status', '?')}`\n"
+            f"* Packet state: `{report_qa.get('packet_state', 'unknown')}`\n"
+            f"* Ready for expert signoff: `{report_qa.get('ready_for_expert_signoff', False)}`\n"
+            f"* Customer-release candidate from automated QA: `{report_qa.get('customer_release_candidate', False)}`\n"
+            f"* Customer releasable after expert approval: `{report_qa.get('customer_releasable', False)}`\n"
+            f"* Expert decision: `{report_qa.get('expert_decision', 'pending')}`\n"
+            f"* Expert review estimate: `{report_qa.get('recommended_expert_review_time', 'unknown')}`\n"
+            "* Signoff question: `Would I send this report to a company without rewriting it?`\n\n"
+            + "\n".join(rows)
+            + "\n\n"
+        )
+
+    expert_section = ""
+    if expert_doctrine:
+        rules = expert_doctrine.get("claim_rules", [])
+        rows = ["| Rule | Severity | Requirement |", "|---|---|---|"]
+        for rule in rules[:8]:
+            rows.append(
+                f"| `{md_cell(rule.get('id', ''))}` | "
+                f"{md_cell(rule.get('severity', ''))} | "
+                f"{md_cell(rule.get('requirement', ''))} |"
+            )
+        expert_section = (
+            "\n## Expert Doctrine Applied\n\n"
+            f"{md_cell(expert_doctrine.get('operating_model', ''))}\n\n"
+            + "\n".join(rows)
+            + "\n\n"
+        )
+
+    release_gate_section = ""
+    if release_gate:
+        blockers = release_gate.get("release_blockers", []) or []
+        blocker_lines = "\n".join(f"* {md_cell(item)}" for item in blockers)
+        release_gate_section = (
+            "\n## Customer Release Gate\n\n"
+            "This gate is written after `manifest_finalize` and `manifest_verify`; "
+            "it is a post-finalize linkage artifact, not a replacement for the "
+            "audited `verdict.json` hash committed before manifest finalization.\n\n"
+            f"* QA status: `{md_cell(release_gate.get('qa_status', 'unknown'))}`\n"
+            f"* Packet state: `{md_cell(release_gate.get('packet_state', 'unknown'))}`\n"
+            f"* Manifest verified: `{release_gate.get('manifest_verified', False)}`\n"
+            f"* Manifest signature present: `{release_gate.get('manifest_signature_present', False)}`\n"
+            f"* Signer: `{md_cell(release_gate.get('signer', 'unknown'))}`\n"
+            f"* Expert approved: `{release_gate.get('expert_approved', False)}`\n"
+            f"* Customer releasable: `{release_gate.get('customer_releasable', False)}`\n"
+            "\n### Release Blockers\n\n"
+            + (blocker_lines or "* No release blockers recorded.")
+            + "\n\n"
+        )
+
     findings_md_lines = []
+    replay_rows = [
+        "| Finding | Tool | Drift class | Match | Expected SHA | Actual SHA |",
+        "|---|---|---|:---:|---|---|",
+    ]
     for i, f in enumerate(merged, 1):
+        replay_artifact = f.get("replay_artifact") or {}
+        replay_chip = ""
+        if replay_artifact:
+            replay_chip = (
+                f", replay: {replay_artifact.get('drift_class', 'unknown')}"
+                f" ({'match' if replay_artifact.get('matched') else 'no match'})"
+            )
+            replay_rows.append(
+                "| {finding} | `{tool}` | `{drift}` | {matched} | `{expected}` | `{actual}` |".format(
+                    finding=md_cell(f.get("finding_id", f"#{i}")),
+                    tool=md_cell(replay_artifact.get("tool_name", "")),
+                    drift=md_cell(replay_artifact.get("drift_class", "")),
+                    matched="yes" if replay_artifact.get("matched") else "no",
+                    expected=md_cell(
+                        str(replay_artifact.get("expected_sha256") or "")[:12]
+                    ),
+                    actual=md_cell(
+                        str(replay_artifact.get("actual_sha256") or "")[:12]
+                    ),
+                )
+            )
         findings_md_lines.append(
             f"### Finding {i} — confidence: {f.get('confidence', '?')}, "
             f"pool: {f.get('pool_origin', '?')}, "
-            f"MITRE: {f.get('mitre_technique') or 'n/a'}"
+            f"MITRE: {f.get('mitre_technique') or 'n/a'}{replay_chip}"
         )
         findings_md_lines.append("")
-        findings_md_lines.append(f.get("description", "") + "\n")
-        findings_md_lines.append(f"- `tool_call_id`: `{f.get('tool_call_id', 'n/a')}`")
-        findings_md_lines.append(f"- artifact: `{f.get('artifact_path', 'n/a')}`")
+        findings_md_lines.append(md_cell(f.get("description", "")) + "\n")
+        findings_md_lines.append(
+            f"- `tool_call_id`: `{md_cell(f.get('tool_call_id', 'n/a'))}`"
+        )
+        findings_md_lines.append(
+            f"- artifact: `{md_cell(f.get('artifact_path', 'n/a'))}`"
+        )
         findings_md_lines.append("")
     findings_section = (
         "\n".join(findings_md_lines) if findings_md_lines else "*No merged findings.*"
     )
+    replay_appendix = ""
+    if len(replay_rows) > 2:
+        replay_appendix = (
+            "\n## Replay Determinism Appendix\n\n"
+            "Verifier replay artifacts record whether each cited tool call reproduced "
+            "the audited output hash. They do not change Track 3b severity policy.\n\n"
+            + "\n".join(replay_rows)
+            + "\n"
+        )
 
     psscan_fig_block = ""
     if has_psscan:
@@ -773,12 +1162,14 @@ def write_markdown(
             significance = event.get("significance") or "context"
             rows.append(
                 "| {ts} | {artifact_class} | {significance} | {summary} | `{tcid}` | `{ref}` |".format(
-                    ts=ts,
-                    artifact_class=event.get("artifact_class", "?"),
-                    significance=significance,
-                    summary=summary[:120],
-                    tcid=event.get("tool_call_id", "?"),
-                    ref=event.get("source_record_ref") or event.get("source") or "?",
+                    ts=md_cell(ts),
+                    artifact_class=md_cell(event.get("artifact_class", "?")),
+                    significance=md_cell(significance),
+                    summary=md_cell(summary[:120]),
+                    tcid=md_cell(event.get("tool_call_id", "?")),
+                    ref=md_cell(
+                        event.get("source_record_ref") or event.get("source") or "?"
+                    ),
                 )
             )
         fig_block = (
@@ -811,12 +1202,8 @@ def write_markdown(
             )
             rendered_assets.add("figures/process_view_comparison.png")
         for card in evidence_cards[:10]:
-            asset = card.get("visual_asset")
-            if (
-                asset
-                and str(asset) not in rendered_assets
-                and (case_dir / str(asset)).exists()
-            ):
+            asset = safe_visual_asset(case_dir, card.get("visual_asset"))
+            if asset and str(asset) not in rendered_assets:
                 lines.append(
                     f"![{md_cell(card.get('title', 'Evidence card'))}]({asset})\n"
                 )
@@ -824,11 +1211,11 @@ def write_markdown(
             lines.extend(
                 [
                     f"### {md_cell(card.get('title', 'Evidence card'))}",
-                    f"* Card: `{card.get('card_id', '?')}`",
+                    f"* Card: `{md_cell(card.get('card_id', '?'))}`",
                     f"* Linked findings: `{md_cell(card.get('linked_finding_ids', []))}`",
-                    f"* Tool call: `{card.get('tool_call_id', '?')}`",
+                    f"* Tool call: `{md_cell(card.get('tool_call_id', '?'))}`",
                     f"* Source records: `{md_cell(card.get('source_record_refs', []))}`",
-                    f"* Confidence: `{card.get('confidence', '?')}`",
+                    f"* Confidence: `{md_cell(card.get('confidence', '?'))}`",
                     f"* Citations: `{md_cell(card.get('citation_ids', []))}`",
                     f"* Why suspicious/relevant: {md_cell(card.get('why_suspicious', ''))}",
                     f"* Snippet: `{md_cell(card.get('snippet', ''))}`",
@@ -859,15 +1246,19 @@ def write_markdown(
         + "\n".join(f"* {c}" for c in caveats)
         + "\n\n"
     )
+    scope_interpretation_section = build_scope_interpretation_section(
+        completeness, attack_coverage
+    )
+    readiness_section = build_readiness_section(report_qa, release_gate)
 
     md.write_text(
-        f"""# Find Evil! — Automated Investigation Report
+        f"""# Find Evil! — Forensic Breach Narrative and Evidence Report
 
 **Case ID:** `{manifest['case_id']}`
 **Run ID:** `{manifest['run_id']}`
 **Started:** {manifest['started_at']}
 **Finalized:** {manifest['finalized_at']}
-**Evidence:** `{evidence}`
+**Evidence:** `{md_cell(evidence)}`
 **Verdict:** **{verdict}**
 
 > **Cryptographic attestation:**
@@ -890,6 +1281,14 @@ def write_markdown(
 
 ---
 
+{attack_story_section}
+
+{qa_section}
+
+{release_gate_section}
+
+{readiness_section}
+
 ## Findings overview
 
 ![Findings table](figures/findings_table.png)
@@ -897,6 +1296,8 @@ def write_markdown(
 {actions_section}
 
 {completeness_section}
+
+{scope_interpretation_section}
 
 {practitioner_section}
 
@@ -916,9 +1317,13 @@ def write_markdown(
 
 {caveat_section}
 
+{expert_section}
+
 ## Findings detail
 
 {findings_section}
+
+{replay_appendix}
 
 ---
 
@@ -932,25 +1337,30 @@ def write_markdown(
 ## Verification
 
 This investigation produced a `run.manifest.json` that any third party can
-verify offline:
+verify offline from the Find Evil repository using the manifest verification
+library or the `manifest_verify` MCP tool. There is no standalone
+`manifest_verify` shell command in this repo.
 
 ```bash
-manifest_verify <run.manifest.json>
-# → returns overall=True if audit chain + Merkle root + signature all valid
+uv run --directory services/agent python -c "from pathlib import Path; from findevil_agent.crypto.manifest import verify_manifest; print(verify_manifest(Path('PATH/TO/run.manifest.json'), audit_log_path=Path('PATH/TO/audit.jsonl')).model_dump_json(indent=2))"
+# returns overall=true if the audit chain and Merkle root validate and signature metadata is present
 ```
 
 The verifier rebuilds:
 1. The audit chain by walking `prev_hash` SHA-256 links (catches backdated edits).
 2. The Merkle tree from the manifest's `leaves[]` array (catches selective redaction).
-3. The sigstore signature against the canonical body (catches body tampering).
+3. The signature bundle metadata recorded in the manifest. Full signature and
+   transparency-log validation must be performed separately when a non-stub signer
+   is used.
 
-A tamper test against this manifest's `merkle_root_hex` (overwrite with `ff…ff`) was
-not run automatically. To execute it:
+A tamper test against this manifest's `merkle_root_hex` was not run automatically.
+To execute it, copy the manifest, overwrite `merkle_root_hex` with `ff` repeated
+32 times, then run the same Python verification command against the tampered copy.
 
 ```bash
 python -c "import shutil;shutil.copyfile('run.manifest.json','run.manifest.tamper.json')"
 python -c "import json,pathlib;p=pathlib.Path('run.manifest.tamper.json');d=json.loads(p.read_text());d['merkle_root_hex']='ff'*32;p.write_text(json.dumps(d,indent=2,sort_keys=True))"
-manifest_verify run.manifest.tamper.json    # → overall=False, with diagnostic
+uv run --directory services/agent python -c "from pathlib import Path; from findevil_agent.crypto.manifest import verify_manifest; print(verify_manifest(Path('PATH/TO/run.manifest.tamper.json'), audit_log_path=Path('PATH/TO/audit.jsonl')).model_dump_json(indent=2))"
 ```
 
 ---
@@ -983,6 +1393,8 @@ def render_html_pdf(md_path: Path) -> tuple[Path, Path | None]:
         [
             PANDOC,
             str(md_path),
+            "--from",
+            "markdown-raw_html-raw_tex",
             "--standalone",
             "--embed-resources",
             "--css",
@@ -1110,6 +1522,14 @@ def render_report(
         except json.JSONDecodeError:
             verdict_obj = {}
 
+    final_release_gate = {}
+    final_gate_path = case_dir / "customer_release_gate.final.json"
+    if final_gate_path.exists():
+        try:
+            final_release_gate = json.loads(final_gate_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            final_release_gate = {}
+
     practitioner_coverage = verdict_obj.get("attck_practitioner_coverage", {})
     has_practitioner_fig = fig_practitioner_coverage(
         practitioner_coverage,
@@ -1118,6 +1538,11 @@ def render_report(
     has_process_view_fig = fig_process_view_comparison(
         verdict_obj.get("tool_calls", []),
         fig_dir / "process_view_comparison.png",
+    )
+    attack_story = verdict_obj.get("attack_story", {})
+    has_attack_story_fig = fig_attack_story_timeline(
+        attack_story,
+        fig_dir / "attack_story_timeline.png",
     )
 
     timeline = []
@@ -1166,7 +1591,12 @@ def render_report(
         analysis_limitations=verdict_obj.get("analysis_limitations", []),
         evidence_cards=verdict_obj.get("report_evidence_cards", []),
         bibliography=verdict_obj.get("source_bibliography", []),
+        attack_story=attack_story,
+        report_qa=verdict_obj.get("report_qa", {}),
+        expert_doctrine=verdict_obj.get("expert_doctrine", {}),
+        release_gate=final_release_gate or verdict_obj.get("release_gate", {}),
         has_timeline_fig=has_timeline_fig,
+        has_attack_story_fig=has_attack_story_fig,
         has_practitioner_fig=has_practitioner_fig,
         has_process_view_fig=has_process_view_fig,
     )

@@ -75,7 +75,7 @@ echo "=========================================="
 
 # 1. Rust MCP server end-to-end.
 run_smoke \
-    "rust-mcp-smoke (13-tool dispatch + error paths)" \
+    "rust-mcp-smoke (19-tool dispatch + error paths)" \
     "python3 scripts/rust-mcp-smoke.py --release" \
     '[ -x "${CARGO_TARGET_DIR:-target}/release/findevil-mcp" ] || [ -x "${CARGO_TARGET_DIR:-target}/release/findevil-mcp.exe" ]'
 
@@ -94,6 +94,13 @@ run_smoke \
 run_smoke \
     "fleet-policy-smoke (7 functions across normalize/filter/cluster/density/uniqueness/aggregate)" \
     "python3 scripts/fleet-policy-smoke.py"
+
+# 4b. Customer-facing report policy lock. This is intentionally part of the
+# default smoke gate because report QA / expert signoff is a release blocker,
+# not an optional documentation check.
+run_smoke \
+    "report-policy-smoke (report QA + expert signoff + visual evidence policy)" \
+    "python3 scripts/report-policy-smoke.py"
 
 # 5. demo-script-a2.md structural lock.
 run_smoke \
@@ -123,7 +130,12 @@ run_smoke \
     "smoke-regex-tests (synthetic +/- cases against the 3 audit-smoke regex tables)" \
     "python3 scripts/smoke-regex-tests.py"
 
-# 10 + 11 + 12. Lint / format gate.  L0 GHA workflow runs these
+# 10. Autonomous-loop CLI behavior smoke.
+run_smoke \
+    "autonomous-loop-smoke (8h dry-run + tiny empty-queue timing)" \
+    "python3 scripts/autonomous-loop-smoke.py"
+
+# 11 + 12 + 13. Lint / format gate.  L0 GHA workflow runs these
 # three; mirror locally so a contributor running this script
 # before commit catches a missing `ruff format` or unformatted
 # Rust before the push.  Each gated on `command -v` so a
@@ -141,7 +153,7 @@ run_smoke \
     "cargo fmt --all --check" \
     "command -v cargo && [ -f Cargo.toml ]"
 
-# 13 + 14. The remaining two gates from the autonomous-loop directive's
+# 14 + 15. The remaining two gates from the autonomous-loop directive's
 # verification spec ("cargo test + cargo clippy -D warnings + ruff check
 # + ruff format check").  ruff pair + cargo fmt are above; clippy + test
 # go here.  cargo test is the slowest entry (~20s cached); set

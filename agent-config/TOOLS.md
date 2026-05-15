@@ -4,8 +4,8 @@ The agent has access to two MCP servers, both auto-spawned by Claude Code via `.
 
 | Server | Lang | Tools |
 |---|---|---|
-| `findevil-mcp` | Rust (`services/mcp/`) | 13 typed DFIR tools |
-| `findevil-agent-mcp` | Python (`services/agent_mcp/`) | 11 crypto + ACH + memory + ACP tools (post-A5; the `ots_stamp` + `ots_verify` pair was removed) |
+| `findevil-mcp` | Rust (`services/mcp/`) | 19 typed DFIR tools |
+| `findevil-agent-mcp` | Python (`services/agent_mcp/`) | 12 crypto + ACH + memory + ACP + expert-feedback tools (post-A5; the `ots_stamp` + `ots_verify` pair was removed) |
 
 Every successful tool call carries `_meta.output_sha256` (hex SHA-256 of the canonical JSON output). Findings cite tool calls by `tool_call_id`. The verifier vetoes any finding that doesn't.
 
@@ -52,6 +52,21 @@ Use when: tracking filesystem changes the MFT can't show (deleted-file event seq
 Args: `{case_id, evtx_dir, rules_dir?, min_level?, limit?}`
 Returns: `{events[], events_seen, stderr_tail}` where each event is `{timestamp_iso, rule, level, channel, event_id, computer, details}`
 Use when: Sigma-rule sweep over an EVTX directory. Subprocess to `hayabusa` (AGPL — never linked). `min_level` ∈ {informational, low, medium, high, critical}. Pre-compiled Hayabusa rules expected at `~/hayabusa/rules` unless `rules_dir` is overridden. False-positive note: routine admin activity (Sysinternals tools, scheduled WMI, AV updates) trips medium-severity rules; pair every Hayabusa hit with `prefetch_parse` and `evtx_query 4624` cross-corroboration before believing it.
+
+### sysmon_network_query
+Args: `{case_id, evtx_path, event_ids?, since_iso?, until_iso?, image_contains?, destination_ip?, destination_port?, limit?}`
+Returns: `{rows[], row_count, records_seen, parse_errors}` where each row normalizes Sysmon network fields (`Image`, `SourceIp`, `DestinationIp`, ports, protocol, user) and preserves raw fields.
+Use when: Sysmon Operational logs are available and Pool B needs endpoint-side outbound connection evidence. Event ID 3 is the default. This is EVTX parsing in-process, not a shell wrapper.
+
+### zeek_summary
+Args: `{case_id, zeek_path, limit?}`
+Returns: `{log_files, rows_seen, conn_count, dns_count, http_count, tls_count, top_hosts[], top_dns_queries[], top_http_hosts[], notable_connections[], parse_errors}`
+Use when: Zeek logs are supplied directly or produced from PCAP. Pure parser for Zeek TSV logs; treats rows as network telemetry leads, not exfil proof by itself.
+
+### pcap_triage
+Args: `{case_id, pcap_path, analyzer?: "auto"|"tshark"|"zeek", limit?}`
+Returns: `{analyzer, packets_seen, conversations[], dns_queries[], http_hosts[], zeek?, stderr_tail}`
+Use when: raw PCAP/PCAPNG is supplied. Uses fixed `tshark`/`zeek` subprocess argv only; no raw shell. `auto` prefers tshark, then Zeek. Missing binaries are an environment limitation, not evidence absence.
 
 ### vol_pslist
 Args: `{case_id, memory_path, pid_filter?: int[], limit?}`
@@ -130,12 +145,17 @@ Use when: a Finding has been marked `CONFIRMED` by the judge and the IOC / hash 
 ### memory_recall
 Args: `{store_path, query, kind?, limit?}`
 Returns: `{hits: [{case_id, kind, key, value, sha256, ts, confidence}, …]}`
-Use when: BEFORE drafting a Finding, to check whether you've seen this IOC / hash / TTP / hostname in a previous investigation. Hits become a `prior_observations` field on the Finding (a prior-case hit IS a corroborating artifact class for the SOUL.md ≥2 rule). Hits are returned ordered by BM25 relevance × 90-day exponential decay, descending confidence. **Query semantics: exact phrase match** — the query is phrase-quoted before hitting FTS5, so `evil.com` and `T1059.001` are safe; multi-word queries (`powershell encoded`) become exact-phrase searches and may return zero hits even when both tokens exist separately. Pass single tokens for broad recall.
+Use when: BEFORE drafting a Finding, to check whether you've seen this IOC / hash / TTP / hostname in a previous investigation. Hits become a `prior_observations` field on the Finding for prioritization and context only; a prior-case hit is not current-case evidence and must not satisfy the SOUL.md >=2 artifact-class rule. Hits are returned ordered by BM25 relevance × 90-day decay, descending confidence. **Query semantics: exact phrase match** — the query is phrase-quoted before hitting FTS5, so `evil.com` and `T1059.001` are safe; multi-word queries (`powershell encoded`) become exact-phrase searches and may return zero hits even when both tokens exist separately. Pass single tokens for broad recall.
 
 ### pool_handoff
 Args: `{audit_path, from_role, to_role, payload, correlation_id?}`
 Returns: `{acp_version, from_role, to_role, correlation_id, ts}`
 Use when: one role/pool needs to formally hand structured findings or context to another, distinct from natural-language supervisor messaging. Records a `kind="acp_handoff"` line in the case audit JSONL with the IBM-ACP envelope shape (Linux Foundation spec, A3 §2.3). Canonical use sites: **verifier → judge** (always, for each verdict); **Pool A → Pool B** (when handing exfil-staging context that Pool A surfaced while looking for persistence); **supervisor → any role** (when assigning a structured sub-task that includes payload data the receiver needs to act on). The `correlation_id` lets downstream roles thread replies — pass it on the handoff that originates a thread, then pass the same id on subsequent handoffs about the same finding.
+
+### expert_miss_capture
+Args: `{case_id, finding_id?, edit_type, edit_text, expert_name?, ledger_path}`
+Returns: `{seq, ts, line_hash, prev_hash, github_issue_url?}`
+Use when: a human expert edits the auto-drafted PDF before release. Records a `kind="expert_miss"` line in the hash-chained `expert_misses.jsonl` ledger so corrections become connector, playbook, rule, QA, escalation, or language follow-up work. GitHub issue creation is default-off and only attempted when `FINDEVIL_MISS_GH_ENABLED=1`; `FINDEVIL_MISS_GH_REDACT=1` redacts case IDs in issue text.
 
 ---
 

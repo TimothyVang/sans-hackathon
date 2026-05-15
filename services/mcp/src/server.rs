@@ -40,12 +40,27 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use crate::tools::{
-    case_open, evtx_query::evtx_query, hayabusa_scan::hayabusa_scan, mft_timeline::mft_timeline,
-    prefetch_parse::prefetch_parse, registry_query::registry_query, usnjrnl_query::usnjrnl_query,
-    vel_collect::vel_collect, vol_malfind::vol_malfind, vol_pslist::vol_pslist,
-    vol_psscan::vol_psscan, vol_psxview::vol_psxview, yara_scan::yara_scan, CaseOpenInput,
-    EvtxQueryInput, HayabusaInput, MftInput, PrefetchInput, RegistryInput, UsnJrnlInput,
-    VelCollectInput, VolMalfindInput, VolPslistInput, VolPsscanInput, VolPsxviewInput, YaraInput,
+    case_open,
+    disk::{disk_extract_artifacts, disk_mount, disk_unmount},
+    evtx_query::evtx_query,
+    hayabusa_scan::hayabusa_scan,
+    mft_timeline::mft_timeline,
+    pcap_triage::pcap_triage,
+    prefetch_parse::prefetch_parse,
+    registry_query::registry_query,
+    sysmon_network_query::sysmon_network_query,
+    usnjrnl_query::usnjrnl_query,
+    vel_collect::vel_collect,
+    vol_malfind::vol_malfind,
+    vol_pslist::vol_pslist,
+    vol_psscan::vol_psscan,
+    vol_psxview::vol_psxview,
+    yara_scan::yara_scan,
+    zeek_summary::zeek_summary,
+    CaseOpenInput, DiskExtractArtifactsInput, DiskMountInput, DiskUnmountInput, EvtxQueryInput,
+    HayabusaInput, MftInput, PcapTriageInput, PrefetchInput, RegistryInput, SysmonNetworkInput,
+    UsnJrnlInput, VelCollectInput, VolMalfindInput, VolPslistInput, VolPsscanInput,
+    VolPsxviewInput, YaraInput, ZeekSummaryInput,
 };
 use crate::CRATE_VERSION;
 
@@ -197,6 +212,60 @@ fn build_registry() -> Vec<ToolEntry> {
             },
             schema: || schema_for::<CaseOpenInput>(),
             handler: |args| dispatch_case_open(args),
+        },
+        ToolEntry {
+            name: "disk_mount",
+            description:
+                "Register a read-only disk mount session resource for a raw/E01 image. In auto mode, \
+                 uses fixed subprocess wrappers (ewfmount or mount -o ro,loop) on SIFT/Unix; on \
+                 Windows use mode='mock' for unit-testable behavior with an already-populated \
+                 mount_point. Writes cases/<case_id>/session_resources.json. No raw command \
+                 passthrough is exposed.",
+            annotations: ToolAnnotations {
+                title: "Mount Disk Image Read-only",
+                read_only: false,
+                destructive: false,
+                idempotent: false,
+                open_world: false,
+            },
+            schema: || schema_for::<DiskMountInput>(),
+            handler: |args| dispatch_disk_mount(args),
+        },
+        ToolEntry {
+            name: "disk_extract_artifacts",
+            description:
+                "Copy selected artifacts from a disk_mount fs_root into the case extraction area \
+                 for existing typed parsers: $MFT, $UsnJrnl:$J exports, Prefetch, Registry hives, \
+                 EVTX, and YARA target files. Updates the SessionResource ledger and returns \
+                 extracted artifact paths for downstream mft_timeline/usnjrnl_query/\
+                 prefetch_parse/registry_query/evtx_query/yara_scan calls. The optional \
+                 max_artifact_bytes guard skips oversized files before copying them into the case \
+                 workspace and reports artifacts_skipped_oversize.",
+            annotations: ToolAnnotations {
+                title: "Extract Disk Artifacts",
+                read_only: false,
+                destructive: false,
+                idempotent: false,
+                open_world: false,
+            },
+            schema: || schema_for::<DiskExtractArtifactsInput>(),
+            handler: |args| dispatch_disk_extract_artifacts(args),
+        },
+        ToolEntry {
+            name: "disk_unmount",
+            description:
+                "Unmount a disk_mount session resource using a fixed umount subprocess on \
+                 SIFT/Unix, or mode='mock' in tests/Windows. Marks the session resource \
+                 unmounted in the ledger. Never deletes original evidence.",
+            annotations: ToolAnnotations {
+                title: "Unmount Disk Image",
+                read_only: false,
+                destructive: false,
+                idempotent: false,
+                open_world: false,
+            },
+            schema: || schema_for::<DiskUnmountInput>(),
+            handler: |args| dispatch_disk_unmount(args),
         },
         ToolEntry {
             name: "evtx_query",
@@ -402,6 +471,45 @@ fn build_registry() -> Vec<ToolEntry> {
             },
             schema: || schema_for::<HayabusaInput>(),
             handler: |args| dispatch_hayabusa_scan(args),
+        },
+        ToolEntry {
+            name: "sysmon_network_query",
+            description: "Parse Sysmon network connection events (Event ID 3 by default) from an EVTX file. Use AFTER case_open on Microsoft-Windows-Sysmon/Operational logs. Optional filters include time window, image substring, destination IP, destination port, and event_ids. Returns normalized connection rows with source/destination IP/port, protocol, image, user, and raw Sysmon fields. ERRORS: sysmon evtx file not found / not regular (check path), invalid time filter (RFC3339/ISO-8601Z required), EVTX open failures for corrupt logs.",
+            annotations: ToolAnnotations {
+                title: "Query Sysmon Network Events",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
+            schema: || schema_for::<SysmonNetworkInput>(),
+            handler: |args| dispatch_sysmon_network_query(args),
+        },
+        ToolEntry {
+            name: "zeek_summary",
+            description: "Summarize Zeek TSV logs from a file or directory using pure Rust/standard parsing. Handles conn.log, dns.log, http.log, ssl.log, and tls.log when present, returning top hosts, DNS queries, HTTP hosts, notable connections, row counts, and parse_errors. Use AFTER case_open on extracted Zeek logs. ERRORS: zeek path not found/unreadable.",
+            annotations: ToolAnnotations {
+                title: "Summarize Zeek Logs",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
+            schema: || schema_for::<ZeekSummaryInput>(),
+            handler: |args| dispatch_zeek_summary(args),
+        },
+        ToolEntry {
+            name: "pcap_triage",
+            description: "Triage a PCAP/PCAPNG via fixed tshark or Zeek subprocess invocations only. analyzer=auto prefers tshark when available, otherwise Zeek. Returns packet/row counts, top conversations, DNS queries, HTTP hosts, optional embedded Zeek summary, and stderr_tail. ERRORS: pcap file not found/not regular, invalid analyzer, binary not found (install tshark or Zeek / set $TSHARK_BIN or $ZEEK_BIN), subprocess failed.",
+            annotations: ToolAnnotations {
+                title: "Triage PCAP Network Capture",
+                read_only: true,
+                destructive: false,
+                idempotent: true,
+                open_world: false,
+            },
+            schema: || schema_for::<PcapTriageInput>(),
+            handler: |args| dispatch_pcap_triage(args),
         },
         ToolEntry {
             name: "vol_pslist",
@@ -702,6 +810,53 @@ fn dispatch_case_open(args: Value) -> Result<Value, ToolError> {
     serde_json::to_value(handle).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
 }
 
+fn dispatch_disk_mount(args: Value) -> Result<Value, ToolError> {
+    let input: DiskMountInput = parse_args(args)?;
+    match disk_mount(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(
+            e @ (crate::tools::DiskError::CaseNotFound(_)
+            | crate::tools::DiskError::ImageNotFound(_)
+            | crate::tools::DiskError::UnsupportedPlatform),
+        ) => Err(ToolError::InvalidParams(format!("{e}"))),
+        Err(e) => Err(ToolError::Internal(format!("disk_mount: {e}"))),
+    }
+}
+
+fn dispatch_disk_extract_artifacts(args: Value) -> Result<Value, ToolError> {
+    let input: DiskExtractArtifactsInput = parse_args(args)?;
+    match disk_extract_artifacts(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(
+            e @ (crate::tools::DiskError::CaseNotFound(_)
+            | crate::tools::DiskError::MountNotFound(_)
+            | crate::tools::DiskError::MountNotMounted(_)
+            | crate::tools::DiskError::MountRootNotFound(_)),
+        ) => Err(ToolError::InvalidParams(format!("{e}"))),
+        Err(e) => Err(ToolError::Internal(format!("disk_extract_artifacts: {e}"))),
+    }
+}
+
+fn dispatch_disk_unmount(args: Value) -> Result<Value, ToolError> {
+    let input: DiskUnmountInput = parse_args(args)?;
+    match disk_unmount(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(
+            e @ (crate::tools::DiskError::CaseNotFound(_)
+            | crate::tools::DiskError::MountNotFound(_)
+            | crate::tools::DiskError::MountNotMounted(_)
+            | crate::tools::DiskError::UnsupportedPlatform),
+        ) => Err(ToolError::InvalidParams(format!("{e}"))),
+        Err(e) => Err(ToolError::Internal(format!("disk_unmount: {e}"))),
+    }
+}
+
 fn dispatch_evtx_query(args: Value) -> Result<Value, ToolError> {
     let input: EvtxQueryInput = parse_args(args)?;
     // EvtxNotFound is user-input territory — surface as -32602 so the
@@ -820,6 +975,49 @@ fn dispatch_hayabusa_scan(args: Value) -> Result<Value, ToolError> {
             | crate::tools::HayabusaError::RuleSetNotFound(_)),
         ) => Err(ToolError::InvalidParams(format!("{e}"))),
         Err(e) => Err(ToolError::Internal(format!("hayabusa_scan: {e}"))),
+    }
+}
+
+fn dispatch_sysmon_network_query(args: Value) -> Result<Value, ToolError> {
+    let input: SysmonNetworkInput = parse_args(args)?;
+    match sysmon_network_query(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(
+            e @ (crate::tools::SysmonNetworkError::EvtxNotFound(_)
+            | crate::tools::SysmonNetworkError::EvtxNotRegular(_)
+            | crate::tools::SysmonNetworkError::InvalidTimeFilter { .. }),
+        ) => Err(ToolError::InvalidParams(format!("{e}"))),
+        Err(e) => Err(ToolError::Internal(format!("sysmon_network_query: {e}"))),
+    }
+}
+
+fn dispatch_zeek_summary(args: Value) -> Result<Value, ToolError> {
+    let input: ZeekSummaryInput = parse_args(args)?;
+    match zeek_summary(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(e @ crate::tools::ZeekSummaryError::NotFound(_)) => {
+            Err(ToolError::InvalidParams(format!("{e}")))
+        }
+        Err(e) => Err(ToolError::Internal(format!("zeek_summary: {e}"))),
+    }
+}
+
+fn dispatch_pcap_triage(args: Value) -> Result<Value, ToolError> {
+    let input: PcapTriageInput = parse_args(args)?;
+    match pcap_triage(&input) {
+        Ok(output) => {
+            serde_json::to_value(output).map_err(|e| ToolError::Internal(format!("serialize: {e}")))
+        }
+        Err(
+            e @ (crate::tools::PcapTriageError::PcapNotFound(_)
+            | crate::tools::PcapTriageError::PcapNotRegular(_)
+            | crate::tools::PcapTriageError::InvalidAnalyzer(_)),
+        ) => Err(ToolError::InvalidParams(format!("{e}"))),
+        Err(e) => Err(ToolError::Internal(format!("pcap_triage: {e}"))),
     }
 }
 
@@ -985,6 +1183,9 @@ mod tests {
         let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
         let expected = [
             "case_open",
+            "disk_mount",
+            "disk_extract_artifacts",
+            "disk_unmount",
             "evtx_query",
             "prefetch_parse",
             "mft_timeline",
@@ -992,6 +1193,9 @@ mod tests {
             "yara_scan",
             "usnjrnl_query",
             "hayabusa_scan",
+            "sysmon_network_query",
+            "zeek_summary",
+            "pcap_triage",
             "vol_pslist",
             "vol_malfind",
             "vol_psscan",
@@ -1099,10 +1303,12 @@ mod tests {
 
     #[test]
     fn case_open_against_real_file_succeeds() {
+        let _env_guard = crate::ENV_LOCK.lock().unwrap();
         let tmp = tempfile::tempdir().expect("tempdir");
         let img = tmp.path().join("evidence.E01");
         std::fs::write(&img, b"fake evidence bytes for hashing").unwrap();
         let home = tmp.path().join("home");
+        let prev_findevil = std::env::var("FINDEVIL_HOME").ok();
         std::env::set_var("FINDEVIL_HOME", &home);
 
         let req = format!(
@@ -1110,7 +1316,10 @@ mod tests {
             img = img.to_string_lossy().replace('\\', "\\\\"),
         );
         let out = drive(&format!("{req}\n"));
-        std::env::remove_var("FINDEVIL_HOME");
+        match prev_findevil {
+            Some(v) => std::env::set_var("FINDEVIL_HOME", v),
+            None => std::env::remove_var("FINDEVIL_HOME"),
+        }
 
         let resp: Value = serde_json::from_str(out.trim()).expect(&out);
         assert!(resp["result"].is_object(), "expected success: {resp}");

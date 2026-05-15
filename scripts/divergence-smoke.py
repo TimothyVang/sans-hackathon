@@ -131,7 +131,7 @@ ALLOWED_FILES = {
     "docs/specs/2026-04-25-the-product-design.md",
     "docs/specs/2026-04-26-amendment-a3-agent-army-and-dashboard.md",
     "docs/specs/2026-04-26-orchestration-glue-design.md",
-    "docs/specs/2026-04-27-amendment-a4-managed-agents-runtime.md",
+    "docs/archive/2026-04-27-amendment-a4-managed-agents-runtime.md",
     "docs/plans/2026-04-23-build-swarm-plan.md",
     "docs/plans/2026-04-23-orchestration-glue-plan.md",
     "docs/plans/2026-04-23-product-plan.md",

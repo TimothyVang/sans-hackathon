@@ -1,7 +1,7 @@
 """Tests for the server bootstrap path.
 
 We don't run the stdio loop here (that needs a paired client). The
-check is structural: ``build_server`` returns a Server with all 10
+check is structural: ``build_server`` returns a Server with all 12
 tools registered, and the in-process error-mapping code paths
 behave correctly.
 """
@@ -21,9 +21,9 @@ from findevil_agent_mcp.tools.audit_verify import AuditVerifyOutput
 
 
 class TestBuildServer:
-    def test_returns_eleven_specs(self) -> None:
+    def test_returns_twelve_specs(self) -> None:
         _server, specs = build_server()
-        assert len(specs) == 11
+        assert len(specs) == 12
 
     def test_server_name_constant(self) -> None:
         assert SERVER_NAME == "findevil-agent-mcp"

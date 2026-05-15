@@ -158,6 +158,7 @@ def test_stdio_initialize_and_list_tools(tmp_path: Path) -> None:
                 "memory_remember",
                 "memory_recall",
                 "pool_handoff",
+                "expert_miss_capture",
             ]
         )
 

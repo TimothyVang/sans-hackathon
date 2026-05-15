@@ -23,6 +23,7 @@ Exit code: 0 on full pass, 1 on first assertion failure.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -51,11 +52,20 @@ def case(label: str, merged: list[dict[str, Any]], expected: str) -> tuple[str, 
 
 def main() -> int:
     fea = load_find_evil_auto()
-    # compute_verdict is an instance method on Investigation but only
-    # reads `self` for nothing — pure on `merged`. Call as unbound
-    # method passing None for self; Python doesn't care.
-    compute_verdict = lambda merged: fea.Investigation.compute_verdict(None, merged)  # noqa: E731
+
+    # Empty-result verdicts depend on evidence scope. Use an instance
+    # with a substantive EVTX tool call so NO_EVIL means "scoped no
+    # Findings", not custody-only or unknown evidence.
+    def compute_verdict(merged: list[dict[str, Any]]) -> str:
+        inv = fea.Investigation("Security.evtx", unattended=True, with_report=False)
+        inv.tool_calls = [{"tool": "evtx_query", "tool_call_id": "tc-evtx"}]
+        return inv.compute_verdict(merged)
+
     detect_evidence_type = fea.detect_evidence_type
+    classify_artifact_path = fea.classify_artifact_path
+    classify_velociraptor_zip_member = fea.classify_velociraptor_zip_member
+    build_local_evidence_inventory = fea.build_local_evidence_inventory
+    finalize_evidence_inventory = fea.finalize_evidence_inventory
     build_attack_coverage = fea.build_attack_coverage
     build_evtx_summary = fea.build_evtx_summary
     build_next_actions = fea.build_next_actions
@@ -63,6 +73,10 @@ def main() -> int:
     build_malware_triage = fea.build_malware_triage
     build_normalized_timeline = fea.build_normalized_timeline
     build_report_evidence_cards = fea.build_report_evidence_cards
+    build_executive_attack_story = fea.build_executive_attack_story
+    build_expert_doctrine = fea.build_expert_doctrine
+    build_expert_miss_summary = fea.build_expert_miss_summary
+    build_report_qa_signoff = fea.build_report_qa_signoff
     build_source_bibliography = fea.build_source_bibliography
     evtx_rows_to_findings = fea.evtx_rows_to_findings
     extract_ascii_strings = fea._extract_ascii_strings_from_hex  # noqa: SLF001
@@ -70,13 +84,14 @@ def main() -> int:
     process_sets_diverge = fea.process_sets_diverge
     write_normalized_timeline_csv = fea.write_normalized_timeline_csv
     write_timeline_csv = fea.write_timeline_csv
+    load_expert_rules = fea.load_expert_rules
     print("=" * 60)
     print("Find Evil! — verdict + evidence/process policy smoke")
     print("=" * 60)
 
     cases: list[tuple[str, list[dict[str, Any]], str]] = [
         # ----- empty -----
-        case("empty merged list -> NO_EVIL", [], "NO_EVIL"),
+        case("substantive EVTX run with empty merged list -> NO_EVIL", [], "NO_EVIL"),
         # ----- CONFIRMED tier triggers SUSPICIOUS regardless of MITRE -----
         case(
             "single CONFIRMED finding (no MITRE) -> SUSPICIOUS",
@@ -181,13 +196,13 @@ def main() -> int:
         ("foo.aff -> disk", "foo.aff", "disk"),
         ("foo.aff4 -> disk", "foo.aff4", "disk"),
         ("foo.001 -> disk (split-image)", "foo.001", "disk"),
+        (
+            "foo.zip -> Velociraptor collection zip",
+            "foo.zip",
+            "velociraptor",
+        ),
         # unknown
         ("foo.txt -> unknown", "foo.txt", "unknown"),
-        (
-            "foo.zip -> unknown (Velociraptor zip needs explicit handling)",
-            "foo.zip",
-            "unknown",
-        ),
         ("no extension -> unknown", "foo", "unknown"),
     ]
     for label, path, expected in et_cases:
@@ -197,6 +212,399 @@ def main() -> int:
         print(f"  [{marker}] evtype: {label}")
         if not ok:
             print(f"         path    : {path!r}")
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
+    inventory_checks = 0
+    artifact_cases = [
+        ("classify $MFT", "/case/C/$MFT", "mft"),
+        ("classify Prefetch", "/case/C/Windows/Prefetch/CMD.EXE-1234.pf", "prefetch"),
+        ("classify Registry", "/case/Users/Alice/NTUSER.DAT", "registry"),
+        ("classify random DAT as unknown", "/case/tmp/random.dat", "unknown"),
+        ("classify UsnJrnl", "/case/C/$Extend/$UsnJrnl/$J", "usnjrnl"),
+        ("classify raw disk", "/case/disk.E01", "raw_disk"),
+        ("classify Velociraptor zip", "/case/collection.zip", "velociraptor"),
+    ]
+    for label, path, expected in artifact_cases:
+        inventory_checks += 1
+        actual = classify_artifact_path(path).get("artifact_class")
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] inventory: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "a").mkdir()
+        (root / "b").mkdir()
+        for rel in (
+            "memory.mem",
+            "a/Security.evtx",
+            "b/Security.evtx",
+            "collection.zip",
+            "$MFT",
+            "$J",
+            "CMD.EXE-1234.pf",
+            "NTUSER.DAT",
+            "disk.E01",
+            "notes.txt",
+        ):
+            (root / rel).write_bytes(rel.encode("utf-8"))
+        symlink_supported = True
+        try:
+            (root / "unsafe.link").symlink_to(root / "memory.mem")
+        except (OSError, NotImplementedError):
+            symlink_supported = False
+        inventory = build_local_evidence_inventory(root)
+        truncated_inventory = build_local_evidence_inventory(root, limit=2)
+        rejected_symlinks = [
+            entry
+            for entry in inventory.get("entries", [])
+            if entry.get("custody_status") == "rejected_symlink"
+        ]
+        dir_inv = fea.Investigation(str(root), unattended=True, with_report=False)
+        dir_inv.evidence_inventory = inventory
+        dir_inv.tool_calls = [
+            {"tool": "evtx_query", "tool_call_id": "tc-evtx"},
+            {"tool": "vol_psscan", "tool_call_id": "tc-memory"},
+            {"tool": "mft_timeline", "tool_call_id": "tc-mft"},
+            {"tool": "prefetch_parse", "tool_call_id": "tc-prefetch"},
+            {"tool": "registry_query", "tool_call_id": "tc-registry"},
+            {"tool": "usnjrnl_query", "tool_call_id": "tc-usn"},
+        ]
+        truncated_inv = fea.Investigation(str(root), unattended=True, with_report=False)
+        truncated_inv.evidence_inventory = truncated_inventory
+        truncated_inv.tool_calls = [{"tool": "evtx_query", "tool_call_id": "tc-evtx"}]
+        dispatch_inventory = finalize_evidence_inventory(
+            str(root),
+            str(root.resolve()),
+            True,
+            [
+                dict(entry)
+                for entry in inventory.get("entries", [])
+                if entry.get("artifact_class")
+                in {"mft", "usnjrnl", "prefetch", "registry", "raw_disk"}
+            ],
+            limit=500,
+        )
+        dispatch_inv = fea.Investigation(str(root), unattended=True, with_report=False)
+        dispatch_inv.evidence_inventory = dispatch_inventory
+        dispatch_inv.handle = {"id": "dir-smoke"}
+
+        zip_dispatch_inventory = finalize_evidence_inventory(
+            str(root),
+            str(root.resolve()),
+            True,
+            [
+                {
+                    "path": str(root / "collection.zip"),
+                    "canonical_path": str((root / "collection.zip").resolve()),
+                    "artifact_class": "velociraptor",
+                    "evidence_type": "velociraptor",
+                    "parser_tool": "vel_collect",
+                    "sha256": "0" * 64,
+                    "size_bytes": (root / "collection.zip").stat().st_size,
+                    "symlink_status": "not_symlink",
+                    "custody_status": "custody_registered",
+                }
+            ],
+            limit=500,
+        )
+        zip_dispatch_inv = fea.Investigation(
+            str(root / "collection.zip"), unattended=True, with_report=False
+        )
+        zip_dispatch_inv.evidence_inventory = zip_dispatch_inventory
+        zip_dispatch_inv.handle = {"id": "zip-smoke"}
+
+        class FakeExtractedRust:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, dict[str, Any]]] = []
+
+            def call_tool(
+                self, name: str, args: dict[str, Any], timeout: float | None = None
+            ) -> dict[str, Any]:
+                self.calls.append((name, args))
+                if name == "disk_mount":
+                    fs_root = str(Path(str(args["image_path"])).parent)
+                    return {
+                        "case_id": args["case_id"],
+                        "mount_id": "mount-smoke",
+                        "status": "mounted",
+                        "image_path": args["image_path"],
+                        "mount_point": fs_root,
+                        "fs_root": fs_root,
+                        "ledger_path": str(Path(fs_root) / "session_resources.json"),
+                        "command": ["mock", "disk_mount"],
+                        "stderr_tail": "",
+                        "note": "mock mount for policy smoke",
+                    }
+                if name == "disk_extract_artifacts":
+                    fs_root = root
+                    artifacts = [
+                        ("mft", fs_root / "$MFT"),
+                        ("usnjrnl", fs_root / "$J"),
+                        ("prefetch", fs_root / "CMD.EXE-1234.pf"),
+                        ("registry", fs_root / "NTUSER.DAT"),
+                    ]
+                    return {
+                        "case_id": args["case_id"],
+                        "mount_id": args["mount_id"],
+                        "extract_id": "extract-smoke",
+                        "output_dir": str(fs_root),
+                        "artifacts_seen": len(artifacts),
+                        "ledger_path": str(fs_root / "session_resources.json"),
+                        "artifacts": [
+                            {
+                                "artifact_class": artifact_class,
+                                "source_path": str(path),
+                                "extracted_path": str(path),
+                                "size_bytes": path.stat().st_size,
+                            }
+                            for artifact_class, path in artifacts
+                        ],
+                    }
+                if name == "disk_unmount":
+                    return {
+                        "case_id": args["case_id"],
+                        "mount_id": args["mount_id"],
+                        "status": "unmounted",
+                        "ledger_path": str(root / "session_resources.json"),
+                        "command": ["mock", "disk_unmount"],
+                        "stderr_tail": "",
+                    }
+                if name == "mft_timeline":
+                    return {
+                        "entries": [],
+                        "row_count": 0,
+                        "records_seen": 0,
+                        "parse_errors": 0,
+                    }
+                if name == "usnjrnl_query":
+                    return {
+                        "entries": [],
+                        "row_count": 0,
+                        "records_seen": 0,
+                        "parse_errors": 0,
+                    }
+                if name == "prefetch_parse":
+                    return {
+                        "executable_name": "CMD.EXE",
+                        "run_count": 1,
+                        "last_run_times_iso": ["2026-05-09T00:00:00Z"],
+                    }
+                if name == "registry_query":
+                    return {"entries": [], "keys_visited": 0, "parse_errors": 0}
+                raise AssertionError(f"unexpected tool {name}")
+
+        fake_extracted_rust = FakeExtractedRust()
+
+        class FakeInventoryAudit:
+            def __init__(self) -> None:
+                self.records: list[dict[str, Any]] = []
+
+            def call_tool(
+                self, name: str, args: dict[str, Any], timeout: float | None = None
+            ) -> dict[str, Any]:
+                if name == "audit_append":
+                    self.records.append(args)
+                    return {"ok": True}
+                raise AssertionError(f"unexpected audit tool {name}")
+
+        fake_dispatch_audit = FakeInventoryAudit()
+        dispatch_inv.investigate_inventory(fake_extracted_rust, fake_dispatch_audit)
+        dispatched_tools = [name for name, _ in fake_extracted_rust.calls]
+
+        old_zip_extract = fea.extract_velociraptor_zip_artifacts
+
+        def fake_zip_extract(
+            zip_path: str,
+            output_dir: str,
+            *,
+            limit: int = 500,
+            max_member_bytes: int = 0,
+        ) -> dict[str, Any]:
+            del output_dir, limit, max_member_bytes
+            pf = root / "CMD.EXE-1234.pf"
+            return {
+                "zip_path": zip_path,
+                "entries": [
+                    {
+                        "path": str(pf),
+                        "canonical_path": str(pf.resolve()),
+                        "source_container_path": zip_path,
+                        "source_container_type": "velociraptor_zip",
+                        "zip_member_path": "uploads/C/Windows/Prefetch/CMD.EXE-1234.pf",
+                        "artifact_class": "prefetch",
+                        "evidence_type": "extracted_disk",
+                        "parser_tool": "prefetch_parse",
+                        "size_bytes": pf.stat().st_size,
+                        "sha256": "1" * 64,
+                    }
+                ],
+                "unsupported_count": 0,
+                "unsupported_samples": [],
+                "skipped_unsafe": 0,
+                "skipped_oversize": 0,
+                "truncated": False,
+                "limit": 500,
+            }
+
+        fake_zip_rust = FakeExtractedRust()
+        fake_zip_audit = FakeInventoryAudit()
+        fea.extract_velociraptor_zip_artifacts = fake_zip_extract
+        try:
+            zip_dispatch_inv.investigate_inventory(fake_zip_rust, fake_zip_audit)
+        finally:
+            fea.extract_velociraptor_zip_artifacts = old_zip_extract
+        zip_dispatched_tools = [name for name, _ in fake_zip_rust.calls]
+        zip_comp = zip_dispatch_inv._case_completeness()  # noqa: SLF001
+        zip_checks = {
+            row.get("artifact_class"): row for row in zip_comp.get("checks", [])
+        }
+        dir_comp = dir_inv._case_completeness()  # noqa: SLF001
+        dir_checks = {
+            row.get("artifact_class"): row for row in dir_comp.get("checks", [])
+        }
+        inventory_cases = [
+            (
+                "directory inventory has stable parent case id",
+                str(inventory.get("parent_case_id", "")).startswith("dir-"),
+                True,
+            ),
+            (
+                "directory inventory counts duplicate names",
+                "Security.evtx"
+                in inventory.get("summary", {}).get("duplicate_names", []),
+                True,
+            ),
+            (
+                "directory inventory assigns child evidence ids",
+                all(
+                    str(entry.get("child_evidence_id", "")).startswith("ev-")
+                    for entry in inventory.get("entries", [])
+                ),
+                True,
+            ),
+            (
+                "directory inventory records unsupported artifacts",
+                inventory.get("summary", {}).get("class_counts", {}).get("unknown", 0)
+                >= 1,
+                True,
+            ),
+            (
+                "directory inventory records truncation",
+                truncated_inventory.get("summary", {}).get("truncated"),
+                True,
+            ),
+            (
+                "directory inventory rejects symlinks when OS supports them",
+                bool(rejected_symlinks) if symlink_supported else True,
+                True,
+            ),
+            (
+                "directory completeness marks memory available and touched",
+                (
+                    dir_checks["memory"].get("available"),
+                    dir_checks["memory"].get("touched"),
+                ),
+                (True, True),
+            ),
+            (
+                "directory completeness marks EVTX available and touched",
+                (
+                    dir_checks["evtx"].get("available"),
+                    dir_checks["evtx"].get("touched"),
+                ),
+                (True, True),
+            ),
+            (
+                "directory completeness marks extracted disk available and touched",
+                (
+                    dir_checks["disk/filesystem"].get("available"),
+                    dir_checks["disk/filesystem"].get("touched"),
+                ),
+                (True, True),
+            ),
+            (
+                "directory substantive empty run can produce scoped NO_EVIL",
+                dir_inv.compute_verdict([]),
+                "NO_EVIL",
+            ),
+            (
+                "truncated directory inventory blocks scoped NO_EVIL",
+                truncated_inv.compute_verdict([]),
+                "INDETERMINATE",
+            ),
+            (
+                "inventory dispatch runs MFT parser",
+                "mft_timeline" in dispatched_tools,
+                True,
+            ),
+            (
+                "inventory dispatch runs USN parser",
+                "usnjrnl_query" in dispatched_tools,
+                True,
+            ),
+            (
+                "inventory dispatch runs Prefetch parser",
+                "prefetch_parse" in dispatched_tools,
+                True,
+            ),
+            (
+                "inventory dispatch runs Registry parser",
+                "registry_query" in dispatched_tools,
+                True,
+            ),
+            (
+                "raw disk inventory dispatch attempts auto mount/extract",
+                "disk_mount" in dispatched_tools
+                and "disk_extract_artifacts" in dispatched_tools
+                and "disk_unmount" in dispatched_tools,
+                True,
+            ),
+            (
+                "Velociraptor zip member classifier accepts contained Prefetch",
+                classify_velociraptor_zip_member(
+                    "uploads/C/Windows/Prefetch/CMD.EXE-1234.pf"
+                ).get("supported"),
+                True,
+            ),
+            (
+                "Velociraptor zip member classifier rejects zip-slip paths",
+                classify_velociraptor_zip_member("../Security.evtx").get(
+                    "reject_reason"
+                ),
+                "unsafe_zip_member_path",
+            ),
+            (
+                "Velociraptor zip inventory dispatch extracts contained artifacts",
+                len(zip_dispatch_inv.velociraptor_zip_extractions),
+                1,
+            ),
+            (
+                "Velociraptor zip inventory dispatch runs contained Prefetch parser",
+                "prefetch_parse" in zip_dispatched_tools,
+                True,
+            ),
+            (
+                "Velociraptor completeness marks parsed zip touched",
+                (
+                    zip_checks["velociraptor"].get("available"),
+                    zip_checks["velociraptor"].get("touched"),
+                ),
+                (True, True),
+            ),
+        ]
+    for label, actual, expected in inventory_cases:
+        inventory_checks += 1
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] inventory: {label}")
+        if not ok:
             print(f"         expected: {expected!r}")
             print(f"         actual  : {actual!r}")
             failures += 1
@@ -224,6 +632,28 @@ def main() -> int:
             (True, False),
         ),
     ]
+    unknown_inv = fea.Investigation("foo.unknown", unattended=True, with_report=False)
+    unknown_inv.tool_calls = [{"tool": "case_open", "tool_call_id": "tc-unknown"}]
+    disk_cases.append(
+        (
+            "unknown evidence case-open-only verdict is INDETERMINATE",
+            unknown_inv.compute_verdict([]),
+            "INDETERMINATE",
+        )
+    )
+    memory_error_inv = fea.Investigation(
+        "memory.img", unattended=True, with_report=False
+    )
+    memory_error_inv.tool_calls = [
+        {"tool": "vol_pslist", "tool_call_id": "tc-memory", "error": "tool failed"}
+    ]
+    disk_cases.append(
+        (
+            "memory tool failure verdict is INDETERMINATE",
+            memory_error_inv.compute_verdict([]),
+            "INDETERMINATE",
+        )
+    )
     for label, actual, expected in disk_cases:
         disk_policy_checks += 1
         ok = actual == expected
@@ -282,6 +712,31 @@ def main() -> int:
     suspicious_findings = evtx_rows_to_findings(
         suspicious_rows, "tc-evtx", "case-evtx", "Security.evtx"
     )
+    scheduled_task_rows = [
+        {
+            "event_id": "4698",
+            "ts": "2026-05-04T00:03:00Z",
+            "channel": "Security",
+            "record_id": 4,
+            "data": {
+                "Event": {
+                    "System": {"EventID": 4698},
+                    "EventData": {
+                        "TaskName": "\\Updater",
+                        "TaskContent": (
+                            "<Actions><Exec><Command>powershell.exe</Command>"
+                            "<Arguments>-EncodedCommand SQBFAFgA</Arguments>"
+                            "</Exec></Actions>"
+                        ),
+                    },
+                }
+            },
+        }
+    ]
+    scheduled_task_summary = build_evtx_summary(scheduled_task_rows, 1, 0)
+    scheduled_task_findings = evtx_rows_to_findings(
+        scheduled_task_rows, "tc-evtx", "case-evtx", "Security.evtx"
+    )
     evtx_cases = [
         (
             "benign EVTX summary counts records",
@@ -307,6 +762,35 @@ def main() -> int:
             "audit-log clear EVTX can drive SUSPICIOUS",
             compute_verdict(suspicious_findings),
             "SUSPICIOUS",
+        ),
+        (
+            "suspicious scheduled-task EVTX creates one finding",
+            len(scheduled_task_findings),
+            1,
+        ),
+        (
+            "scheduled-task finding cites typed EVTX tool call",
+            scheduled_task_findings[0].get("tool_call_id")
+            if scheduled_task_findings
+            else None,
+            "tc-evtx",
+        ),
+        (
+            "scheduled-task finding maps to T1053.005",
+            scheduled_task_findings[0].get("mitre_technique")
+            if scheduled_task_findings
+            else None,
+            "T1053.005",
+        ),
+        (
+            "scheduled-task hypothesis alone stays indeterminate",
+            compute_verdict(scheduled_task_findings),
+            "INDETERMINATE",
+        ),
+        (
+            "scheduled-task EVTX summary counts suspicious event",
+            scheduled_task_summary.get("suspicious_event_count"),
+            1,
         ),
     ]
     for label, actual, expected in evtx_cases:
@@ -407,10 +891,40 @@ def main() -> int:
                 "mitre_technique": None,
             }
             self.refined = [{**self.pre, "confidence": "INFERRED"}]
+            self.verify_calls = 0
+            self.call_sequence: list[str] = []
+            self.pool_handoffs: list[dict[str, Any]] = []
 
-        def call_tool(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        def call_tool(
+            self, name: str, args: dict[str, Any], timeout: float | None = None
+        ) -> dict[str, Any]:
+            self.call_sequence.append(name)
             if name == "detect_contradictions":
                 return {"contradictions": []}
+            if name == "verify_finding":
+                self.verify_calls += 1
+                finding = args["finding"]
+                return {
+                    "action": "approved",
+                    "finding_id": finding["finding_id"],
+                    "reason": "tool re-run output_sha256 matches audit log",
+                    "replay_tool_name": "evtx_query",
+                    "replay_expected_sha256": "a" * 64,
+                    "replay_actual_sha256": "a" * 64,
+                    "replay_matched": True,
+                    "replay_error": None,
+                }
+            if name == "audit_append":
+                return {"ok": True}
+            if name == "pool_handoff":
+                self.pool_handoffs.append(args)
+                return {
+                    "acp_version": "ibm-acp-0.1",
+                    "from_role": args["from_role"],
+                    "to_role": args["to_role"],
+                    "correlation_id": args.get("correlation_id") or "f-corr",
+                    "ts": "2026-05-09T00:00:00Z",
+                }
             if name == "judge_findings":
                 return {"merged": [{"finding": self.pre}]}
             if name == "correlate_findings":
@@ -429,8 +943,41 @@ def main() -> int:
     fake_py = FakeReasonClient()
     inv = fea.Investigation("Security.evtx", unattended=True, with_report=False)
     inv.handle = {"id": "case-corr"}
+    inv.findings_pool_a = [fake_py.pre]
+    inv.tool_calls = [
+        {
+            "tool": "evtx_query",
+            "tool_call_id": "tc-corr",
+            "output_hash": "a" * 64,
+            "arguments": {"case_id": "case-corr", "evtx_path": "Security.evtx"},
+        }
+    ]
     corr_merged, _, corr_kept, corr_downgraded = inv.reason(fake_py)
+    pool_handoff_before_judge = (
+        "pool_handoff" in fake_py.call_sequence
+        and fake_py.call_sequence.index("pool_handoff")
+        < fake_py.call_sequence.index("judge_findings")
+    )
     corr_cases = [
+        ("verify_finding called before judge", fake_py.verify_calls, 1),
+        (
+            "verifier ACP handoff is emitted before judge",
+            pool_handoff_before_judge,
+            True,
+        ),
+        (
+            "verifier handoff cites replay digest",
+            bool(
+                fake_py.pool_handoffs
+                and fake_py.pool_handoffs[0]["payload"].get("replay_record_sha256")
+            ),
+            True,
+        ),
+        (
+            "verifier replay is embedded in final finding",
+            corr_merged[0].get("replay_matched"),
+            True,
+        ),
         (
             "correlator refined confidence is returned",
             corr_merged[0].get("confidence"),
@@ -449,6 +996,72 @@ def main() -> int:
         ok = actual == expected
         marker = "OK  " if ok else "FAIL"
         print(f"  [{marker}] correlation: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
+    class FakeRejectVerifierClient(FakeReasonClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.judge_saw_pool_a: list[dict[str, Any]] | None = None
+
+        def call_tool(
+            self, name: str, args: dict[str, Any], timeout: float | None = None
+        ) -> dict[str, Any]:
+            if name == "verify_finding":
+                self.verify_calls += 1
+                finding = args["finding"]
+                return {
+                    "action": "rejected",
+                    "finding_id": finding["finding_id"],
+                    "reason": "tool re-run failed",
+                    "replay_tool_name": "evtx_query",
+                    "replay_expected_sha256": "a" * 64,
+                    "replay_actual_sha256": None,
+                    "replay_matched": False,
+                    "replay_error": "tool re-run failed",
+                }
+            if name == "judge_findings":
+                self.judge_saw_pool_a = args["pool_a_findings"]
+                return {"merged": []}
+            return super().call_tool(name, args, timeout)
+
+    reject_py = FakeRejectVerifierClient()
+    reject_inv = fea.Investigation("Security.evtx", unattended=True, with_report=False)
+    reject_inv.handle = {"id": "case-reject"}
+    reject_inv.findings_pool_a = [{**reject_py.pre, "case_id": "case-reject"}]
+    reject_inv.tool_calls = [
+        {
+            "tool": "evtx_query",
+            "tool_call_id": "tc-corr",
+            "output_hash": "a" * 64,
+            "arguments": {"case_id": "case-reject", "evtx_path": "Security.evtx"},
+        }
+    ]
+    rejected_merged, _, _, _ = reject_inv.reason(reject_py)
+    reject_cases = [
+        (
+            "rejected verifier finding is removed before judge",
+            reject_py.judge_saw_pool_a,
+            [],
+        ),
+        (
+            "rejected verifier finding does not reach final findings",
+            rejected_merged,
+            [],
+        ),
+        (
+            "rejected verifier finding forces INDETERMINATE",
+            reject_inv.compute_verdict(rejected_merged),
+            "INDETERMINATE",
+        ),
+    ]
+    for label, actual, expected in reject_cases:
+        process_checks += 1
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] verifier-veto: {label}")
         if not ok:
             print(f"         expected: {expected!r}")
             print(f"         actual  : {actual!r}")
@@ -731,6 +1344,767 @@ def main() -> int:
             print(f"         actual  : {actual!r}")
             failures += 1
 
+    expert_rules = load_expert_rules()
+    doctrine = build_expert_doctrine(expert_rules)
+
+    def qa_check_status(report_qa: dict[str, Any], check_id: str) -> str | None:
+        for check in report_qa.get("checks", []):
+            if check.get("check_id") == check_id:
+                return check.get("status")
+        return None
+
+    def single_tool_overclaim_qa(
+        *,
+        finding_id: str,
+        tool: str,
+        tool_call_id: str,
+        artifact_class: str,
+        description: str,
+    ) -> dict[str, Any]:
+        return build_report_qa_signoff(
+            [
+                {
+                    "finding_id": finding_id,
+                    "tool_call_id": tool_call_id,
+                    "description": description,
+                }
+            ],
+            [{"tool": tool, "tool_call_id": tool_call_id}],
+            "SUSPICIOUS",
+            {
+                "checks": [
+                    {
+                        "artifact_class": artifact_class,
+                        "available": True,
+                        "touched": True,
+                    }
+                ]
+            },
+            {"blind_spot_count": 0},
+            {"events": []},
+            [],
+            expert_rules,
+        )
+
+    report_qa = build_report_qa_signoff(
+        timeline_findings,
+        [{"tool": "vol_psscan", "tool_call_id": "tc-psscan"}],
+        "SUSPICIOUS",
+        completeness,
+        coverage,
+        normalized,
+        [],
+        expert_rules,
+    )
+    qa_audit_client = FakeAuditClient()
+    qa_inv = fea.Investigation("memory.img", unattended=True, with_report=False)
+    qa_inv._emit_report_qa(  # noqa: SLF001 - smoke covers audit output
+        qa_audit_client,
+        report_qa,
+    )
+    qa_audit_payload = qa_audit_client.records[0]["payload"]
+    qa_release_gate = qa_inv._emit_release_gate(  # noqa: SLF001 - smoke covers audit output
+        qa_audit_client,
+        report_qa,
+    )
+    pass_qa = build_report_qa_signoff(
+        [],
+        [{"tool": "vol_psscan", "tool_call_id": "tc-psscan"}],
+        "INDETERMINATE",
+        {"checks": [{"artifact_class": "memory", "available": True, "touched": True}]},
+        {"blind_spot_count": 0},
+        {
+            "events": [
+                {
+                    "timestamp_utc": "2026-05-09T00:00:30Z",
+                    "artifact_class": "memory",
+                    "tool_call_id": "tc-psscan",
+                }
+            ]
+        },
+        [],
+        expert_rules,
+    )
+    qa_inv.handle = {"id": "case-smoke"}
+    packet_release_gate = qa_inv._build_release_gate(pass_qa)  # noqa: SLF001
+    approved_qa = {**pass_qa, "expert_decision": "approved"}
+    sigstore_inv = fea.Investigation(
+        "memory.img", unattended=True, with_report=False, signer="sigstore"
+    )
+    sigstore_release_gate = sigstore_inv._build_release_gate(approved_qa)  # noqa: SLF001
+    sigstore_verified_release_gate = sigstore_inv._build_release_gate(  # noqa: SLF001
+        approved_qa,
+        {"overall": True},
+        {"signature": {"payload_sha256": "f" * 64}},
+    )
+    stub_release_gate = qa_inv._build_release_gate(approved_qa)  # noqa: SLF001
+    packet_attestation = qa_inv._build_packet_attestation(  # noqa: SLF001
+        [],
+        "INDETERMINATE",
+        0,
+        0,
+        0,
+        {
+            "case_completeness": {"checks": []},
+            "attack_coverage": {"blind_spot_count": 0},
+            "report_qa": pass_qa,
+        },
+        packet_release_gate,
+    )
+    expert_signoff_packet = qa_inv._build_expert_signoff_packet(  # noqa: SLF001
+        pass_qa, packet_release_gate, packet_attestation
+    )
+    expert_signoff_packet["referenced_hashes"]["verdict_artifact_sha256"] = "e" * 64
+    packet_attestation["expert_signoff_packet_sha256"] = qa_inv._hash_obj(  # noqa: SLF001
+        expert_signoff_packet
+    )
+    with tempfile.TemporaryDirectory() as miss_tmp:
+        miss_ledger = Path(miss_tmp) / "expert_misses.jsonl"
+        miss_inv = fea.Investigation("memory.img", unattended=True, with_report=False)
+        miss_inv.handle = {"id": miss_inv.case_id}
+        miss_inv.tool_calls = [
+            {
+                "tool": "vol_psscan",
+                "tool_call_id": "tc-psscan",
+                "output_hash": "a" * 64,
+            }
+        ]
+        miss_records = [
+            {
+                "seq": 0,
+                "ts": "2026-05-09T00:00:00Z",
+                "kind": "expert_miss",
+                "prev_hash": "",
+                "payload": {
+                    "case_id": miss_inv.case_id,
+                    "finding_id": "f-rejected",
+                    "edit_type": "qa",
+                    "edit_text": "Rejected packet needed a replay-mismatch QA check.",
+                    "expert_name": "Analyst One",
+                },
+            },
+            {
+                "seq": 1,
+                "ts": "2026-05-09T00:01:00Z",
+                "kind": "expert_miss",
+                "prev_hash": "0" * 64,
+                "payload": {
+                    "case_id": miss_inv.case_id,
+                    "finding_id": None,
+                    "edit_type": "language",
+                    "edit_text": "Rejected packet used customer-ready wording too early.",
+                    "expert_name": None,
+                },
+            },
+        ]
+        miss_ledger.write_text(
+            "\n".join(json.dumps(record, sort_keys=True) for record in miss_records)
+            + "\n",
+            encoding="utf-8",
+        )
+        captured_miss_summary = build_expert_miss_summary(miss_inv.case_id, miss_ledger)
+        old_miss_path = fea.EXPERT_MISSES_PATH
+        fea.EXPERT_MISSES_PATH = miss_ledger
+        try:
+            miss_metadata = miss_inv._build_report_metadata(  # noqa: SLF001
+                [], "INDETERMINATE"
+            )
+        finally:
+            fea.EXPERT_MISSES_PATH = old_miss_path
+        miss_signoff_packet = miss_inv._build_expert_signoff_packet(  # noqa: SLF001
+            pass_qa,
+            packet_release_gate,
+            packet_attestation,
+            captured_miss_summary,
+        )
+    qa_inv._emit_packet_attestation(  # noqa: SLF001
+        qa_audit_client,
+        packet_attestation,
+    )
+    qa_inv._emit_final_findings(  # noqa: SLF001
+        qa_audit_client,
+        timeline_findings,
+    )
+
+    class FakeManifestVerifyClient:
+        def __init__(self, response: dict[str, Any]) -> None:
+            self.response = response
+            self.calls: list[tuple[str, dict[str, Any]]] = []
+
+        def call_tool(
+            self, name: str, args: dict[str, Any], timeout: float | None = None
+        ) -> dict[str, Any]:
+            self.calls.append((name, args))
+            return self.response
+
+    verify_inv = fea.Investigation("memory.img", unattended=True, with_report=False)
+    verify_client = FakeManifestVerifyClient({"overall": True})
+    verify_result = verify_inv.verify_final_manifest(verify_client)
+    verify_error_inv = fea.Investigation(
+        "memory.img", unattended=True, with_report=False
+    )
+    verify_error_result = verify_error_inv.verify_final_manifest(
+        FakeManifestVerifyClient({"_error": {"message": "manifest broken"}})
+    )
+    qa_kinds = [record["kind"] for record in qa_audit_client.records]
+    finding_approved_payloads = [
+        record["payload"]
+        for record in qa_audit_client.records
+        if record["kind"] == "finding_approved"
+    ]
+    missing_citation_qa = build_report_qa_signoff(
+        [{"finding_id": "f-missing", "description": "Confirmed issue."}],
+        [{"tool": "evtx_query", "tool_call_id": "tc-evtx"}],
+        "SUSPICIOUS",
+        completeness,
+        coverage,
+        normalized,
+        [],
+        expert_rules,
+    )
+    single_source_execution_qa = build_report_qa_signoff(
+        [
+            {
+                "finding_id": "f-exec-single",
+                "tool_call_id": "tc-evtx",
+                "description": "Execution observed in one event.",
+            }
+        ],
+        [
+            {"tool": "evtx_query", "tool_call_id": "tc-evtx"},
+            {"tool": "vol_psscan", "tool_call_id": "tc-unrelated-memory"},
+        ],
+        "SUSPICIOUS",
+        completeness,
+        coverage,
+        normalized,
+        [],
+        expert_rules,
+    )
+    forbidden_language_qa = build_report_qa_signoff(
+        [
+            {
+                "finding_id": "f-forbidden",
+                "tool_call_id": "tc-evtx",
+                "description": "The host is clean based on this event log.",
+            }
+        ],
+        [{"tool": "evtx_query", "tool_call_id": "tc-evtx"}],
+        "NO_EVIL",
+        completeness,
+        coverage,
+        normalized,
+        [],
+        expert_rules,
+    )
+    verifier_failure_qa = build_report_qa_signoff(
+        [],
+        [{"tool": "evtx_query", "tool_call_id": "tc-evtx"}],
+        "INDETERMINATE",
+        completeness,
+        coverage,
+        normalized,
+        ["verify_finding rejected or failed for f-1: tool re-run failed"],
+        expert_rules,
+    )
+    customer_text_forbidden_qa = build_report_qa_signoff(
+        [],
+        [{"tool": "evtx_query", "tool_call_id": "tc-evtx"}],
+        "NO_EVIL",
+        completeness,
+        coverage,
+        normalized,
+        [],
+        expert_rules,
+        customer_visible_text=["The executive summary says the host is clean."],
+    )
+    absent_language_qa = build_report_qa_signoff(
+        [],
+        [{"tool": "evtx_query", "tool_call_id": "tc-evtx"}],
+        "NO_EVIL",
+        completeness,
+        coverage,
+        normalized,
+        [],
+        expert_rules,
+        customer_visible_text=["Network evidence is absent."],
+    )
+    customer_ready_language_qa = build_report_qa_signoff(
+        [],
+        [{"tool": "evtx_query", "tool_call_id": "tc-evtx"}],
+        "INDETERMINATE",
+        {"checks": [{"artifact_class": "evtx", "available": True, "touched": True}]},
+        {"blind_spot_count": 0},
+        {
+            "events": [
+                {
+                    "artifact_class": "evtx",
+                    "tool_call_id": "tc-evtx",
+                    "timestamp_utc": "2026-05-09T00:00:00Z",
+                }
+            ]
+        },
+        [],
+        expert_rules,
+        customer_visible_text=["This report is customer-ready."],
+    )
+    yara_only_execution_qa = single_tool_overclaim_qa(
+        finding_id="f-yara-exec",
+        tool="yara_scan",
+        tool_call_id="tc-yara",
+        artifact_class="yara",
+        description="YARA-only match proves the binary executed.",
+    )
+    hayabusa_only_execution_qa = single_tool_overclaim_qa(
+        finding_id="f-hayabusa-exec",
+        tool="hayabusa_scan",
+        tool_call_id="tc-hayabusa",
+        artifact_class="evtx",
+        description="Hayabusa-only alert proves the command executed.",
+    )
+    malfind_only_execution_qa = single_tool_overclaim_qa(
+        finding_id="f-malfind-exec",
+        tool="vol_malfind",
+        tool_call_id="tc-malfind",
+        artifact_class="memory",
+        description="malfind-only VAD output proves the payload executed.",
+    )
+    memory_only_execution_qa = single_tool_overclaim_qa(
+        finding_id="f-memory-exec",
+        tool="vol_psscan",
+        tool_call_id="tc-psscan",
+        artifact_class="memory",
+        description="Memory-only process evidence proves execution.",
+    )
+    evtx_only_execution_qa = single_tool_overclaim_qa(
+        finding_id="f-evtx-exec",
+        tool="evtx_query",
+        tool_call_id="tc-evtx",
+        artifact_class="evtx",
+        description="EVTX-only process creation evidence proves execution.",
+    )
+    network_only_execution_qa = single_tool_overclaim_qa(
+        finding_id="f-network-exec",
+        tool="pcap_triage",
+        tool_call_id="tc-pcap",
+        artifact_class="network",
+        description="Network-only beacon evidence proves code execution.",
+    )
+    network_tool_only_exfil_qa = single_tool_overclaim_qa(
+        finding_id="f-network-exfil",
+        tool="pcap_triage",
+        tool_call_id="tc-pcap",
+        artifact_class="network",
+        description="PCAP-only outbound traffic proves data was exfiltrated.",
+    )
+    network_only_completeness = {
+        "evidence_type": "evtx",
+        "checks": [
+            {"artifact_class": "network", "touched": True},
+            {"artifact_class": "disk/filesystem", "touched": False},
+        ],
+    }
+    network_only_exfil_qa = build_report_qa_signoff(
+        [
+            {
+                "finding_id": "f-exfil-network-only",
+                "tool_call_id": "tc-evtx",
+                "description": "Data was exfiltrated outbound based on network telemetry.",
+            }
+        ],
+        [{"tool": "evtx_query", "tool_call_id": "tc-evtx"}],
+        "SUSPICIOUS",
+        network_only_completeness,
+        coverage,
+        normalized,
+        [],
+        expert_rules,
+    )
+    unrelated_global_exfil_qa = build_report_qa_signoff(
+        [
+            {
+                "finding_id": "f-exfil-unrelated",
+                "tool_call_id": "tc-evtx",
+                "description": "Data was exfiltrated outbound based on one event.",
+            }
+        ],
+        [
+            {"tool": "evtx_query", "tool_call_id": "tc-evtx"},
+            {"tool": "mft_timeline", "tool_call_id": "tc-mft"},
+            {"tool": "vel_collect", "tool_call_id": "tc-vel"},
+        ],
+        "SUSPICIOUS",
+        {
+            "evidence_type": "evtx",
+            "checks": [
+                {"artifact_class": "network", "touched": True},
+                {"artifact_class": "disk/filesystem", "touched": True},
+            ],
+        },
+        coverage,
+        normalized,
+        [],
+        expert_rules,
+    )
+    vel_only_exfil_qa = build_report_qa_signoff(
+        [
+            {
+                "finding_id": "f-exfil-vel-only",
+                "tool_call_id": "tc-vel",
+                "description": "Data was exfiltrated based on one Velociraptor collection row.",
+            }
+        ],
+        [{"tool": "vel_collect", "tool_call_id": "tc-vel"}],
+        "SUSPICIOUS",
+        {
+            "evidence_type": "velociraptor",
+            "checks": [{"artifact_class": "velociraptor", "touched": True}],
+        },
+        {"blind_spot_count": 0},
+        {"events": []},
+        [],
+        expert_rules,
+    )
+    vel_network_only_exfil_qa = build_report_qa_signoff(
+        [
+            {
+                "finding_id": "f-exfil-vel-network",
+                "tool_call_id": "tc-vel",
+                "description": "Data was exfiltrated based on one Velociraptor network row.",
+            }
+        ],
+        [{"tool": "vel_collect", "tool_call_id": "tc-vel"}],
+        "SUSPICIOUS",
+        {
+            "evidence_type": "velociraptor",
+            "checks": [
+                {"artifact_class": "velociraptor", "touched": True},
+                {"artifact_class": "network", "touched": True},
+            ],
+        },
+        {"blind_spot_count": 0},
+        {
+            "events": [
+                {
+                    "artifact_class": "network",
+                    "tool_call_id": "tc-vel",
+                    "linked_finding_ids": ["f-exfil-vel-network"],
+                }
+            ]
+        },
+        [],
+        expert_rules,
+    )
+    story = build_executive_attack_story(
+        timeline_findings,
+        "SUSPICIOUS",
+        normalized,
+        completeness,
+        coverage,
+        report_qa,
+        [],
+        [],
+        "memory.img",
+    )
+    expert_cases = [
+        (
+            "expert doctrine documents signoff operating model",
+            "human expert" in doctrine.get("operating_model", "").lower(),
+            True,
+        ),
+        (
+            "report QA blocks missing replay artifacts after Track 3b",
+            report_qa.get("ready_for_expert_signoff"),
+            False,
+        ),
+        (
+            "report QA audit includes full attested payload",
+            bool(
+                qa_audit_payload.get("report_qa")
+                and len(qa_audit_payload.get("report_qa_sha256", "")) == 64
+            ),
+            True,
+        ),
+        (
+            "report QA audit records packet state",
+            qa_audit_payload.get("packet_state"),
+            report_qa.get("packet_state"),
+        ),
+        (
+            "release gate blocks customer release pending expert decision",
+            qa_release_gate.get("customer_releasable"),
+            False,
+        ),
+        (
+            "PASS QA is only a customer-release candidate",
+            pass_qa.get("packet_state"),
+            "CUSTOMER_RELEASE_CANDIDATE",
+        ),
+        (
+            "PASS QA still requires expert approval before customer-ready PDF",
+            pass_qa.get("ready_for_customer_pdf"),
+            False,
+        ),
+        (
+            "PASS QA leaves expert decision pending",
+            pass_qa.get("expert_decision"),
+            "pending",
+        ),
+        (
+            "stub signer blocks customer release even with expert approval",
+            stub_release_gate.get("customer_releasable"),
+            False,
+        ),
+        (
+            "sigstore plus expert approval still waits for manifest verification",
+            sigstore_release_gate.get("customer_releasable"),
+            False,
+        ),
+        (
+            "sigstore plus expert approval and manifest verification allows release",
+            sigstore_verified_release_gate.get("customer_releasable"),
+            True,
+        ),
+        (
+            "sigstore release gate marks customer PDF ready only after approval",
+            sigstore_verified_release_gate.get("ready_for_customer_pdf"),
+            True,
+        ),
+        (
+            "packet attestation records verdict packet digest",
+            len(packet_attestation.get("verdict_packet_sha256", "")),
+            64,
+        ),
+        (
+            "expert signoff packet records pending human decision",
+            expert_signoff_packet.get("decision"),
+            "pending",
+        ),
+        (
+            "expert signoff packet references report QA digest",
+            len(
+                expert_signoff_packet.get("referenced_hashes", {}).get(
+                    "report_qa_sha256", ""
+                )
+            ),
+            64,
+        ),
+        (
+            "expert signoff packet reserves manifest digest linkage",
+            "run_manifest_sha256" in expert_signoff_packet.get("referenced_hashes", {}),
+            True,
+        ),
+        (
+            "expert signoff packet hash matches final emitted packet",
+            packet_attestation.get("expert_signoff_packet_sha256"),
+            qa_inv._hash_obj(expert_signoff_packet),  # noqa: SLF001
+        ),
+        (
+            "expert miss summary counts rejected packet feedback",
+            captured_miss_summary.get("total"),
+            2,
+        ),
+        (
+            "expert miss QA edit becomes QA-check follow-up",
+            captured_miss_summary.get("items", [])[0].get("conversion_target"),
+            "qa_check",
+        ),
+        (
+            "expert miss language edit becomes report-copy follow-up",
+            captured_miss_summary.get("items", [])[1].get("conversion_target"),
+            "report_copy_fix",
+        ),
+        (
+            "expert miss feedback item keeps ledger hash",
+            len(captured_miss_summary.get("items", [])[0].get("ledger_line_sha256")),
+            64,
+        ),
+        (
+            "expert signoff packet carries captured feedback items",
+            len(miss_signoff_packet.get("feedback_items", [])),
+            2,
+        ),
+        (
+            "report metadata exposes expert miss summary",
+            miss_metadata.get("expert_miss_summary", {}).get("total"),
+            2,
+        ),
+        (
+            "attack story summarizes expert miss feedback",
+            any(
+                "Expert misses captured" in item
+                for item in miss_metadata.get("attack_story", {}).get(
+                    "what_we_can_say", []
+                )
+            ),
+            True,
+        ),
+        (
+            "packet attestation is audited before manifest finalize",
+            "verdict_packet" in qa_kinds,
+            True,
+        ),
+        (
+            "post-finalize manifest verification calls manifest_verify",
+            verify_client.calls[0][0] if verify_client.calls else None,
+            "manifest_verify",
+        ),
+        (
+            "post-finalize manifest verification stores pass status",
+            verify_result.get("overall"),
+            True,
+        ),
+        (
+            "post-finalize manifest verification stores errors as failed status",
+            verify_error_result.get("overall"),
+            False,
+        ),
+        (
+            "final findings become manifest-eligible audit records",
+            finding_approved_payloads[0].get("finding_id")
+            if finding_approved_payloads
+            else None,
+            "f-dkom",
+        ),
+        (
+            "report QA blocks missing tool_call_id citations",
+            missing_citation_qa.get("status"),
+            "FAIL",
+        ),
+        (
+            "report QA blocks case-global execution corroboration",
+            single_source_execution_qa.get("status"),
+            "FAIL",
+        ),
+        (
+            "report QA blocks forbidden clean wording",
+            forbidden_language_qa.get("status"),
+            "FAIL",
+        ),
+        (
+            "report QA keeps unverified replay out of customer-ready state",
+            report_qa.get("ready_for_customer_pdf"),
+            False,
+        ),
+        (
+            "report QA blocks verifier replay failures",
+            verifier_failure_qa.get("status"),
+            "FAIL",
+        ),
+        (
+            "report QA scans customer-visible text for forbidden wording",
+            customer_text_forbidden_qa.get("status"),
+            "FAIL",
+        ),
+        (
+            "report QA blocks absent wording for coverage gaps",
+            absent_language_qa.get("status"),
+            "FAIL",
+        ),
+        (
+            "report QA blocks customer-ready wording before release gates",
+            qa_check_status(
+                customer_ready_language_qa, "no_forbidden_unqualified_language"
+            ),
+            "FAIL",
+        ),
+        (
+            "report QA blocks YARA-only execution overclaim",
+            qa_check_status(
+                yara_only_execution_qa,
+                "execution_requires_two_current_artifact_classes",
+            ),
+            "FAIL",
+        ),
+        (
+            "report QA blocks Hayabusa-only execution overclaim",
+            qa_check_status(
+                hayabusa_only_execution_qa,
+                "execution_requires_two_current_artifact_classes",
+            ),
+            "FAIL",
+        ),
+        (
+            "report QA blocks malfind-only execution overclaim",
+            qa_check_status(
+                malfind_only_execution_qa,
+                "execution_requires_two_current_artifact_classes",
+            ),
+            "FAIL",
+        ),
+        (
+            "report QA blocks memory-only execution overclaim",
+            qa_check_status(
+                memory_only_execution_qa,
+                "execution_requires_two_current_artifact_classes",
+            ),
+            "FAIL",
+        ),
+        (
+            "report QA blocks EVTX-only execution overclaim",
+            qa_check_status(
+                evtx_only_execution_qa,
+                "execution_requires_two_current_artifact_classes",
+            ),
+            "FAIL",
+        ),
+        (
+            "report QA blocks network-only execution overclaim",
+            qa_check_status(
+                network_only_execution_qa,
+                "execution_requires_two_current_artifact_classes",
+            ),
+            "FAIL",
+        ),
+        (
+            "report QA blocks network-only exfil overclaim",
+            qa_check_status(
+                network_tool_only_exfil_qa,
+                "exfiltration_requires_staging_and_movement",
+            ),
+            "FAIL",
+        ),
+        (
+            "report QA blocks exfil without staging coverage",
+            network_only_exfil_qa.get("status"),
+            "FAIL",
+        ),
+        (
+            "report QA rejects unrelated global exfil coverage",
+            unrelated_global_exfil_qa.get("status"),
+            "FAIL",
+        ),
+        (
+            "report QA rejects single generic Velociraptor exfil coverage",
+            vel_only_exfil_qa.get("status"),
+            "FAIL",
+        ),
+        (
+            "report QA rejects Velociraptor-only network exfil coverage",
+            vel_network_only_exfil_qa.get("status"),
+            "FAIL",
+        ),
+        (
+            "attack story preserves evidence-bound tool call",
+            story["attack_chain"][0].get("tool_call_id"),
+            "tc-psscan",
+        ),
+        (
+            "attack story refuses attribution",
+            any("attribution" in item.lower() for item in story["what_we_cannot_say"]),
+            True,
+        ),
+    ]
+    for label, actual, expected in expert_cases:
+        process_checks += 1
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] expert-signoff: {label}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
     extracted_strings = extract_ascii_strings("687474703a2f2f6576696c2e746573742f61")
     extracted_iocs = extract_iocs(extracted_strings)
     malware_triage = build_malware_triage(
@@ -847,14 +2221,123 @@ def main() -> int:
         print(f"         csv text: {text!r}")
         failures += 1
 
+    matrix_disk_inv = fea.Investigation(
+        "fixture.E01", unattended=True, with_report=False
+    )
+    matrix_disk_inv.tool_calls = [{"tool": "case_open", "tool_call_id": "tc-disk"}]
+    matrix_disk_checks = {
+        row.get("artifact_class"): row
+        for row in matrix_disk_inv._case_completeness().get("checks", [])  # noqa: SLF001
+    }
+    regression_fixture_matrix_cases = [
+        (
+            "benign",
+            "synthetic benign EVTX rows",
+            "python scripts/verdict-policy-smoke.py",
+            compute_verdict(benign_findings),
+            "NO_EVIL",
+        ),
+        (
+            "EVTX-only",
+            "synthetic Security EID 4698 scheduled-task row",
+            "python scripts/verdict-policy-smoke.py",
+            (len(scheduled_task_findings), compute_verdict(scheduled_task_findings)),
+            (1, "INDETERMINATE"),
+        ),
+        (
+            "memory DKOM",
+            "synthetic pslist/psscan process-view divergence",
+            "python scripts/verdict-policy-smoke.py",
+            process_sets_diverge(
+                [],
+                [{"pid": 31337, "image_name": "evil.exe"}],
+                0,
+                1,
+            )[0],
+            True,
+        ),
+        (
+            "memory injection",
+            "synthetic malfind RWX/MZ observable",
+            "python scripts/verdict-policy-smoke.py",
+            (
+                malware_triage["observables"][0].get("confidence"),
+                malware_triage["observables"][0].get("tool_call_id"),
+            ),
+            ("HYPOTHESIS", "tc-malfind"),
+        ),
+        (
+            "custody-only disk",
+            "synthetic E01 case_open-only observable",
+            "python scripts/verdict-policy-smoke.py",
+            (
+                matrix_disk_inv.compute_verdict([]),
+                matrix_disk_checks["disk/filesystem"].get("touched"),
+            ),
+            ("INDETERMINATE", False),
+        ),
+        (
+            "extracted-disk persistence",
+            "synthetic extracted Prefetch plus Registry artifacts",
+            "python scripts/verdict-policy-smoke.py",
+            {"prefetch_parse", "registry_query"} <= set(dispatched_tools),
+            True,
+        ),
+        (
+            "network-only",
+            "synthetic PCAP-only execution overclaim QA packet",
+            "python scripts/verdict-policy-smoke.py",
+            qa_check_status(
+                network_only_execution_qa,
+                "execution_requires_two_current_artifact_classes",
+            ),
+            "FAIL",
+        ),
+        (
+            "Velociraptor zip",
+            "synthetic Velociraptor zip with contained Prefetch artifact",
+            "python scripts/verdict-policy-smoke.py",
+            (
+                len(zip_dispatch_inv.velociraptor_zip_extractions),
+                "prefetch_parse" in zip_dispatched_tools,
+            ),
+            (1, True),
+        ),
+        (
+            "mixed full-case",
+            "synthetic case directory with memory, EVTX, and extracted disk artifacts",
+            "python scripts/verdict-policy-smoke.py",
+            (
+                dir_checks["memory"].get("touched"),
+                dir_checks["evtx"].get("touched"),
+                dir_checks["disk/filesystem"].get("touched"),
+                dir_inv.compute_verdict([]),
+            ),
+            (True, True, True, "NO_EVIL"),
+        ),
+    ]
+    matrix_checks = 0
+    for scenario, fixture, command, actual, expected in regression_fixture_matrix_cases:
+        matrix_checks += 1
+        ok = actual == expected
+        marker = "OK  " if ok else "FAIL"
+        print(f"  [{marker}] fixture-matrix: {scenario} via {command}")
+        print(f"         fixture : {fixture}")
+        if not ok:
+            print(f"         expected: {expected!r}")
+            print(f"         actual  : {actual!r}")
+            failures += 1
+
     print()
     print("=" * 60)
     total = (
         len(cases)
         + len(et_cases)
+        + inventory_checks
         + len(evtx_cases)
         + disk_policy_checks
         + process_checks
+        + matrix_checks
     )
     if failures == 0:
         print(f"OK - all {total} verdict + evidence/process cases pass.")

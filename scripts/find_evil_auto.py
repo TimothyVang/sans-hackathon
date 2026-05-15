@@ -2,10 +2,11 @@
 """find-evil-auto — single-command automated investigation orchestrator.
 
 Usage:
-    python scripts/find_evil_auto.py <evidence_path> [--unattended] [--no-report]
+    python scripts/find_evil_auto.py <evidence_path> [--unattended] [--no-report] [--run-summary <path>]
 
 What it does:
-    1. Detects evidence type (memory image, EVTX, disk image)
+    1. Detects evidence type (memory image, EVTX, disk image,
+       Velociraptor zip, or mixed evidence directory)
     2. Spawns findevil-mcp + findevil-agent-mcp inside the SIFT VM via SSH stdio
     3. case_open against the evidence (real SHA-256, audit log starts here)
     4. Runs the per-type playbook tool sequence
@@ -34,16 +35,19 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import csv
+import hashlib
+import ipaddress
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import threading
 import time
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from queue import Empty, Queue
 from typing import Any
 
@@ -55,15 +59,34 @@ GUEST_IP = os.environ.get("FIND_EVIL_GUEST_IP", "192.168.197.143")
 GUEST_USER = os.environ.get("FIND_EVIL_GUEST_USER", "sansforensics")
 SSH_KEY = os.environ.get("FIND_EVIL_SSH_KEY", str(Path.home() / ".ssh" / "sift_key"))
 GUEST_REPO = os.environ.get("FIND_EVIL_GUEST_REPO", "/home/sansforensics/find-evil")
+REPO_ROOT = Path(__file__).resolve().parent.parent
 RUST_BIN = f"{GUEST_REPO}/target/release/findevil-mcp"
+RUST_BIN_Q = shlex.quote(RUST_BIN)
+AGENT_MCP_DIR_Q = shlex.quote(f"{GUEST_REPO}/services/agent_mcp")
+RUST_TOOL_ENV = {
+    "VOLATILITY_BIN": "/home/sansforensics/.local/bin/vol",
+    "HAYABUSA_BIN": "/home/sansforensics/.local/bin/hayabusa",
+    "VELOCIRAPTOR_BIN": "/home/sansforensics/.local/bin/velociraptor",
+}
+MEMORY_YARA_RULES = os.environ.get("FIND_EVIL_MEMORY_YARA_RULES")
+DISK_YARA_RULES = os.environ.get("FIND_EVIL_DISK_YARA_RULES")
 PY_LAUNCHER = (
-    "VOLATILITY_BIN=/home/sansforensics/.local/bin/vol "
-    "HAYABUSA_BIN=/home/sansforensics/.local/bin/hayabusa "
-    "VELOCIRAPTOR_BIN=/home/sansforensics/.local/bin/velociraptor "
-    f"exec {RUST_BIN}"
+    " ".join(f"{key}={shlex.quote(value)}" for key, value in RUST_TOOL_ENV.items())
+    + f" exec {RUST_BIN_Q}"
+)
+RUST_REPLAY_COMMAND = [
+    "env",
+    *(f"{key}={value}" for key, value in RUST_TOOL_ENV.items()),
+    RUST_BIN,
+]
+EXPERT_MISSES_PATH = Path(
+    os.environ.get(
+        "FINDEVIL_EXPERT_MISS_LEDGER",
+        str(REPO_ROOT / "state" / "expert_misses.jsonl"),
+    )
 )
 PY_MCP_LAUNCHER = (
-    f"cd {GUEST_REPO}/services/agent_mcp && exec "
+    f"cd {AGENT_MCP_DIR_Q} && exec "
     "/home/sansforensics/.local/bin/uv run python -m findevil_agent_mcp.server"
 )
 
@@ -148,7 +171,13 @@ class SshMcpClient:
         except RuntimeError as e:
             return {"_error": {"message": str(e)}}
         try:
-            return json.loads(result["content"][0]["text"])
+            text = result["content"][0]["text"]
+            body = json.loads(text)
+            if isinstance(body, dict):
+                body["_mcp_output_sha256"] = hashlib.sha256(
+                    text.encode("utf-8")
+                ).hexdigest()
+            return body
         except (KeyError, IndexError, json.JSONDecodeError) as e:
             return {"_error": {"message": f"malformed tool response: {e}: {result!r}"}}
 
@@ -171,16 +200,620 @@ class SshMcpClient:
 # ---------------------------------------------------------------------------
 
 
+MEMORY_EXTS = (".mem", ".raw", ".vmem", ".dmp", ".img", ".lime")
+RAW_DISK_EXTS = (".e01", ".dd", ".aff", ".aff4", ".001")
+EXTRACTED_DISK_CLASSES = {"mft", "prefetch", "registry", "usnjrnl"}
+YARA_TARGET_EXTS = (
+    ".bat",
+    ".cmd",
+    ".dll",
+    ".doc",
+    ".docm",
+    ".docx",
+    ".exe",
+    ".hta",
+    ".js",
+    ".jse",
+    ".lnk",
+    ".msi",
+    ".ps1",
+    ".scr",
+    ".vbe",
+    ".vbs",
+    ".xls",
+    ".xlsm",
+    ".xlsx",
+)
+NETWORK_CLASSES = {"pcap", "zeek", "sysmon_network"}
+VELOCIRAPTOR_ZIP_EXTRACT_CLASSES = (
+    EXTRACTED_DISK_CLASSES | NETWORK_CLASSES | {"evtx", "yara_target"}
+)
+MAX_VELOCIRAPTOR_ZIP_MEMBER_BYTES = int(
+    os.environ.get("FINDEVIL_VELOCIRAPTOR_ZIP_MAX_MEMBER_BYTES", str(512 * 1024 * 1024))
+)
+REGISTRY_HIVE_NAMES = {
+    "software",
+    "system",
+    "security",
+    "sam",
+    "default",
+    "ntuser.dat",
+    "usrclass.dat",
+    "amcache.hve",
+}
+
+
 def detect_evidence_type(path: str) -> str:
-    """Returns one of: 'memory', 'evtx', 'disk', 'unknown'."""
+    """Returns one of: directory, memory, evtx, disk, network, velociraptor, unknown."""
+    try:
+        if Path(path).is_dir():
+            return "directory"
+    except OSError:
+        pass
     p = Path(path).name.lower()
-    if p.endswith((".mem", ".raw", ".vmem", ".dmp", ".img", ".lime")):
+    if p.endswith(MEMORY_EXTS):
         return "memory"
+    if p.endswith(".evtx") and "sysmon" in p:
+        return "network"
     if p.endswith(".evtx"):
         return "evtx"
-    if p.endswith((".e01", ".dd", ".aff", ".aff4", ".001")):
+    if p.endswith((".pcap", ".pcapng", ".cap")):
+        return "network"
+    if p.endswith(RAW_DISK_EXTS):
         return "disk"
+    if p.endswith(".zip"):
+        return "velociraptor"
     return "unknown"
+
+
+def classify_artifact_path(path: str) -> dict[str, str | None]:
+    """Classify a file path into a supported evidence/artifact lane."""
+    posix = PurePosixPath(str(path).replace("\\", "/"))
+    name = posix.name
+    lower_name = name.lower()
+    lower_path = str(posix).lower()
+    if lower_name.endswith(MEMORY_EXTS):
+        return {
+            "artifact_class": "memory",
+            "evidence_type": "memory",
+            "parser_tool": "memory_playbook",
+        }
+    if lower_name.endswith(".evtx") and "sysmon" in lower_name:
+        return {
+            "artifact_class": "sysmon_network",
+            "evidence_type": "network",
+            "parser_tool": "sysmon_network_query",
+        }
+    if lower_name.endswith(".evtx"):
+        return {
+            "artifact_class": "evtx",
+            "evidence_type": "evtx",
+            "parser_tool": "evtx_query",
+        }
+    if lower_name.endswith((".pcap", ".pcapng", ".cap")):
+        return {
+            "artifact_class": "pcap",
+            "evidence_type": "network",
+            "parser_tool": "pcap_triage",
+        }
+    if lower_name in {"conn.log", "dns.log", "http.log", "ssl.log", "tls.log"} or (
+        lower_name.endswith(".log") and "zeek" in lower_path
+    ):
+        return {
+            "artifact_class": "zeek",
+            "evidence_type": "network",
+            "parser_tool": "zeek_summary",
+        }
+    if lower_name.endswith(RAW_DISK_EXTS):
+        return {
+            "artifact_class": "raw_disk",
+            "evidence_type": "disk",
+            "parser_tool": None,
+        }
+    if lower_name in {"$mft", "mft"} or lower_name.endswith(".mft"):
+        return {
+            "artifact_class": "mft",
+            "evidence_type": "extracted_disk",
+            "parser_tool": "mft_timeline",
+        }
+    if lower_name.endswith(".pf"):
+        return {
+            "artifact_class": "prefetch",
+            "evidence_type": "extracted_disk",
+            "parser_tool": "prefetch_parse",
+        }
+    if lower_name in REGISTRY_HIVE_NAMES:
+        return {
+            "artifact_class": "registry",
+            "evidence_type": "extracted_disk",
+            "parser_tool": "registry_query",
+        }
+    if (
+        lower_name in {"$j", "$usnjrnl", "usnjrnl", "usnjrnl.j"}
+        or lower_name.endswith(".usnjrnl")
+        or lower_name.endswith(".j")
+        or "$extend/$usnjrnl" in lower_path
+    ):
+        return {
+            "artifact_class": "usnjrnl",
+            "evidence_type": "extracted_disk",
+            "parser_tool": "usnjrnl_query",
+        }
+    if lower_name.endswith(YARA_TARGET_EXTS):
+        return {
+            "artifact_class": "yara_target",
+            "evidence_type": "extracted_disk",
+            "parser_tool": "yara_scan",
+        }
+    if lower_name.endswith(".zip"):
+        return {
+            "artifact_class": "velociraptor",
+            "evidence_type": "velociraptor",
+            "parser_tool": "vel_collect",
+        }
+    return {
+        "artifact_class": "unknown",
+        "evidence_type": "unknown",
+        "parser_tool": None,
+    }
+
+
+def _safe_zip_member_path(member_name: str) -> str | None:
+    normalized = member_name.replace("\\", "/")
+    posix = PurePosixPath(normalized)
+    parts = [part for part in posix.parts if part not in {"", "."}]
+    if not parts or posix.is_absolute() or ".." in parts:
+        return None
+    if re.match(r"^[A-Za-z]:$", parts[0]):
+        return None
+    return "/".join(parts)
+
+
+def classify_velociraptor_zip_member(member_name: str) -> dict[str, Any]:
+    """Classify a zip member and mark whether Tesla mode can safely extract it."""
+    safe_member = _safe_zip_member_path(member_name)
+    if safe_member is None:
+        return {
+            "zip_member_path": member_name,
+            "artifact_class": "unknown",
+            "evidence_type": "unknown",
+            "parser_tool": None,
+            "supported": False,
+            "reject_reason": "unsafe_zip_member_path",
+        }
+    classification = classify_artifact_path(safe_member)
+    artifact_class = str(classification.get("artifact_class") or "unknown")
+    return {
+        "zip_member_path": safe_member,
+        **classification,
+        "supported": artifact_class in VELOCIRAPTOR_ZIP_EXTRACT_CLASSES,
+    }
+
+
+def extract_velociraptor_zip_artifacts(
+    zip_path: str,
+    output_dir: str,
+    *,
+    limit: int = 500,
+    max_member_bytes: int = MAX_VELOCIRAPTOR_ZIP_MEMBER_BYTES,
+) -> dict[str, Any]:
+    """Extract supported artifacts from a Velociraptor collection zip inside SIFT."""
+    remote_script = r"""
+import hashlib
+import json
+import re
+import sys
+import zipfile
+from pathlib import Path, PurePosixPath
+
+zip_path = Path(sys.argv[1])
+output_dir = Path(sys.argv[2])
+limit = int(sys.argv[3])
+max_member_bytes = int(sys.argv[4])
+
+MEMORY_EXTS = (".mem", ".raw", ".vmem", ".dmp", ".img", ".lime")
+RAW_DISK_EXTS = (".e01", ".dd", ".aff", ".aff4", ".001")
+EXTRACTED_DISK_CLASSES = {"mft", "prefetch", "registry", "usnjrnl"}
+NETWORK_CLASSES = {"pcap", "zeek", "sysmon_network"}
+YARA_TARGET_EXTS = (
+    ".bat", ".cmd", ".dll", ".doc", ".docm", ".docx", ".exe",
+    ".hta", ".js", ".jse", ".lnk", ".msi", ".ps1", ".scr",
+    ".vbe", ".vbs", ".xls", ".xlsm", ".xlsx",
+)
+SUPPORTED_CLASSES = EXTRACTED_DISK_CLASSES | NETWORK_CLASSES | {"evtx", "yara_target"}
+REGISTRY_HIVE_NAMES = {
+    "software", "system", "security", "sam", "default", "ntuser.dat",
+    "usrclass.dat", "amcache.hve",
+}
+
+def safe_zip_member_path(member_name):
+    normalized = member_name.replace("\\", "/")
+    posix = PurePosixPath(normalized)
+    parts = [part for part in posix.parts if part not in {"", "."}]
+    if not parts or posix.is_absolute() or ".." in parts:
+        return None
+    if re.match(r"^[A-Za-z]:$", parts[0]):
+        return None
+    return "/".join(parts)
+
+def classify_artifact_path(path):
+    posix = PurePosixPath(str(path).replace("\\", "/"))
+    lower_name = posix.name.lower()
+    lower_path = str(posix).lower()
+    if lower_name.endswith(MEMORY_EXTS):
+        return {"artifact_class": "memory", "evidence_type": "memory", "parser_tool": "memory_playbook"}
+    if lower_name.endswith(".evtx") and "sysmon" in lower_name:
+        return {"artifact_class": "sysmon_network", "evidence_type": "network", "parser_tool": "sysmon_network_query"}
+    if lower_name.endswith(".evtx"):
+        return {"artifact_class": "evtx", "evidence_type": "evtx", "parser_tool": "evtx_query"}
+    if lower_name.endswith((".pcap", ".pcapng", ".cap")):
+        return {"artifact_class": "pcap", "evidence_type": "network", "parser_tool": "pcap_triage"}
+    if lower_name in {"conn.log", "dns.log", "http.log", "ssl.log", "tls.log"} or (lower_name.endswith(".log") and "zeek" in lower_path):
+        return {"artifact_class": "zeek", "evidence_type": "network", "parser_tool": "zeek_summary"}
+    if lower_name.endswith(RAW_DISK_EXTS):
+        return {"artifact_class": "raw_disk", "evidence_type": "disk", "parser_tool": None}
+    if lower_name in {"$mft", "mft"} or lower_name.endswith(".mft"):
+        return {"artifact_class": "mft", "evidence_type": "extracted_disk", "parser_tool": "mft_timeline"}
+    if lower_name.endswith(".pf"):
+        return {"artifact_class": "prefetch", "evidence_type": "extracted_disk", "parser_tool": "prefetch_parse"}
+    if lower_name in REGISTRY_HIVE_NAMES:
+        return {"artifact_class": "registry", "evidence_type": "extracted_disk", "parser_tool": "registry_query"}
+    if lower_name in {"$j", "$usnjrnl", "usnjrnl", "usnjrnl.j"} or lower_name.endswith(".usnjrnl") or lower_name.endswith(".j") or "$extend/$usnjrnl" in lower_path:
+        return {"artifact_class": "usnjrnl", "evidence_type": "extracted_disk", "parser_tool": "usnjrnl_query"}
+    if lower_name.endswith(YARA_TARGET_EXTS):
+        return {"artifact_class": "yara_target", "evidence_type": "extracted_disk", "parser_tool": "yara_scan"}
+    return {"artifact_class": "unknown", "evidence_type": "unknown", "parser_tool": None}
+
+entries = []
+unsupported_count = 0
+unsupported_samples = []
+skipped_unsafe = 0
+skipped_oversize = 0
+truncated = False
+output_dir.mkdir(parents=True, exist_ok=True)
+output_real = output_dir.resolve()
+
+with zipfile.ZipFile(zip_path) as zf:
+    for idx, info in enumerate(zf.infolist()):
+        if len(entries) >= limit:
+            truncated = True
+            break
+        if info.is_dir():
+            continue
+        member = safe_zip_member_path(info.filename)
+        if member is None:
+            skipped_unsafe += 1
+            continue
+        classification = classify_artifact_path(member)
+        artifact_class = classification["artifact_class"]
+        if artifact_class not in SUPPORTED_CLASSES:
+            unsupported_count += 1
+            if len(unsupported_samples) < 20:
+                unsupported_samples.append(member)
+            continue
+        if info.file_size > max_member_bytes:
+            skipped_oversize += 1
+            continue
+        target = output_dir / f"{idx:05d}" / member
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target_real = target.resolve(strict=False)
+        try:
+            target_real.relative_to(output_real)
+        except ValueError:
+            skipped_unsafe += 1
+            continue
+        h = hashlib.sha256()
+        size = 0
+        with zf.open(info, "r") as src, target.open("wb") as dst:
+            while True:
+                chunk = src.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                h.update(chunk)
+                dst.write(chunk)
+        entries.append({
+            "path": str(target),
+            "canonical_path": str(target.resolve()),
+            "source_container_path": str(zip_path),
+            "source_container_type": "velociraptor_zip",
+            "zip_member_path": member,
+            **classification,
+            "sha256": h.hexdigest(),
+            "size_bytes": size,
+            "compressed_size_bytes": info.compress_size,
+            "symlink_status": "zip_member",
+            "custody_status": "extracted_from_velociraptor_zip",
+        })
+
+print(json.dumps({
+    "zip_path": str(zip_path),
+    "output_dir": str(output_dir),
+    "entries": entries,
+    "entry_count": len(entries),
+    "unsupported_count": unsupported_count,
+    "unsupported_samples": unsupported_samples,
+    "skipped_unsafe": skipped_unsafe,
+    "skipped_oversize": skipped_oversize,
+    "truncated": truncated,
+    "limit": limit,
+    "max_member_bytes": max_member_bytes,
+}, separators=(",", ":"), sort_keys=True))
+"""
+    cmd = (
+        f"python3 - {shlex.quote(zip_path)} {shlex.quote(output_dir)} "
+        f"{int(limit)} {int(max_member_bytes)} <<'PY'\n{remote_script}\nPY"
+    )
+    code, stdout, stderr = ssh_run(cmd, timeout=1800)
+    if code != 0:
+        raise RuntimeError(
+            "Velociraptor zip extraction failed: "
+            + (stderr.strip() or stdout.strip())[:500]
+        )
+    return json.loads(stdout)
+
+
+def sha256_file_local(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _inventory_summary(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    class_counts = Counter(
+        str(entry.get("artifact_class") or "unknown") for entry in entries
+    )
+    type_counts = Counter(
+        str(entry.get("evidence_type") or "unknown") for entry in entries
+    )
+    leaf_counts = Counter(
+        PurePosixPath(str(entry.get("path", "")).replace("\\", "/")).name
+        for entry in entries
+    )
+    duplicate_names = sorted(
+        name for name, count in leaf_counts.items() if name and count > 1
+    )
+    rejected = sum(
+        1
+        for entry in entries
+        if str(entry.get("custody_status", "")).startswith("rejected")
+    )
+    return {
+        "entry_count": len(entries),
+        "class_counts": dict(sorted(class_counts.items())),
+        "evidence_type_counts": dict(sorted(type_counts.items())),
+        "duplicate_names": duplicate_names,
+        "rejected_count": rejected,
+        "raw_disk_count": class_counts.get("raw_disk", 0),
+        "extracted_disk_count": sum(
+            class_counts.get(name, 0) for name in EXTRACTED_DISK_CLASSES
+        ),
+        "yara_target_count": class_counts.get("yara_target", 0),
+        "disk_artifact_counts": {
+            name: class_counts.get(name, 0)
+            for name in sorted(EXTRACTED_DISK_CLASSES | {"evtx", "yara_target"})
+        },
+    }
+
+
+def finalize_evidence_inventory(
+    root_path: str,
+    canonical_root: str,
+    root_is_directory: bool,
+    entries: list[dict[str, Any]],
+    *,
+    limit: int,
+    truncated: bool = False,
+) -> dict[str, Any]:
+    for entry in entries:
+        classification = classify_artifact_path(str(entry.get("path", "")))
+        entry.setdefault("artifact_class", classification["artifact_class"])
+        entry.setdefault("evidence_type", classification["evidence_type"])
+        entry.setdefault("parser_tool", classification["parser_tool"])
+        entry.setdefault("sha256", None)
+        entry.setdefault("size_bytes", 0)
+        entry.setdefault("symlink_status", "unknown")
+        entry.setdefault("custody_status", "custody_registered")
+        child_preimage = {
+            "canonical_path": entry.get("canonical_path"),
+            "path": entry.get("path"),
+            "sha256": entry.get("sha256"),
+            "custody_status": entry.get("custody_status"),
+        }
+        entry.setdefault(
+            "child_evidence_id",
+            "ev-"
+            + hashlib.sha256(
+                json.dumps(
+                    child_preimage, separators=(",", ":"), sort_keys=True
+                ).encode("utf-8")
+            ).hexdigest()[:16],
+        )
+    inventory = {
+        "root_path": str(root_path),
+        "canonical_root": str(canonical_root),
+        "root_is_directory": root_is_directory,
+        "limit": limit,
+        "truncated": truncated,
+        "entries": entries,
+    }
+    inventory["summary"] = _inventory_summary(entries)
+    inventory["summary"]["limit"] = limit
+    inventory["summary"]["truncated"] = truncated
+    inventory["inventory_sha256"] = hashlib.sha256(
+        json.dumps(inventory, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    inventory["parent_case_id"] = f"dir-{inventory['inventory_sha256'][:16]}"
+    return inventory
+
+
+def build_local_evidence_inventory(
+    root: str | Path, *, limit: int = 500
+) -> dict[str, Any]:
+    """Build a safe local inventory used by policy smokes and offline reports."""
+    root_path = Path(root)
+    root_real = root_path.resolve(strict=True)
+    entries: list[dict[str, Any]] = []
+    truncated = False
+
+    candidates = [root_path] if root_path.is_file() else sorted(root_path.rglob("*"))
+    for path in candidates:
+        if len(entries) >= limit:
+            truncated = True
+            break
+        display_path = str(path)
+        if path.is_symlink():
+            entries.append(
+                {
+                    "path": display_path,
+                    "canonical_path": None,
+                    "artifact_class": "unknown",
+                    "evidence_type": "unknown",
+                    "parser_tool": None,
+                    "sha256": None,
+                    "size_bytes": 0,
+                    "symlink_status": "rejected",
+                    "custody_status": "rejected_symlink",
+                }
+            )
+            continue
+        if not path.is_file():
+            continue
+        real = path.resolve(strict=True)
+        if (
+            real != root_real
+            and root_path.is_dir()
+            and not real.is_relative_to(root_real)
+        ):
+            entries.append(
+                {
+                    "path": display_path,
+                    "canonical_path": str(real),
+                    "artifact_class": "unknown",
+                    "evidence_type": "unknown",
+                    "parser_tool": None,
+                    "sha256": None,
+                    "size_bytes": 0,
+                    "symlink_status": "outside_root",
+                    "custody_status": "rejected_outside_root",
+                }
+            )
+            continue
+        classification = classify_artifact_path(display_path)
+        entries.append(
+            {
+                "path": display_path,
+                "canonical_path": str(real),
+                **classification,
+                "sha256": sha256_file_local(path),
+                "size_bytes": path.stat().st_size,
+                "symlink_status": "not_symlink",
+                "custody_status": "custody_registered",
+            }
+        )
+
+    return finalize_evidence_inventory(
+        str(root_path),
+        str(root_real),
+        root_path.is_dir(),
+        entries,
+        limit=limit,
+        truncated=truncated,
+    )
+
+
+def build_remote_evidence_inventory(root: str, *, limit: int = 500) -> dict[str, Any]:
+    """Build a read-only file inventory for a path inside the SIFT VM."""
+    remote_script = r"""
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+limit = int(sys.argv[2])
+root_real = root.resolve(strict=True)
+entries = []
+truncated = False
+candidates = [root] if root.is_file() else sorted(root.rglob("*"))
+for path in candidates:
+    if len(entries) >= limit:
+        truncated = True
+        break
+    display_path = str(path)
+    if path.is_symlink():
+        entries.append({
+            "path": display_path,
+            "canonical_path": None,
+            "sha256": None,
+            "size_bytes": 0,
+            "symlink_status": "rejected",
+            "custody_status": "rejected_symlink",
+        })
+        continue
+    if not path.is_file():
+        continue
+    real = path.resolve(strict=True)
+    if root.is_dir():
+        try:
+            real.relative_to(root_real)
+        except ValueError:
+            entries.append({
+                "path": display_path,
+                "canonical_path": str(real),
+                "sha256": None,
+                "size_bytes": 0,
+                "symlink_status": "outside_root",
+                "custody_status": "rejected_outside_root",
+            })
+            continue
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    entries.append({
+        "path": display_path,
+        "canonical_path": str(real),
+        "sha256": h.hexdigest(),
+        "size_bytes": path.stat().st_size,
+        "symlink_status": "not_symlink",
+        "custody_status": "custody_registered",
+    })
+print(json.dumps({
+    "root_path": str(root),
+    "canonical_root": str(root_real),
+    "root_is_directory": root.is_dir(),
+    "limit": limit,
+    "truncated": truncated,
+    "entries": entries,
+}, separators=(",", ":"), sort_keys=True))
+"""
+    cmd = f"python3 - {shlex.quote(root)} {int(limit)} <<'PY'\n{remote_script}\nPY"
+    code, stdout, stderr = ssh_run(cmd, timeout=600)
+    if code != 0:
+        raise RuntimeError(
+            "remote evidence inventory failed: "
+            + (stderr.strip() or stdout.strip())[:500]
+        )
+    data = json.loads(stdout)
+    return finalize_evidence_inventory(
+        str(data["root_path"]),
+        str(data["canonical_root"]),
+        bool(data["root_is_directory"]),
+        list(data["entries"]),
+        limit=int(data.get("limit", limit)),
+        truncated=bool(data.get("truncated", False)),
+    )
+
+
+def inventory_supported_entries(inventory: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        entry
+        for entry in inventory.get("entries", [])
+        if entry.get("custody_status") == "custody_registered"
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +864,67 @@ def _load_common_procs() -> set[str]:
 COMMON_WIN_PROCS: set[str] = _load_common_procs()
 
 CONFIDENCE_RANK = {"HYPOTHESIS": 1, "INFERRED": 2, "CONFIRMED": 3}
+EXPERT_RULES_PATH = (
+    Path(__file__).resolve().parent.parent / "agent-config" / "expert-rules.json"
+)
+SUSPICIOUS_EVTX_ACTION_TOKENS = (
+    "encodedcommand",
+    "-encodedcommand",
+    "-enc ",
+    "frombase64string",
+    "downloadstring",
+    "invoke-webrequest",
+    "http://",
+    "https://",
+    "\\appdata\\",
+    "\\temp\\",
+    "mshta.exe",
+    "regsvr32.exe",
+    "rundll32.exe",
+    "wscript.exe",
+    "cscript.exe",
+)
+SUSPICIOUS_NETWORK_HOST_TOKENS = (
+    "duckdns",
+    "no-ip",
+    "hopto",
+    "ngrok",
+    "trycloudflare",
+    "pastebin",
+    "raw.githubusercontent",
+    "discordapp",
+    "discord.com/api/webhooks",
+    "telegram",
+)
+SUSPICIOUS_NETWORK_TLDS = {"top", "xyz", "tk", "ml", "ga", "cf", "gq", "pw", "su"}
+COMMON_CLIENT_PORTS = {53, 80, 123, 443, 465, 587, 993, 995}
+COMMON_BROWSER_IMAGES = {
+    "chrome.exe",
+    "firefox.exe",
+    "iexplore.exe",
+    "msedge.exe",
+    "opera.exe",
+    "safari.exe",
+}
+
+TOOL_ARTIFACT_CLASSES = {
+    "case_open": "custody",
+    "evtx_query": "evtx",
+    "hayabusa_scan": "evtx",
+    "mft_timeline": "mft",
+    "pcap_triage": "network",
+    "prefetch_parse": "prefetch",
+    "registry_query": "registry",
+    "sysmon_network_query": "network",
+    "usnjrnl_query": "usnjrnl",
+    "vel_collect": "velociraptor",
+    "vol_malfind": "memory",
+    "vol_pslist": "memory",
+    "vol_psscan": "memory",
+    "vol_psxview": "memory",
+    "yara_scan": "yara",
+    "zeek_summary": "network",
+}
 
 ATTACK_COVERAGE_TARGETS: tuple[dict[str, Any], ...] = (
     {
@@ -286,15 +980,43 @@ ATTACK_COVERAGE_TARGETS: tuple[dict[str, Any], ...] = (
         "technique_name": "Ingress Tool Transfer",
         "tactic": "Command and Control",
         "artifact_classes": ("disk/filesystem", "network"),
-        "tool_names": ("mft_timeline", "usnjrnl_query", "yara_scan", "vel_collect"),
+        "tool_names": (
+            "mft_timeline",
+            "usnjrnl_query",
+            "yara_scan",
+            "vel_collect",
+            "pcap_triage",
+            "zeek_summary",
+        ),
         "analyst_value": "New files, download traces, and transfer telemetry.",
+    },
+    {
+        "technique_id": "T1071.001",
+        "technique_name": "Web Protocols",
+        "tactic": "Command and Control",
+        "artifact_classes": ("network",),
+        "tool_names": ("pcap_triage", "zeek_summary", "sysmon_network_query"),
+        "analyst_value": "HTTP/S hosts, external web connections, and process-to-web telemetry for cautious C2 triage.",
+    },
+    {
+        "technique_id": "T1071.004",
+        "technique_name": "DNS",
+        "tactic": "Command and Control",
+        "artifact_classes": ("network",),
+        "tool_names": ("pcap_triage", "zeek_summary"),
+        "analyst_value": "DNS queries and resolver conversations for suspicious-domain triage.",
     },
     {
         "technique_id": "T1041",
         "technique_name": "Exfiltration Over C2 Channel",
         "tactic": "Exfiltration",
         "artifact_classes": ("network",),
-        "tool_names": ("vel_collect",),
+        "tool_names": (
+            "pcap_triage",
+            "zeek_summary",
+            "sysmon_network_query",
+            "vel_collect",
+        ),
         "analyst_value": "Network telemetry needed to prove or reject exfiltration.",
     },
     {
@@ -304,6 +1026,14 @@ ATTACK_COVERAGE_TARGETS: tuple[dict[str, Any], ...] = (
         "artifact_classes": ("disk/filesystem",),
         "tool_names": ("registry_query", "prefetch_parse", "mft_timeline"),
         "analyst_value": "Autorun persistence and execution corroboration.",
+    },
+    {
+        "technique_id": "T1053.005",
+        "technique_name": "Scheduled Task",
+        "tactic": "Execution / Persistence / Privilege Escalation",
+        "artifact_classes": ("evtx", "disk/filesystem"),
+        "tool_names": ("evtx_query", "hayabusa_scan", "registry_query"),
+        "analyst_value": "Scheduled-task creation, TaskCache, and task XML evidence.",
     },
 )
 
@@ -317,9 +1047,12 @@ DATA_SOURCES_BY_TOOL: dict[str, tuple[str, ...]] = {
     "registry_query": ("DS0024",),
     "prefetch_parse": ("DS0022", "DS0009"),
     "mft_timeline": ("DS0022",),
+    "pcap_triage": ("DS0029",),
     "usnjrnl_query": ("DS0022",),
     "yara_scan": ("DS0022", "DS0011", "DS0012"),
+    "sysmon_network_query": ("DS0029", "DS0017"),
     "vel_collect": ("DS0022", "DS0024", "DS0009", "DS0029"),
+    "zeek_summary": ("DS0029",),
 }
 
 TIMESTAMP_SOURCE_BY_TOOL: dict[str, str] = {
@@ -331,7 +1064,9 @@ TIMESTAMP_SOURCE_BY_TOOL: dict[str, str] = {
     "usnjrnl_query": "USN timestamp",
     "prefetch_parse": "Prefetch last run time",
     "registry_query": "Registry key LastWrite",
+    "sysmon_network_query": "Sysmon Event.System.TimeCreated",
     "vel_collect": "artifact timestamp",
+    "zeek_summary": "Zeek timestamp",
 }
 
 TECHNIQUE_CITATIONS: dict[str, tuple[str, ...]] = {
@@ -339,6 +1074,7 @@ TECHNIQUE_CITATIONS: dict[str, tuple[str, ...]] = {
     "T1003": ("CITE-MITRE-T1003-001",),
     "T1003.001": ("CITE-MITRE-T1003-001",),
     "T1055": ("CITE-MITRE-ATTACK-DATASOURCES", "CITE-VOLATILITY3"),
+    "T1053.005": ("CITE-MITRE-ATTACK-DATASOURCES",),
     "T1059.001": ("CITE-MITRE-ATTACK-DATASOURCES",),
     "T1071.001": ("CITE-MITRE-ATTACK-DATASOURCES", "CITE-ZEEK-LOGS"),
     "T1071.004": ("CITE-MITRE-ATTACK-DATASOURCES", "CITE-ZEEK-LOGS"),
@@ -577,7 +1313,12 @@ def build_attck_practitioner_coverage(
         },
         "GNFA_network": {
             "classes": {"network"},
-            "tools": {"vel_collect"},
+            "tools": {
+                "pcap_triage",
+                "zeek_summary",
+                "sysmon_network_query",
+                "vel_collect",
+            },
             "techniques": {"T1041", "T1071", "T1071.001", "T1071.004", "T1105"},
         },
         "GREM_malware": {
@@ -878,6 +1619,693 @@ def build_report_evidence_cards(
     return cards
 
 
+def load_expert_rules(path: Path | None = None) -> dict[str, Any]:
+    rules_path = path or EXPERT_RULES_PATH
+    return json.loads(rules_path.read_text(encoding="utf-8"))
+
+
+def build_expert_doctrine(expert_rules: dict[str, Any] | None = None) -> dict[str, Any]:
+    rules = expert_rules or load_expert_rules()
+    return {
+        "version": rules.get("version", 1),
+        "operating_model": rules.get(
+            "signoff_model",
+            "The agent prepares an evidence-bound signoff packet; the human expert remains final authority.",
+        ),
+        "source_files": rules.get("source_files", []),
+        "supported_domains": rules.get("supported_domains", {}),
+        "claim_rules": [
+            {
+                "id": row.get("id"),
+                "severity": row.get("severity"),
+                "category": row.get("category"),
+                "requirement": row.get("requirement"),
+                "fail_behavior": row.get("fail_behavior"),
+            }
+            for row in rules.get("claim_rules", [])
+        ],
+        "forbidden_unqualified_terms": rules.get("forbidden_unqualified_terms", []),
+    }
+
+
+def _finding_text(finding: dict[str, Any]) -> str:
+    return " ".join(
+        str(finding.get(key) or "")
+        for key in ("description", "title", "summary", "reasoning")
+    ).lower()
+
+
+def _claims_execution(finding: dict[str, Any]) -> bool:
+    text = _finding_text(finding)
+    return bool(
+        re.search(
+            r"\b(?:executed|execution|ran|run count|process creation|launched)\b",
+            text,
+        )
+    )
+
+
+def _claims_exfiltration(finding: dict[str, Any]) -> bool:
+    text = _finding_text(finding)
+    return any(
+        token in text
+        for token in (
+            "exfil",
+            "stolen",
+            "data theft",
+            "uploaded",
+            "outbound",
+            "staging directory",
+        )
+    )
+
+
+def _touched_artifact_classes(case_completeness: dict[str, Any]) -> set[str]:
+    return {
+        str(row.get("artifact_class"))
+        for row in case_completeness.get("checks", [])
+        if row.get("artifact_class") and row.get("touched")
+    }
+
+
+def _tool_classes(tool_calls: list[dict[str, Any]]) -> set[str]:
+    return {
+        TOOL_ARTIFACT_CLASSES[tc.get("tool")]
+        for tc in tool_calls
+        if tc.get("tool") in TOOL_ARTIFACT_CLASSES
+        and TOOL_ARTIFACT_CLASSES[tc.get("tool")] != "custody"
+    }
+
+
+def _qa_check(
+    checks: list[dict[str, Any]],
+    check_id: str,
+    status: str,
+    summary: str,
+    evidence: list[str] | None = None,
+) -> None:
+    checks.append(
+        {
+            "check_id": check_id,
+            "status": status,
+            "summary": summary,
+            "evidence": evidence or [],
+        }
+    )
+
+
+def build_report_qa_signoff(
+    findings: list[dict[str, Any]],
+    tool_calls: list[dict[str, Any]],
+    verdict: str,
+    case_completeness: dict[str, Any],
+    attack_coverage: dict[str, Any],
+    normalized_timeline: dict[str, Any],
+    analysis_limitations: list[str],
+    expert_rules: dict[str, Any] | None = None,
+    customer_visible_text: list[str] | None = None,
+) -> dict[str, Any]:
+    rules = expert_rules or load_expert_rules()
+    checks: list[dict[str, Any]] = []
+    indexed_findings = [(_finding_id(f, i), f) for i, f in enumerate(findings, 1)]
+    timeline_events = normalized_timeline.get("events", [])
+    events_by_finding: dict[str, list[dict[str, Any]]] = {}
+    for event in timeline_events:
+        for finding_id in event.get("linked_finding_ids", []):
+            events_by_finding.setdefault(str(finding_id), []).append(event)
+    tool_ids = {
+        str(tc.get("tool_call_id")) for tc in tool_calls if tc.get("tool_call_id")
+    }
+    tool_by_tcid = {
+        str(tc.get("tool_call_id")): str(tc.get("tool"))
+        for tc in tool_calls
+        if tc.get("tool_call_id") and tc.get("tool")
+    }
+    touched_classes = _touched_artifact_classes(case_completeness)
+    tool_classes = _tool_classes(tool_calls)
+    current_classes = touched_classes | tool_classes
+
+    missing_citations = [
+        fid for fid, f in indexed_findings if not f.get("tool_call_id")
+    ]
+    unknown_citations = [
+        fid
+        for fid, f in indexed_findings
+        if f.get("tool_call_id") and str(f.get("tool_call_id")) not in tool_ids
+    ]
+    if missing_citations or unknown_citations:
+        _qa_check(
+            checks,
+            "finding_tool_call_required",
+            "FAIL",
+            "One or more Findings lack a reproducible current-case tool_call_id citation.",
+            missing_citations + unknown_citations,
+        )
+    else:
+        _qa_check(
+            checks,
+            "finding_tool_call_required",
+            "PASS",
+            f"All {len(indexed_findings)} Finding(s) cite current-case tool calls.",
+            sorted(tool_ids),
+        )
+
+    unsupported_execution_claims = []
+    for fid, finding in indexed_findings:
+        if not _claims_execution(finding):
+            continue
+        finding_classes = {
+            str(event.get("artifact_class"))
+            for event in events_by_finding.get(fid, [])
+            if event.get("artifact_class")
+        }
+        tool_name = tool_by_tcid.get(str(finding.get("tool_call_id")))
+        if tool_name and tool_name in TOOL_ARTIFACT_CLASSES:
+            finding_classes.add(TOOL_ARTIFACT_CLASSES[tool_name])
+        weak_only = finding_classes <= {"memory", "yara", "evtx"}
+        if len(finding_classes) < 2 or weak_only:
+            unsupported_execution_claims.append(fid)
+    if unsupported_execution_claims:
+        _qa_check(
+            checks,
+            "execution_requires_two_current_artifact_classes",
+            "FAIL",
+            "Execution wording appears without per-Finding current-case corroboration from two acceptable artifact classes.",
+            unsupported_execution_claims,
+        )
+    else:
+        _qa_check(
+            checks,
+            "execution_requires_two_current_artifact_classes",
+            "PASS",
+            "No unsupported execution wording detected, or current-case corroboration is broad enough for expert review.",
+            sorted(current_classes),
+        )
+
+    unsupported_exfil_claims = []
+    staging_classes = {
+        "disk/filesystem",
+        "mft",
+        "prefetch",
+        "registry",
+        "usnjrnl",
+        "velociraptor",
+        "yara",
+    }
+    movement_classes = {"network", "velociraptor"}
+    for fid, finding in indexed_findings:
+        if not _claims_exfiltration(finding):
+            continue
+        finding_classes = {
+            str(event.get("artifact_class"))
+            for event in events_by_finding.get(fid, [])
+            if event.get("artifact_class")
+        }
+        tool_name = tool_by_tcid.get(str(finding.get("tool_call_id")))
+        if tool_name and tool_name in TOOL_ARTIFACT_CLASSES:
+            finding_classes.add(TOOL_ARTIFACT_CLASSES[tool_name])
+        if (
+            finding_classes <= {"velociraptor", "network"}
+            or not (finding_classes & staging_classes)
+            or not (finding_classes & movement_classes)
+        ):
+            unsupported_exfil_claims.append(fid)
+    if unsupported_exfil_claims:
+        _qa_check(
+            checks,
+            "exfiltration_requires_staging_and_movement",
+            "FAIL",
+            "Exfiltration wording appears without both staging/collection and network/tool/data-movement coverage.",
+            unsupported_exfil_claims,
+        )
+    else:
+        _qa_check(
+            checks,
+            "exfiltration_requires_staging_and_movement",
+            "PASS",
+            "No unsupported exfiltration claim detected.",
+        )
+
+    disk_check = next(
+        (
+            row
+            for row in case_completeness.get("checks", [])
+            if row.get("artifact_class") == "disk/filesystem"
+        ),
+        {},
+    )
+    if disk_check.get("available") and not disk_check.get("touched"):
+        status = "FAIL" if verdict == "NO_EVIL" else "WARN"
+        _qa_check(
+            checks,
+            "disk_auto_mode_custody_only",
+            status,
+            "Disk evidence was registered for custody only; disk-content conclusions require mounted or extracted artifacts.",
+            disk_check.get("tools", []),
+        )
+    else:
+        _qa_check(
+            checks,
+            "disk_auto_mode_custody_only",
+            "PASS",
+            "No custody-only disk overclaim detected.",
+        )
+
+    blind_spots = int(attack_coverage.get("blind_spot_count", 0) or 0)
+    if verdict == "NO_EVIL" and (blind_spots or len(current_classes) < 1):
+        _qa_check(
+            checks,
+            "no_evil_is_scoped",
+            "WARN",
+            "NO_EVIL is scoped to examined artifacts and is not environment-wide assurance.",
+            [
+                f"blind_spots={blind_spots}",
+                f"artifact_classes={sorted(current_classes)}",
+            ],
+        )
+    else:
+        _qa_check(
+            checks,
+            "no_evil_is_scoped",
+            "PASS",
+            "Verdict wording remains scoped to supplied evidence.",
+        )
+
+    if timeline_events:
+        _qa_check(
+            checks,
+            "timeline_source_refs_present",
+            "PASS",
+            f"Timeline includes {len(timeline_events)} normalized event(s) with source references.",
+        )
+    else:
+        _qa_check(
+            checks,
+            "timeline_source_refs_present",
+            "WARN",
+            "No normalized timeline events are available for the executive attack story.",
+        )
+
+    verifier_failures = [
+        item
+        for item in analysis_limitations
+        if "verify_finding" in item.lower() or "verifier" in item.lower()
+    ]
+    if verifier_failures:
+        _qa_check(
+            checks,
+            "verify_finding_replay_failures",
+            "FAIL",
+            "Verifier replay failure or rejection occurred; final report must stay in expert review.",
+            verifier_failures[:5],
+        )
+    else:
+        _qa_check(
+            checks,
+            "verify_finding_replay_failures",
+            "PASS",
+            "No verifier replay failures were recorded as analysis limitations.",
+        )
+
+    replay_verified = [
+        fid
+        for fid, finding in indexed_findings
+        if finding.get("replay_matched") is True
+        and finding.get("replay_expected_sha256")
+        and finding.get("replay_actual_sha256")
+    ]
+    if indexed_findings and len(replay_verified) != len(indexed_findings):
+        _qa_check(
+            checks,
+            "verify_finding_replay_embedded",
+            "FAIL",
+            "Verifier replay evidence is not embedded for every Finding; keep customer release behind expert review.",
+            [fid for fid, _ in indexed_findings if fid not in replay_verified],
+        )
+    else:
+        _qa_check(
+            checks,
+            "verify_finding_replay_embedded",
+            "PASS",
+            "Every Finding carries embedded verifier replay evidence, or there are no Findings to replay.",
+        )
+
+    if analysis_limitations:
+        _qa_check(
+            checks,
+            "limitations_visible",
+            "WARN",
+            "Analysis limitations must remain visible before customer release.",
+            analysis_limitations[:5],
+        )
+    else:
+        _qa_check(
+            checks,
+            "limitations_visible",
+            "PASS",
+            "No run-specific analysis limitations were recorded.",
+        )
+
+    forbidden_terms = [
+        str(term).lower() for term in rules.get("forbidden_unqualified_terms", [])
+    ]
+    report_text = "\n".join(
+        [
+            *(_finding_text(f) for _, f in indexed_findings),
+            *(str(item).lower() for item in customer_visible_text or []),
+        ]
+    )
+    forbidden_hits = [term for term in forbidden_terms if term and term in report_text]
+    if forbidden_hits:
+        _qa_check(
+            checks,
+            "no_forbidden_unqualified_language",
+            "FAIL",
+            "Finding or customer-visible report text contains forbidden unqualified language.",
+            sorted(forbidden_hits),
+        )
+    else:
+        _qa_check(
+            checks,
+            "no_forbidden_unqualified_language",
+            "PASS",
+            "No forbidden unqualified language detected in Findings or customer-visible report text.",
+        )
+
+    if blind_spots:
+        _qa_check(
+            checks,
+            "attack_coverage_blind_spots",
+            "WARN",
+            "ATT&CK coverage includes blind spots that require expert awareness.",
+            [f"blind_spots={blind_spots}"],
+        )
+    else:
+        _qa_check(
+            checks,
+            "attack_coverage_blind_spots",
+            "PASS",
+            "No ATT&CK blind spots recorded by the coverage matrix.",
+        )
+
+    failed = [row for row in checks if row["status"] == "FAIL"]
+    warned = [row for row in checks if row["status"] == "WARN"]
+    overall = "FAIL" if failed else "WARN" if warned else "PASS"
+    packet_state = (
+        "BLOCKED_MANUAL_INVESTIGATION"
+        if failed
+        else "EXPERT_REVIEW_DRAFT"
+        if warned
+        else "CUSTOMER_RELEASE_CANDIDATE"
+    )
+    customer_release_candidate = overall == "PASS"
+    return {
+        "version": 1,
+        "status": overall,
+        "packet_state": packet_state,
+        "expert_signoff_required": True,
+        "expert_decision": "pending",
+        "ready_for_expert_signoff": not failed,
+        "customer_release_candidate": customer_release_candidate,
+        "customer_releasable": False,
+        "ready_for_customer_pdf": False,
+        "recommended_expert_review_time": "manual investigation required"
+        if failed
+        else "30-60 minutes"
+        if warned
+        else "15-30 minutes",
+        "why_not_ready": [row["summary"] for row in failed or warned],
+        "customer_release_blockers": [
+            "explicit human expert approval is required before customer release"
+        ]
+        + [row["summary"] for row in failed or warned],
+        "checks": checks,
+        "rules_source": rules.get("source_files", []),
+    }
+
+
+def _confidence_distribution(findings: list[dict[str, Any]]) -> dict[str, int]:
+    return {
+        "CONFIRMED": sum(1 for f in findings if f.get("confidence") == "CONFIRMED"),
+        "INFERRED": sum(1 for f in findings if f.get("confidence") == "INFERRED"),
+        "HYPOTHESIS": sum(1 for f in findings if f.get("confidence") == "HYPOTHESIS"),
+    }
+
+
+def build_executive_attack_story(
+    findings: list[dict[str, Any]],
+    verdict: str,
+    normalized_timeline: dict[str, Any],
+    case_completeness: dict[str, Any],
+    attack_coverage: dict[str, Any],
+    report_qa: dict[str, Any],
+    next_actions: list[dict[str, Any]],
+    analysis_limitations: list[str],
+    evidence_path: str,
+) -> dict[str, Any]:
+    indexed_findings = [(_finding_id(f, i), f) for i, f in enumerate(findings, 1)]
+    events_by_finding: dict[str, list[dict[str, Any]]] = {}
+    for event in normalized_timeline.get("events", []):
+        for finding_id in event.get("linked_finding_ids", []):
+            events_by_finding.setdefault(str(finding_id), []).append(event)
+
+    beats = []
+    for order, (finding_id, finding) in enumerate(indexed_findings, 1):
+        events = events_by_finding.get(finding_id, [])
+        timestamp = next(
+            (
+                event.get("timestamp_utc")
+                for event in events
+                if event.get("timestamp_utc")
+            ),
+            None,
+        )
+        artifact_classes = sorted(
+            {
+                str(event.get("artifact_class"))
+                for event in events
+                if event.get("artifact_class")
+            }
+        )
+        if not artifact_classes:
+            artifact_classes = ["see finding artifact"]
+        confidence = finding.get("confidence", "HYPOTHESIS")
+        caveat = {
+            "CONFIRMED": "Confirmed means the cited tool output is reproducible; it does not imply attribution or complete scope.",
+            "INFERRED": "Inferred means the story beat is derived from corroborated facts and still needs expert review.",
+            "HYPOTHESIS": "Hypothesis means a triage lead that should not drive response without more corroboration.",
+        }.get(confidence, "Expert review required before acting.")
+        beats.append(
+            {
+                "order": order,
+                "finding_id": finding_id,
+                "timestamp_utc": timestamp,
+                "title": str(finding.get("description") or "Finding")[:110],
+                "summary": str(finding.get("description") or "")[:260],
+                "confidence": confidence,
+                "mitre_technique": finding.get("mitre_technique"),
+                "tool_call_id": finding.get("tool_call_id"),
+                "artifact_classes": artifact_classes,
+                "source_event_ids": [event.get("event_id") for event in events[:5]],
+                "why_it_matters": "This is part of the customer-facing attack story only because it is backed by a cited Finding.",
+                "caveat": caveat,
+            }
+        )
+
+    distribution = _confidence_distribution(findings)
+    touched = sorted(_touched_artifact_classes(case_completeness))
+    blind_spots = int(attack_coverage.get("blind_spot_count", 0) or 0)
+    if verdict == "SUSPICIOUS":
+        headline = "Suspicious activity requires expert review before customer release"
+        customer_summary = (
+            f"Find Evil produced {len(findings)} Finding(s) from the supplied evidence. "
+            "The attack story below is evidence-bound and must be signed off by the human expert."
+        )
+    elif verdict == "NO_EVIL":
+        headline = "No reportable Findings within the scoped artifacts examined"
+        customer_summary = (
+            "The run produced no reportable Findings in the artifact classes it examined. "
+            "This is scoped coverage, not environment-wide assurance."
+        )
+    else:
+        headline = "Evidence is insufficient for a final breach story"
+        customer_summary = "The run produced limited or hypothesis-level evidence. Treat this as an expert-review packet, not a final incident narrative."
+
+    cannot_say = [
+        "Who operated the activity; Find Evil does not assert attribution.",
+        "That unexamined artifact classes would produce the same result.",
+        "That this single-evidence run covers the whole environment.",
+    ]
+    if blind_spots:
+        cannot_say.append(
+            f"That ATT&CK blind spots were evaluated; {blind_spots} target area(s) lacked supplied evidence."
+        )
+    cannot_say.extend(analysis_limitations[:3])
+
+    return {
+        "version": 1,
+        "headline": headline,
+        "customer_summary": customer_summary,
+        "verdict": verdict,
+        "verdict_meaning": "Use the verdict as a triage priority, then read each Finding confidence and citation before acting.",
+        "confidence_posture": distribution,
+        "evidence_scope": {
+            "evidence_path": evidence_path,
+            "evidence_type": case_completeness.get("evidence_type"),
+            "artifact_classes_touched": touched,
+            "coverage_summary": case_completeness.get("summary", ""),
+        },
+        "how_they_got_in": "Not established by the supplied evidence unless a cited Finding below names an initial-access mechanism.",
+        "root_cause": "Not established by the supplied evidence; expert review required.",
+        "business_impact": "Technical risk only; business impact requires customer context and legal review.",
+        "attack_chain": beats,
+        "what_we_can_say": [
+            customer_summary,
+            f"The case touched artifact classes: {', '.join(touched) if touched else 'none beyond custody'}.",
+            f"Report QA status is {report_qa.get('status')} with packet state {report_qa.get('packet_state')}; expert signoff is required before customer release.",
+        ],
+        "what_we_cannot_say": cannot_say,
+        "recommended_next_decisions": [
+            action.get("action") for action in next_actions[:3] if action.get("action")
+        ],
+        "ready_for_expert_signoff": report_qa.get("ready_for_expert_signoff", False),
+        "customer_release_candidate": report_qa.get(
+            "customer_release_candidate", False
+        ),
+        "customer_releasable": report_qa.get("customer_releasable", False),
+        "expert_decision": report_qa.get("expert_decision", "pending"),
+        "ready_for_customer_pdf": report_qa.get("ready_for_customer_pdf", False),
+        "signoff_question": "Would I send this report to a company without rewriting it?",
+    }
+
+
+def customer_visible_report_text(
+    attack_story: dict[str, Any],
+    next_actions: list[dict[str, Any]],
+    analysis_limitations: list[str],
+    evidence_cards: list[dict[str, Any]],
+) -> list[str]:
+    values: list[str] = []
+    for key in (
+        "headline",
+        "customer_summary",
+        "how_they_got_in",
+        "root_cause",
+        "business_impact",
+        "verdict_meaning",
+    ):
+        if attack_story.get(key):
+            values.append(str(attack_story[key]))
+    for key in ("what_we_can_say", "what_we_cannot_say", "recommended_next_decisions"):
+        values.extend(str(item) for item in attack_story.get(key, []) if item)
+    for beat in attack_story.get("attack_chain", []):
+        values.extend(
+            str(beat.get(key))
+            for key in ("title", "summary", "why_it_matters", "caveat")
+            if beat.get(key)
+        )
+    for action in next_actions:
+        values.extend(
+            str(action.get(key))
+            for key in ("action", "reason", "priority")
+            if action.get(key)
+        )
+    for card in evidence_cards:
+        values.extend(
+            str(card.get(key))
+            for key in ("title", "why_suspicious", "snippet")
+            if card.get(key)
+        )
+        values.extend(str(item) for item in card.get("caveats", []) if item)
+    values.extend(str(item) for item in analysis_limitations if item)
+    return values
+
+
+def build_expert_miss_summary(
+    case_id: str, ledger_path: Path | None = None
+) -> dict[str, Any]:
+    conversion_targets = {
+        "connector": "connector",
+        "playbook": "playbook_step",
+        "rule": "detection_rule",
+        "qa": "qa_check",
+        "escalation": "escalation_trigger",
+        "language": "report_copy_fix",
+    }
+    follow_ups = {
+        "connector": "Add or tune the missing evidence connector/parser.",
+        "playbook": "Update the investigation playbook or routing prompt.",
+        "rule": "Add or tune a deterministic detection/correlation rule.",
+        "qa": "Add a QA gate or smoke assertion for the missed condition.",
+        "escalation": "Add an escalation trigger or operator runbook step.",
+        "language": "Fix report copy, forbidden-language rules, or caveat wording.",
+    }
+    path = ledger_path or EXPERT_MISSES_PATH
+    by_type: Counter[str] = Counter()
+    items: list[dict[str, Any]] = []
+    if path.is_file():
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            try:
+                record = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if record.get("kind") != "expert_miss":
+                continue
+            payload = record.get("payload") or {}
+            if str(payload.get("case_id") or "") != case_id:
+                continue
+            edit_type = str(payload.get("edit_type") or "unknown")
+            by_type[edit_type] += 1
+            items.append(
+                {
+                    "source": "expert_miss_capture",
+                    "case_id": case_id,
+                    "finding_id": payload.get("finding_id") or "case-level",
+                    "edit_type": edit_type,
+                    "conversion_target": conversion_targets.get(edit_type, "qa_check"),
+                    "follow_up": follow_ups.get(
+                        edit_type,
+                        "Route the captured miss into a tracked improvement item.",
+                    ),
+                    "edit_text": str(payload.get("edit_text") or "")[:500],
+                    "expert_name": payload.get("expert_name"),
+                    "ledger_seq": record.get("seq"),
+                    "ledger_ts": record.get("ts"),
+                    "ledger_line_sha256": hashlib.sha256(
+                        raw.encode("utf-8")
+                    ).hexdigest(),
+                }
+            )
+    total = sum(by_type.values())
+    if total:
+        by_type_summary = ", ".join(
+            f"{key}={count}" for key, count in sorted(by_type.items())
+        )
+        summary = f"Expert misses captured this case: {total} ({by_type_summary})"
+    else:
+        summary = (
+            "Expert misses captured this case: 0 (uncaptured edits are a QA "
+            "defect; see EXPERT.md Replacement metric)."
+        )
+    return {
+        "total": total,
+        "by_type": dict(sorted(by_type.items())),
+        "items": items[:20],
+        "summary": summary,
+        "ledger_path": str(path),
+    }
+
+
+def attach_expert_miss_summary(
+    attack_story: dict[str, Any], expert_miss_summary: dict[str, Any]
+) -> dict[str, Any]:
+    attack_story["expert_miss_summary"] = expert_miss_summary
+    can_say = list(attack_story.get("what_we_can_say", []) or [])
+    can_say.append(str(expert_miss_summary.get("summary") or ""))
+    attack_story["what_we_can_say"] = [item for item in can_say if item]
+    return attack_story
+
+
 IOC_KEYS = (
     "urls",
     "domains",
@@ -1085,6 +2513,112 @@ def build_malware_triage(
     }
 
 
+def _top_counter(values: list[Any], limit: int = 10) -> list[dict[str, Any]]:
+    return [
+        {"value": value, "count": count}
+        for value, count in Counter(
+            str(v) for v in values if v not in (None, "")
+        ).most_common(limit)
+    ]
+
+
+def _disk_summary_template() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "scope": "extracted_disk_artifacts_only",
+        "artifact_counts": {
+            "mft": 0,
+            "usnjrnl": 0,
+            "prefetch": 0,
+            "registry": 0,
+            "evtx": 0,
+            "yara_target": 0,
+        },
+        "tool_summaries": {},
+        "timeline_event_count": 0,
+        "analysis_constraints": [
+            "Raw disk case_open is custody-only; only mounted or extracted artifacts support disk-content observations.",
+            "Prefetch run counts are execution leads and still require a second artifact class before execution claims are upgraded.",
+            "YARA matches on disk files are triage leads unless corroborated with file-system, process, registry, event-log, or network context.",
+            "Every promoted Finding must cite a tool_call_id and pass verifier replay before judge consumption.",
+        ],
+        "next_actions": [],
+    }
+
+
+def _merge_disk_tool_summary(
+    disk_summary: dict[str, Any], tool: str, tool_call_id: str, summary: dict[str, Any]
+) -> None:
+    tool_summaries = disk_summary.setdefault("tool_summaries", {})
+    rows = tool_summaries.setdefault(tool, [])
+    rows.append({"tool_call_id": tool_call_id, **summary})
+
+
+def _finalize_disk_artifact_summary(disk_summary: dict[str, Any]) -> dict[str, Any]:
+    counts = disk_summary.get("artifact_counts", {})
+    tool_summaries = disk_summary.get("tool_summaries", {})
+    actions: list[dict[str, Any]] = []
+
+    def add(priority: str, action: str, why: str, based_on: list[str]) -> None:
+        if not any(row.get("action") == action for row in actions):
+            actions.append(
+                {
+                    "priority": priority,
+                    "action": action,
+                    "why": why,
+                    "based_on": based_on,
+                }
+            )
+
+    if counts.get("prefetch"):
+        add(
+            "P1",
+            "Corroborate Prefetch last-run leads with EVTX process creation, Registry persistence, MFT, or USN rows before calling execution.",
+            "Prefetch is a strong execution artifact, but this run preserves the two-artifact-class rule for execution claims.",
+            ["prefetch_parse"],
+        )
+    if counts.get("registry"):
+        add(
+            "P1",
+            "Review Registry autorun/service rows and pivot referenced paths into Prefetch, MFT, USN, EVTX, and YARA-target scans.",
+            "Persistence keys are promoted as context and require path/timestamp corroboration before customer-facing claims.",
+            ["registry_query"],
+        )
+    if counts.get("mft") or counts.get("usnjrnl"):
+        add(
+            "P2",
+            "Cluster MFT and USN file-system timestamps around EVTX and Prefetch events to build a disk-backed activity window.",
+            "File-system timelines are useful for sequence reconstruction but do not prove process execution by themselves.",
+            [
+                tool
+                for tool in ("mft_timeline", "usnjrnl_query")
+                if tool in tool_summaries
+            ],
+        )
+    if counts.get("yara_target"):
+        add(
+            "P2",
+            "Treat disk YARA hits as payload triage leads and corroborate them with execution, persistence, and network artifacts.",
+            "Static signatures can prioritize review but are not standalone findings without cited, replayable corroboration.",
+            ["yara_scan"],
+        )
+    if counts.get("evtx"):
+        add(
+            "P2",
+            "Pair extracted EVTX records with disk timeline artifacts before asserting process execution or persistence chains.",
+            "Event logs add behavior context and can satisfy cross-artifact corroboration when linked to disk observations.",
+            ["evtx_query", "hayabusa_scan"],
+        )
+
+    disk_summary["next_actions"] = actions[:5]
+    disk_summary["verdict_contribution"] = (
+        "timeline_context"
+        if disk_summary.get("timeline_event_count")
+        else "coverage_only"
+    )
+    return disk_summary
+
+
 def build_next_actions(
     findings: list[dict[str, Any]],
     attack_coverage: dict[str, Any],
@@ -1098,6 +2632,28 @@ def build_next_actions(
         f.get("mitre_technique")
         for f in findings
         if isinstance(f.get("mitre_technique"), str)
+    }
+    network_finding_ids = {
+        "dns": [
+            _finding_id(f, i)
+            for i, f in enumerate(findings, 1)
+            if "suspicious-dns" in str(f.get("finding_id") or "")
+        ],
+        "http": [
+            _finding_id(f, i)
+            for i, f in enumerate(findings, 1)
+            if "suspicious-http" in str(f.get("finding_id") or "")
+        ],
+        "conversation": [
+            _finding_id(f, i)
+            for i, f in enumerate(findings, 1)
+            if "external-conversation" in str(f.get("finding_id") or "")
+        ],
+        "sysmon": [
+            _finding_id(f, i)
+            for i, f in enumerate(findings, 1)
+            if "sysmon-network-lead" in str(f.get("finding_id") or "")
+        ],
     }
     checks_by_class = {
         c.get("artifact_class"): c for c in case_completeness.get("checks", [])
@@ -1140,6 +2696,39 @@ def build_next_actions(
             "VAD dump hashes, YARA hits, process ancestry, backing files",
         )
 
+    if network_finding_ids["dns"]:
+        add(
+            "P1",
+            "Pivot suspicious DNS queries through resolver logs, passive DNS, endpoint process telemetry, and domain reputation.",
+            "DNS/C2 observations are network triage leads; they require host/process and reputation context before escalation.",
+            network_finding_ids["dns"][:3],
+            "Resolver/client logs, Sysmon EID 1/3 process context, passive DNS, registration/WHOIS, proxy matches",
+        )
+    if network_finding_ids["http"]:
+        add(
+            "P1",
+            "Correlate suspicious HTTP hosts with proxy URLs, TLS/SNI, downloaded files, and initiating process lineage.",
+            "HTTP host observations can indicate web-protocol C2 or transfer, but hostnames alone do not prove payload execution or data loss.",
+            network_finding_ids["http"][:3],
+            "Proxy URL paths, TLS SNI/certificates, file hashes, process creation, MFT/USN/Prefetch context",
+        )
+    if network_finding_ids["conversation"]:
+        add(
+            "P1",
+            "Review notable external conversations for protocol semantics, byte counts, session timing, and host ownership.",
+            "External connections on uncommon ports or with large byte counts are leads that need protocol and endpoint corroboration.",
+            network_finding_ids["conversation"][:3],
+            "Full flow records, PCAP carve/reassembly, Zeek conn/http/dns/tls logs, endpoint owner and process context",
+        )
+    if network_finding_ids["sysmon"]:
+        add(
+            "P1",
+            "Trace Sysmon network rows back to process creation, parent process, image hash, user, and DNS/proxy records.",
+            "Sysmon EID 3 confirms process-to-destination telemetry but needs endpoint and network corroboration before confidence increases.",
+            network_finding_ids["sysmon"][:3],
+            "Sysmon EID 1/3, Security 4688, image hash/signature, DNS/proxy records, adjacent timeline events",
+        )
+
     evtx = checks_by_class.get("evtx", {})
     if not evtx.get("touched"):
         add(
@@ -1159,13 +2748,21 @@ def build_next_actions(
             ["disk_gap"],
             "ewfmount read-only mount, Sleuth Kit file extraction, Prefetch, Amcache/ShimCache, Run keys, services, scheduled tasks, MFT/USN entries",
         )
+    elif disk.get("touched"):
+        add(
+            "P2",
+            "Use the disk artifact summary to pivot between Prefetch, Registry, MFT, USN, EVTX, and YARA-target rows without upgrading single-source execution claims.",
+            "Extracted disk artifacts are now summarized as leads and timeline context; execution wording still needs two artifact classes and cited tool_call_id evidence.",
+            ["disk_artifact_summary"],
+            "Correlated Prefetch run times, Registry LastWrite, MFT/USN timestamps, EVTX records, and YARA hits",
+        )
 
     network = checks_by_class.get("network", {})
     if not network.get("touched"):
         add(
             "P3",
             "Acquire DNS, proxy, firewall, NetFlow, or PCAP telemetry to test C2 and exfiltration hypotheses.",
-            "Network evidence is absent, so exfiltration and command-and-control coverage remains a blind spot.",
+            "Network telemetry was not supplied or parsed in this run, so exfiltration and command-and-control coverage remains a blind spot.",
             ["network_gap"],
             "DNS queries, proxy URLs, firewall sessions, PCAP, Velociraptor network collection",
         )
@@ -1260,16 +2857,120 @@ def _json_text(value: Any) -> str:
     return json.dumps(value, sort_keys=True, default=str).lower()
 
 
+def _count_value(row: dict[str, Any]) -> str:
+    return str(row.get("value") or row.get("host") or row.get("query") or "").strip()
+
+
+def _count_count(row: dict[str, Any]) -> int:
+    try:
+        return int(row.get("count") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _is_external_ip(value: Any) -> bool:
+    try:
+        ip = ipaddress.ip_address(str(value))
+    except ValueError:
+        return False
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def _network_port(value: Any) -> int | None:
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        return None
+    return port if 0 < port <= 65535 else None
+
+
+def _network_bytes(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _host_is_suspicious(host: str) -> tuple[bool, str]:
+    clean = host.strip().strip(".").lower()
+    if not clean or clean in {"-", "(empty)"}:
+        return False, ""
+    if _is_external_ip(clean):
+        return True, "IP-literal host/query"
+    for token in SUSPICIOUS_NETWORK_HOST_TOKENS:
+        if token in clean:
+            return True, f"contains {token}"
+    labels = [part for part in clean.split(".") if part]
+    if labels and labels[-1] in SUSPICIOUS_NETWORK_TLDS:
+        return True, f"uses high-abuse TLD .{labels[-1]}"
+    if labels:
+        left = labels[0]
+        digit_ratio = sum(ch.isdigit() for ch in left) / max(len(left), 1)
+        distinct_ratio = len(set(left)) / max(len(left), 1)
+        if len(left) >= 18 and digit_ratio >= 0.25 and distinct_ratio >= 0.55:
+            return True, "DGA-like long alphanumeric label"
+    return False, ""
+
+
+def _conversation_is_notable(row: dict[str, Any]) -> tuple[bool, str]:
+    dst = row.get("dst") or row.get("destination_ip")
+    if not _is_external_ip(dst):
+        return False, ""
+    port = _network_port(row.get("dst_port") or row.get("destination_port"))
+    orig = _network_bytes(row.get("orig_bytes"))
+    resp = _network_bytes(row.get("resp_bytes"))
+    if port and port not in COMMON_CLIENT_PORTS:
+        return True, f"external destination on uncommon port {port}"
+    if orig >= 50_000_000 or resp >= 50_000_000:
+        return True, "large external byte count"
+    return False, ""
+
+
+def _sysmon_network_row_is_notable(row: dict[str, Any]) -> tuple[bool, str]:
+    host = str(row.get("destination_hostname") or "")
+    suspicious_host, host_reason = _host_is_suspicious(host)
+    if suspicious_host:
+        return True, host_reason
+    dst = row.get("destination_ip")
+    port = _network_port(row.get("destination_port"))
+    image = PurePosixPath(str(row.get("image") or "").replace("\\", "/")).name.lower()
+    if _is_external_ip(dst) and port and port not in COMMON_CLIENT_PORTS:
+        return True, f"external destination on uncommon port {port}"
+    if (
+        _is_external_ip(dst)
+        and image
+        and image not in COMMON_BROWSER_IMAGES
+        and port in {80, 443}
+    ):
+        return True, f"non-browser process {image} contacted external web endpoint"
+    return False, ""
+
+
+def _event_id_value(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def evtx_rows_to_findings(
     rows: list[dict[str, Any]], tool_call_id: str, case_id: str, artifact_path: str
 ) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     seen_kinds: set[str] = set()
     for row in rows:
-        event_id = row.get("event_id")
+        event_id = _event_id_value(row.get("event_id"))
         channel = str(row.get("channel") or "")
         record_id = row.get("record_id")
         data_text = _json_text(row.get("data", row))
+        action_text = data_text.replace("\\\\", "\\")
         if event_id == 1102 and "audit_log_cleared" not in seen_kinds:
             seen_kinds.add("audit_log_cleared")
             findings.append(
@@ -1318,6 +3019,29 @@ def evtx_rows_to_findings(
                     "confidence": "HYPOTHESIS",
                     "pool_origin": "B",
                     "mitre_technique": "T1059.001",
+                }
+            )
+        elif (
+            event_id == 4698
+            and "scheduled_task_suspicious" not in seen_kinds
+            and any(token in action_text for token in SUSPICIOUS_EVTX_ACTION_TOKENS)
+        ):
+            seen_kinds.add("scheduled_task_suspicious")
+            findings.append(
+                {
+                    "case_id": case_id,
+                    "finding_id": "f-B-evtx-scheduled-task-lead",
+                    "tool_call_id": tool_call_id,
+                    "artifact_path": artifact_path,
+                    "description": (
+                        f"EVTX Security EID 4698 scheduled-task creation record "
+                        f"{record_id} contains suspicious task action content; "
+                        f"treat as a persistence triage lead until corroborated "
+                        f"with TaskCache, process, disk, or network evidence."
+                    ),
+                    "confidence": "HYPOTHESIS",
+                    "pool_origin": "B",
+                    "mitre_technique": "T1053.005",
                 }
             )
     return findings
@@ -1452,11 +3176,19 @@ class Investigation:
     COMMON_WIN_PROCS: set[str] = COMMON_WIN_PROCS
 
     def __init__(
-        self, evidence_path: str, *, unattended: bool = False, with_report: bool = True
+        self,
+        evidence_path: str,
+        *,
+        unattended: bool = False,
+        with_report: bool = True,
+        signer: str = "stub",
+        force_fresh_replay: bool = False,
     ) -> None:
         self.evidence = evidence_path
         self.unattended = unattended
         self.with_report = with_report
+        self.signer = signer
+        self.force_fresh_replay = force_fresh_replay
         self.case_id = f"auto-{uuid.uuid4()}"
         self.run_id = f"auto-{int(time.time())}"
         self.started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1468,11 +3200,20 @@ class Investigation:
         self.tool_calls: list[dict[str, Any]] = []
         self.timeline_events: list[dict[str, Any]] = []
         self.evtx_summary: dict[str, Any] | None = None
+        self.disk_artifact_summary: dict[str, Any] | None = None
         self.malware_triage: dict[str, Any] | None = None
         self.normalized_timeline: dict[str, Any] | None = None
         self.analysis_limitations: list[str] = []
         self.findings_pool_a: list[dict[str, Any]] = []
         self.findings_pool_b: list[dict[str, Any]] = []
+        self.verifier_replays: dict[str, dict[str, Any]] = {}
+        self.verifier_replay_failures: list[str] = []
+        self.evidence_inventory: dict[str, Any] | None = None
+        self.velociraptor_zip_extractions: list[dict[str, Any]] = []
+        self.expert_signoff_packet: dict[str, Any] | None = None
+        self.post_finalize_verification: dict[str, Any] | None = None
+        self.final_release_gate: dict[str, Any] | None = None
+        self.local_run_dir: Path | None = None
         self.tcid_counter = 0
         self.handle: dict[str, Any] = {}
 
@@ -1483,6 +3224,12 @@ class Investigation:
     def _next_tcid(self) -> str:
         self.tcid_counter += 1
         return f"tc-{self.tcid_counter:03d}"
+
+    def _finding_id_for(self, base: str, artifact_path: str) -> str:
+        if not self.evidence_inventory:
+            return base
+        suffix = hashlib.sha256(artifact_path.encode("utf-8")).hexdigest()[:8]
+        return f"{base}-{suffix}"
 
     def _audit(self, py: SshMcpClient, kind: str, payload: dict[str, Any]) -> None:
         py.call_tool(
@@ -1500,9 +3247,14 @@ class Investigation:
         tool: str,
         output_hash: str,
         extra: dict[str, Any] | None = None,
+        arguments: dict[str, Any] | None = None,
     ) -> str:
         tcid = self._next_tcid()
-        self._audit(py, "tool_call_start", {"tool_call_id": tcid, "tool": tool})
+        self._audit(
+            py,
+            "tool_call_start",
+            {"tool_call_id": tcid, "tool": tool, "arguments": arguments or {}},
+        )
         out = {"tool_call_id": tcid, "output_hash": output_hash}
         if extra:
             out.update(extra)
@@ -1512,10 +3264,15 @@ class Investigation:
                 "tool_call_id": tcid,
                 "tool": tool,
                 "output_hash": output_hash,
+                "arguments": arguments or {},
                 **(extra or {}),
             }
         )
         return tcid
+
+    def _output_hash(self, obj: dict[str, Any]) -> str:
+        value = obj.pop("_mcp_output_sha256", None)
+        return str(value) if value else self._hash_obj(obj)
 
     def _hash_obj(self, obj: Any) -> str:
         import hashlib
@@ -1551,12 +3308,34 @@ class Investigation:
         )
 
     def _case_completeness(self) -> dict[str, Any]:
-        evidence_type = detect_evidence_type(self.evidence)
+        inventory = self.evidence_inventory
+        evidence_type = (
+            "directory" if inventory else detect_evidence_type(self.evidence)
+        )
+        inventory_classes = {
+            str(entry.get("artifact_class"))
+            for entry in inventory_supported_entries(inventory or {})
+            if entry.get("artifact_class")
+        }
         tools_run = {tc.get("tool") for tc in self.tool_calls}
+        memory_available = evidence_type == "memory" or "memory" in inventory_classes
+        evtx_available = evidence_type == "evtx" or "evtx" in inventory_classes
+        disk_available = evidence_type == "disk" or bool(
+            inventory_classes & ({"raw_disk", "yara_target"} | EXTRACTED_DISK_CLASSES)
+        )
+        network_available = evidence_type == "network" or bool(
+            inventory_classes & NETWORK_CLASSES
+        )
+        velociraptor_available = evidence_type == "velociraptor" or (
+            "velociraptor" in inventory_classes
+        )
+        velociraptor_touched = "vel_collect" in tools_run or bool(
+            self.velociraptor_zip_extractions
+        )
         checks = [
             {
                 "artifact_class": "memory",
-                "available": evidence_type == "memory",
+                "available": memory_available,
                 "touched": bool(
                     tools_run
                     & {"vol_pslist", "vol_psscan", "vol_psxview", "vol_malfind"}
@@ -1566,34 +3345,41 @@ class Investigation:
                     & {"vol_pslist", "vol_psscan", "vol_psxview", "vol_malfind"}
                 ),
                 "confidence_impact": "process and injection evidence available"
-                if evidence_type == "memory"
+                if memory_available
                 else "not a memory image; no live-process evidence",
             },
             {
                 "artifact_class": "evtx",
-                "available": evidence_type == "evtx",
+                "available": evtx_available,
                 "touched": "evtx_query" in tools_run,
                 "tools": sorted(tools_run & {"evtx_query", "hayabusa_scan"}),
                 "confidence_impact": "Windows event evidence available"
-                if evidence_type == "evtx"
+                if evtx_available
                 else "no event log supplied in this single-evidence run",
             },
             {
                 "artifact_class": "disk/filesystem",
-                "available": evidence_type == "disk",
+                "available": disk_available,
                 "touched": bool(
                     tools_run
                     & {
+                        "disk_mount",
+                        "disk_extract_artifacts",
                         "mft_timeline",
+                        "pcap_triage",
                         "usnjrnl_query",
                         "prefetch_parse",
                         "registry_query",
+                        "sysmon_network_query",
                         "yara_scan",
+                        "zeek_summary",
                     }
                 ),
                 "tools": sorted(
                     tools_run
                     & {
+                        "disk_mount",
+                        "disk_extract_artifacts",
                         "mft_timeline",
                         "usnjrnl_query",
                         "prefetch_parse",
@@ -1602,15 +3388,33 @@ class Investigation:
                     }
                 ),
                 "confidence_impact": "disk image registered; deep filesystem parsing requires mounted artifacts"
-                if evidence_type == "disk"
+                if disk_available
                 else "no disk image supplied; execution/persistence corroboration is limited",
             },
             {
                 "artifact_class": "network",
-                "available": False,
-                "touched": False,
-                "tools": [],
-                "confidence_impact": "no PCAP, firewall, DNS, or proxy logs supplied",
+                "available": network_available,
+                "touched": bool(
+                    tools_run & {"pcap_triage", "zeek_summary", "sysmon_network_query"}
+                ),
+                "tools": sorted(
+                    tools_run & {"pcap_triage", "zeek_summary", "sysmon_network_query"}
+                ),
+                "confidence_impact": "network telemetry available for C2/exfiltration triage"
+                if network_available
+                else "no PCAP, Zeek, firewall, DNS, or proxy logs supplied",
+            },
+            {
+                "artifact_class": "velociraptor",
+                "available": velociraptor_available,
+                "touched": velociraptor_touched,
+                "tools": sorted(tools_run & {"vel_collect"})
+                + (["zip_extract"] if self.velociraptor_zip_extractions else []),
+                "confidence_impact": "Velociraptor zip was extracted and supported contained artifacts were dispatched to typed parsers"
+                if velociraptor_touched
+                else "Velociraptor collection supplied but no supported contained artifacts were parsed"
+                if velociraptor_available
+                else "no Velociraptor collection supplied",
             },
         ]
         touched = sum(1 for c in checks if c["touched"])
@@ -1624,7 +3428,73 @@ class Investigation:
                 f"{touched}/{len(checks)} artifact classes touched; "
                 f"{available}/{len(checks)} directly available from supplied evidence"
             ),
+            "inventory_summary": (inventory or {}).get("summary"),
         }
+
+    def _evidence_is_remote_directory(self) -> bool:
+        code, _, _ = ssh_run(f"test -d {shlex.quote(self.evidence)}", timeout=10)
+        return code == 0
+
+    def case_open_directory(self, py: SshMcpClient) -> None:
+        print("\n=== case inventory ===")
+        ssh_run(f"mkdir -p {shlex.quote(self.case_dir)}")
+        if Path(self.evidence).is_dir():
+            inventory = build_local_evidence_inventory(self.evidence)
+        else:
+            inventory = build_remote_evidence_inventory(self.evidence)
+        self.evidence_inventory = inventory
+        total_bytes = sum(
+            int(entry.get("size_bytes") or 0)
+            for entry in inventory_supported_entries(inventory)
+        )
+        self.handle = {
+            "id": inventory["parent_case_id"],
+            "image_hash": inventory["inventory_sha256"],
+            "image_size_bytes": total_bytes,
+        }
+        self._audit(
+            py,
+            "agent_message",
+            {
+                "role": "supervisor",
+                "content": f"begin directory investigation of {self.evidence}",
+            },
+        )
+        self._audit(py, "case_inventory", inventory)
+        if inventory["summary"].get("truncated"):
+            self.analysis_limitations.append(
+                "Evidence inventory hit its file limit and is truncated; scoped NO_EVIL and customer release are blocked until the case is narrowed or rerun with a larger limit."
+            )
+        rejected = inventory["summary"].get("rejected_count", 0)
+        if rejected:
+            self.analysis_limitations.append(
+                f"Evidence inventory rejected {rejected} unsafe path(s) before tool dispatch."
+            )
+        if inventory["summary"].get("raw_disk_count", 0):
+            self.analysis_limitations.append(
+                "Raw disk images in the case inventory are custody-only unless mounted or extracted artifacts are supplied."
+            )
+        unknown_count = inventory["summary"].get("class_counts", {}).get("unknown", 0)
+        if unknown_count:
+            self.analysis_limitations.append(
+                f"Evidence inventory recorded {unknown_count} unsupported artifact(s) as custody-only limitations."
+            )
+        velociraptor_count = (
+            inventory["summary"].get("class_counts", {}).get("velociraptor", 0)
+        )
+        if velociraptor_count:
+            self._audit(
+                py,
+                "agent_message",
+                {
+                    "role": "supervisor",
+                    "content": "Velociraptor collection zips were inventoried; supported contained artifacts will be extracted read-only and dispatched to typed parsers.",
+                    "velociraptor_zip_count": velociraptor_count,
+                },
+            )
+        print(f"  parent_case_id = {self.handle['id']}")
+        print(f"  inventory_sha  = {inventory['inventory_sha256']}")
+        print(f"  entries        = {inventory['summary']['entry_count']}")
 
     # ------------------------------------------------------------------
     # Investigation phases
@@ -1633,7 +3503,7 @@ class Investigation:
     def case_open(self, rust: SshMcpClient, py: SshMcpClient) -> None:
         print("\n=== case_open ===")
         # Make sure case dir exists in VM
-        ssh_run(f"mkdir -p {self.case_dir}")
+        ssh_run(f"mkdir -p {shlex.quote(self.case_dir)}")
         self._audit(
             py,
             "agent_message",
@@ -1642,13 +3512,11 @@ class Investigation:
                 "content": f"begin investigation of {self.evidence}",
             },
         )
-        self.handle = rust.call_tool(
-            "case_open",
-            {
-                "image_path": self.evidence,
-                "label": Path(self.evidence).parent.name,
-            },
-        )
+        case_open_args = {
+            "image_path": self.evidence,
+            "label": Path(self.evidence).parent.name,
+        }
+        self.handle = rust.call_tool("case_open", case_open_args)
         if "_error" in self.handle:
             raise RuntimeError(f"case_open failed: {self.handle['_error']}")
         self._record_tool(
@@ -1659,32 +3527,45 @@ class Investigation:
                 "case_id": self.handle["id"],
                 "size_bytes": self.handle["image_size_bytes"],
             },
+            arguments=case_open_args,
         )
         print(f"  case_id    = {self.handle['id']}")
         print(f"  image_hash = {self.handle['image_hash']}")
         print(f"  size_bytes = {self.handle['image_size_bytes']:,}")
 
-    def investigate_memory(self, rust: SshMcpClient, py: SshMcpClient) -> None:
+    def investigate_memory(
+        self, rust: SshMcpClient, py: SshMcpClient, evidence_path: str | None = None
+    ) -> None:
+        evidence_path = evidence_path or self.evidence
         print("\n=== memory image investigation ===")
         # Tool 1: vol_pslist
-        pslist = rust.call_tool(
-            "vol_pslist",
-            {
-                "case_id": self.handle["id"],
-                "memory_path": self.evidence,
-                "limit": 500,
-            },
-        )
+        pslist_args = {
+            "case_id": self.handle["id"],
+            "memory_path": evidence_path,
+            "limit": 500,
+        }
+        pslist = rust.call_tool("vol_pslist", pslist_args)
+        pslist_error = None
         if "_error" in pslist:
-            print(f"  vol_pslist error: {pslist['_error']['message'][:80]}")
-            pslist = {"processes": [], "processes_seen": 0}
+            pslist_error = str(pslist["_error"].get("message", "vol_pslist failed"))
+            print(f"  vol_pslist error: {pslist_error[:80]}")
+            self.analysis_limitations.append(f"vol_pslist failed: {pslist_error}")
+            pslist = {
+                "_error": {"message": pslist_error},
+                "processes": [],
+                "processes_seen": 0,
+            }
         ps = pslist.get("processes", [])
         ps_seen = pslist.get("processes_seen", 0)
+        pslist_extra = {"processes_returned": len(ps), "processes_seen": ps_seen}
+        if pslist_error:
+            pslist_extra["error"] = pslist_error
         self._record_tool(
             py,
             "vol_pslist",
-            self._hash_obj(pslist),
-            {"processes_returned": len(ps), "processes_seen": ps_seen},
+            self._output_hash(pslist),
+            pslist_extra,
+            arguments=pslist_args,
         )
         tcid_pslist = self.tool_calls[-1]["tool_call_id"]
         for proc in ps[:500]:
@@ -1704,52 +3585,115 @@ class Investigation:
         # memory image (e.g. a domain controller's RAM) it can take well
         # over the 600s default; give it a 30-minute budget to avoid
         # spurious queue.Empty failures on the larger fleet hosts.
-        mal = rust.call_tool(
-            "vol_malfind",
-            {
-                "case_id": self.handle["id"],
-                "memory_path": self.evidence,
-                "limit": 200,
-            },
-            timeout=1800.0,
-        )
+        malfind_args = {
+            "case_id": self.handle["id"],
+            "memory_path": evidence_path,
+            "limit": 200,
+        }
+        mal = rust.call_tool("vol_malfind", malfind_args, timeout=1800.0)
+        malfind_error = None
         if "_error" in mal:
-            print(f"  vol_malfind error: {mal['_error']['message'][:80]}")
-            mal = {"injections": [], "injections_seen": 0}
+            malfind_error = str(mal["_error"].get("message", "vol_malfind failed"))
+            print(f"  vol_malfind error: {malfind_error[:80]}")
+            self.analysis_limitations.append(f"vol_malfind failed: {malfind_error}")
+            mal = {
+                "_error": {"message": malfind_error},
+                "injections": [],
+                "injections_seen": 0,
+            }
         injs = mal.get("injections", [])
+        malfind_extra = {"injections_returned": len(injs)}
+        if malfind_error:
+            malfind_extra["error"] = malfind_error
         tcid_malfind = self._record_tool(
             py,
             "vol_malfind",
-            self._hash_obj(mal),
-            {"injections_returned": len(injs)},
+            self._output_hash(mal),
+            malfind_extra,
+            arguments=malfind_args,
         )
+        yara_out: dict[str, Any] | None = None
+        tcid_yara: str | None = None
+        if MEMORY_YARA_RULES:
+            yara_args = {
+                "case_id": self.handle["id"],
+                "target_path": evidence_path,
+                "rules_path": MEMORY_YARA_RULES,
+                "recursive": False,
+                "limit": 200,
+            }
+            yara_out = rust.call_tool("yara_scan", yara_args, timeout=1800.0)
+            yara_error = None
+            if "_error" in yara_out:
+                yara_error = str(yara_out["_error"].get("message", "yara_scan failed"))
+                print(f"  yara_scan error: {yara_error[:80]}")
+                self.analysis_limitations.append(
+                    f"memory yara_scan failed: {yara_error}"
+                )
+                yara_out = {
+                    "_error": {"message": yara_error},
+                    "matches": [],
+                    "files_scanned": 0,
+                    "rules_compiled": 0,
+                    "scan_errors": 0,
+                }
+            matches = yara_out.get("matches", [])
+            yara_extra = {
+                "artifact_path": evidence_path,
+                "rules_path": MEMORY_YARA_RULES,
+                "matches_returned": len(matches) if isinstance(matches, list) else 0,
+                "files_scanned": yara_out.get("files_scanned", 0),
+                "rules_compiled": yara_out.get("rules_compiled", 0),
+                "scan_errors": yara_out.get("scan_errors", 0),
+                **({"error": yara_error} if yara_error else {}),
+            }
+            tcid_yara = self._record_tool(
+                py,
+                "yara_scan",
+                self._output_hash(yara_out),
+                yara_extra,
+                arguments=yara_args,
+            )
+            print(f"  yara_scan: {yara_extra['matches_returned']} matches")
+        triage_tool_ids = {"vol_malfind": tcid_malfind}
+        if tcid_yara:
+            triage_tool_ids["yara_scan"] = tcid_yara
         self.malware_triage = build_malware_triage(
             mal,
-            None,
-            {"vol_malfind": tcid_malfind},
-            self.evidence,
+            yara_out,
+            triage_tool_ids,
+            evidence_path,
         )
         print(f"  vol_malfind: {len(injs)} injections")
 
         # Tool 3: vol_psscan — cross-validates pslist for DKOM.
-        psscan_out = rust.call_tool(
-            "vol_psscan",
-            {
-                "case_id": self.handle["id"],
-                "memory_path": self.evidence,
-                "limit": 500,
-            },
-        )
+        psscan_args = {
+            "case_id": self.handle["id"],
+            "memory_path": evidence_path,
+            "limit": 500,
+        }
+        psscan_out = rust.call_tool("vol_psscan", psscan_args)
+        psscan_error = None
         if "_error" in psscan_out:
-            print(f"  vol_psscan error: {psscan_out['_error']['message'][:80]}")
-            psscan_out = {"processes": [], "processes_seen": 0}
+            psscan_error = str(psscan_out["_error"].get("message", "vol_psscan failed"))
+            print(f"  vol_psscan error: {psscan_error[:80]}")
+            self.analysis_limitations.append(f"vol_psscan failed: {psscan_error}")
+            psscan_out = {
+                "_error": {"message": psscan_error},
+                "processes": [],
+                "processes_seen": 0,
+            }
         psscan = psscan_out.get("processes", [])
         psscan_count = psscan_out.get("processes_seen", len(psscan))
+        psscan_extra = {"processes_seen": psscan_count}
+        if psscan_error:
+            psscan_extra["error"] = psscan_error
         tcid_psscan = self._record_tool(
             py,
             "vol_psscan",
-            self._hash_obj(psscan_out),
-            {"processes_seen": psscan_count},
+            self._output_hash(psscan_out),
+            psscan_extra,
+            arguments=psscan_args,
         )
         for proc in psscan[:500]:
             name = proc.get("image_name") or proc.get("ImageFileName") or "unknown"
@@ -1772,23 +3716,36 @@ class Investigation:
             ps, psscan, ps_seen, psscan_count
         )
         if views_diverge:
-            psxview_out = rust.call_tool(
-                "vol_psxview",
-                {
-                    "case_id": self.handle["id"],
-                    "memory_path": self.evidence,
-                    "limit": 500,
-                },
-            )
+            psxview_args = {
+                "case_id": self.handle["id"],
+                "memory_path": evidence_path,
+                "limit": 500,
+            }
+            psxview_out = rust.call_tool("vol_psxview", psxview_args)
+            psxview_error = None
             if "_error" in psxview_out:
-                print(f"  vol_psxview error: {psxview_out['_error']['message'][:80]}")
-                psxview_out = {"processes": [], "processes_seen": 0}
+                psxview_error = str(
+                    psxview_out["_error"].get("message", "vol_psxview failed")
+                )
+                print(f"  vol_psxview error: {psxview_error[:80]}")
+                self.analysis_limitations.append(f"vol_psxview failed: {psxview_error}")
+                psxview_out = {
+                    "_error": {"message": psxview_error},
+                    "processes": [],
+                    "processes_seen": 0,
+                }
             psxview = psxview_out.get("processes", [])
+            psxview_extra = {
+                "processes_seen": psxview_out.get("processes_seen", len(psxview))
+            }
+            if psxview_error:
+                psxview_extra["error"] = psxview_error
             tcid_psxview = self._record_tool(
                 py,
                 "vol_psxview",
-                self._hash_obj(psxview_out),
-                {"processes_seen": psxview_out.get("processes_seen", len(psxview))},
+                self._output_hash(psxview_out),
+                psxview_extra,
+                arguments=psxview_args,
             )
             print(f"  vol_psxview: {len(psxview)} rows")
         else:
@@ -1810,9 +3767,9 @@ class Investigation:
             self.findings_pool_a.append(
                 {
                     "case_id": self.handle["id"],
-                    "finding_id": "f-A-dkom",
+                    "finding_id": self._finding_id_for("f-A-dkom", evidence_path),
                     "tool_call_id": tcid_psxview,
-                    "artifact_path": self.evidence,
+                    "artifact_path": evidence_path,
                     "description": (
                         f"Process linked-list returns 0 processes via vol_pslist "
                         f"but vol_psscan recovers {psscan_count} EPROCESS objects — "
@@ -1826,9 +3783,11 @@ class Investigation:
             self.findings_pool_b.append(
                 {
                     "case_id": self.handle["id"],
-                    "finding_id": "f-B-dump-integrity",
+                    "finding_id": self._finding_id_for(
+                        "f-B-dump-integrity", evidence_path
+                    ),
                     "tool_call_id": tcid_psscan,
-                    "artifact_path": self.evidence,
+                    "artifact_path": evidence_path,
                     "description": (
                         f"vol_psscan recovers {psscan_count} processes; memory image "
                         f"is structurally intact but the active-process linked "
@@ -1847,9 +3806,9 @@ class Investigation:
             self.findings_pool_a.append(
                 {
                     "case_id": self.handle["id"],
-                    "finding_id": "f-A-injection",
+                    "finding_id": self._finding_id_for("f-A-injection", evidence_path),
                     "tool_call_id": tcid_malfind,
-                    "artifact_path": self.evidence,
+                    "artifact_path": evidence_path,
                     "description": (
                         f"vol_malfind found {len(injs)} suspicious VAD regions "
                         f"({mz_count} with MZ headers in unexpected locations) "
@@ -1876,9 +3835,11 @@ class Investigation:
             self.findings_pool_b.append(
                 {
                     "case_id": self.handle["id"],
-                    "finding_id": "f-B-uncommon-procs",
+                    "finding_id": self._finding_id_for(
+                        "f-B-uncommon-procs", evidence_path
+                    ),
                     "tool_call_id": tcid_psscan,
-                    "artifact_path": self.evidence,
+                    "artifact_path": evidence_path,
                     "description": (
                         f"{len(uncommon)} processes have uncommon image names; "
                         f"sample: {sample}. Cross-reference with disk artifacts "
@@ -1901,16 +3862,74 @@ class Investigation:
             mal or {}, separators=(",", ":")
         )
 
-    def investigate_evtx(self, rust: SshMcpClient, py: SshMcpClient) -> None:
-        print("\n=== EVTX investigation ===")
-        out = rust.call_tool(
-            "evtx_query",
+    def investigate_hayabusa_dir(
+        self, rust: SshMcpClient, py: SshMcpClient, evtx_dir: str
+    ) -> None:
+        print(f"\n=== Hayabusa EVTX directory sweep: {evtx_dir} ===")
+        args = {
+            "case_id": self.handle["id"],
+            "evtx_dir": evtx_dir,
+            "min_level": "high",
+            "limit": 500,
+        }
+        out = rust.call_tool("hayabusa_scan", args, timeout=1800.0)
+        error = out.get("_error", {}).get("message") if "_error" in out else None
+        if error:
+            self.analysis_limitations.append(
+                f"hayabusa_scan failed for {evtx_dir}: {error}"
+            )
+            out = {
+                "_error": {"message": error},
+                "alerts": [],
+                "alerts_seen": 0,
+                "stderr_tail": "",
+            }
+        alerts = out.get("alerts", out.get("events", []))
+        if not isinstance(alerts, list):
+            alerts = []
+        tcid = self._record_tool(
+            py,
+            "hayabusa_scan",
+            self._output_hash(out),
             {
-                "case_id": self.handle["id"],
-                "evtx_path": self.evidence,
-                "limit": 500,
+                "artifact_path": evtx_dir,
+                "alerts_returned": len(alerts),
+                "alerts_seen": out.get("alerts_seen", len(alerts)),
+                **({"error": error} if error else {}),
             },
+            arguments=args,
         )
+        for alert in alerts[:500]:
+            if not isinstance(alert, dict):
+                continue
+            rule = alert.get("rule") or alert.get("title") or "Hayabusa alert"
+            level = alert.get("level") or "unknown"
+            self._timeline_add(
+                alert.get("timestamp_iso") or alert.get("timestamp"),
+                "hayabusa_scan",
+                "evtx",
+                f"Hayabusa {level} alert: {rule}",
+                tcid,
+                {
+                    "event_id": alert.get("event_id"),
+                    "channel": alert.get("channel"),
+                    "computer": alert.get("computer"),
+                    "rule": rule,
+                },
+            )
+        print(f"  hayabusa_scan: {len(alerts)} high+ alerts")
+
+    def investigate_evtx(
+        self, rust: SshMcpClient, py: SshMcpClient, evidence_path: str | None = None
+    ) -> None:
+        evidence_path = evidence_path or self.evidence
+        print("\n=== EVTX investigation ===")
+        evtx_args = {
+            "case_id": self.handle["id"],
+            "evtx_path": evidence_path,
+            "limit": 500,
+        }
+        out = rust.call_tool("evtx_query", evtx_args)
         if "_error" in out:
             raise RuntimeError(f"evtx_query failed: {out['_error']}")
         rows = out.get("rows", [])
@@ -1919,8 +3938,9 @@ class Investigation:
         tcid = self._record_tool(
             py,
             "evtx_query",
-            self._hash_obj(out),
+            self._output_hash(out),
             {"row_count": len(rows), "records_seen": seen, "parse_errors": pe},
+            arguments=evtx_args,
         )
         print(f"  evtx_query: {len(rows)}/{seen} rows, {pe} parse errors")
         for row in rows[:500]:
@@ -1936,8 +3956,33 @@ class Investigation:
             )
 
         self.evtx_summary = build_evtx_summary(rows, seen, pe)
+        disk_summary = self._disk_summary()
+        disk_summary["artifact_counts"]["evtx"] += 1
+        _merge_disk_tool_summary(
+            disk_summary,
+            "evtx_query",
+            tcid,
+            {
+                "artifact_path": evidence_path,
+                "records_seen": seen,
+                "row_count": len(rows),
+                "parse_errors": pe,
+                "suspicious_event_count": self.evtx_summary.get(
+                    "suspicious_event_count", 0
+                ),
+                "top_event_ids": self.evtx_summary.get("top_event_ids", [])[:5],
+            },
+        )
+        disk_summary["timeline_event_count"] = len(
+            [
+                event
+                for event in self.timeline_events
+                if event.get("artifact_class") == "evtx"
+            ]
+        )
+        self.disk_artifact_summary = _finalize_disk_artifact_summary(disk_summary)
         evtx_findings = evtx_rows_to_findings(
-            rows, tcid, self.handle["id"], self.evidence
+            rows, tcid, self.handle["id"], evidence_path
         )
         for finding in evtx_findings:
             if finding.get("pool_origin") == "B":
@@ -1945,22 +3990,1153 @@ class Investigation:
             else:
                 self.findings_pool_a.append(finding)
 
-    def investigate_disk(self, rust: SshMcpClient, py: SshMcpClient) -> None:
-        # Disk image investigation requires libewf-mounted access to the
-        # E01 — out of scope for the MVP orchestrator since case_open
-        # only SHA-256s the file. Future: MFT extraction via Sleuth Kit.
-        print("\n=== disk image investigation (case_open only — MVP) ===")
-        limitation = (
-            "Auto disk mode registered and hashed the image only; it did not mount "
-            "or parse filesystem artifacts, so no disk-content finding or NO_EVIL "
-            "claim is supported."
+    def investigate_disk(
+        self, rust: SshMcpClient, py: SshMcpClient, evidence_path: str | None = None
+    ) -> None:
+        evidence_path = evidence_path or self.evidence
+        print("\n=== disk image investigation (auto mount/extract) ===")
+        mount_args = {
+            "case_id": self.handle["id"],
+            "image_path": evidence_path,
+            "mode": "auto",
+        }
+        mounted = rust.call_tool("disk_mount", mount_args, timeout=1800.0)
+        mount_error = (
+            mounted.get("_error", {}).get("message") if "_error" in mounted else None
         )
-        self.analysis_limitations.append(limitation)
+        mount_extra: dict[str, Any] = {
+            "artifact_path": evidence_path,
+            "status": mounted.get("status", "error"),
+        }
+        if mounted.get("mount_id"):
+            mount_extra["mount_id"] = mounted["mount_id"]
+        if mounted.get("fs_root"):
+            mount_extra["fs_root"] = mounted["fs_root"]
+        if mount_error:
+            mount_extra["error"] = mount_error
+        self._record_tool(
+            py,
+            "disk_mount",
+            self._output_hash(mounted),
+            mount_extra,
+            arguments=mount_args,
+        )
+        if mount_error:
+            limitation = (
+                "Auto disk mount/extract did not complete; disk-content conclusions "
+                f"require SIFT/libewf/loop support or pre-extracted artifacts. disk_mount failed: {mount_error}"
+            )
+            self.analysis_limitations.append(limitation)
+            self._audit(
+                py,
+                "agent_message",
+                {
+                    "role": "supervisor",
+                    "content": limitation,
+                    "artifact_path": evidence_path,
+                },
+            )
+            print(f"  disk_mount error: {mount_error[:120]}")
+            return
+
+        mount_id = str(mounted["mount_id"])
+        extracted_entries: list[dict[str, Any]] = []
+        try:
+            extract_args = {
+                "case_id": self.handle["id"],
+                "mount_id": mount_id,
+                "limit": 500,
+            }
+            extracted = rust.call_tool(
+                "disk_extract_artifacts", extract_args, timeout=1800.0
+            )
+            extract_error = (
+                extracted.get("_error", {}).get("message")
+                if "_error" in extracted
+                else None
+            )
+            artifacts = extracted.get("artifacts", []) if not extract_error else []
+            self._record_tool(
+                py,
+                "disk_extract_artifacts",
+                self._output_hash(extracted),
+                {
+                    "mount_id": mount_id,
+                    "artifact_count": len(artifacts),
+                    "artifacts_skipped_oversize": extracted.get(
+                        "artifacts_skipped_oversize", 0
+                    ),
+                    "max_artifact_bytes": extracted.get("max_artifact_bytes"),
+                    **({"error": extract_error} if extract_error else {}),
+                },
+                arguments=extract_args,
+            )
+            if extract_error:
+                self.analysis_limitations.append(
+                    f"disk_extract_artifacts failed for {evidence_path}: {extract_error}"
+                )
+                print(f"  disk_extract_artifacts error: {extract_error[:120]}")
+                return
+            skipped_oversize = int(extracted.get("artifacts_skipped_oversize") or 0)
+            if skipped_oversize:
+                self.analysis_limitations.append(
+                    f"disk_extract_artifacts skipped {skipped_oversize} oversized artifact(s); rerun with a targeted extraction plan if those paths are needed."
+                )
+
+            for artifact in artifacts:
+                path = artifact.get("extracted_path")
+                artifact_class = artifact.get("artifact_class")
+                if path and artifact_class in EXTRACTED_DISK_CLASSES | {"yara_target"}:
+                    extracted_entries.append(
+                        {
+                            "path": path,
+                            "artifact_class": artifact_class,
+                            "evidence_type": "extracted_disk",
+                            "size_bytes": artifact.get("size_bytes", 0),
+                        }
+                    )
+            print(
+                f"  disk_extract_artifacts: {len(extracted_entries)} supported artifacts"
+            )
+            if extracted_entries:
+                self.investigate_extracted_disk_artifacts(rust, py, extracted_entries)
+            else:
+                limitation = (
+                    "Disk image mounted, but no supported MFT/USN/Prefetch/Registry/YARA-target artifacts "
+                    "were extracted for typed parsing."
+                )
+                self.analysis_limitations.append(limitation)
+                self._audit(
+                    py,
+                    "agent_message",
+                    {
+                        "role": "supervisor",
+                        "content": limitation,
+                        "artifact_path": evidence_path,
+                    },
+                )
+        finally:
+            unmount_args = {
+                "case_id": self.handle["id"],
+                "mount_id": mount_id,
+                "mode": "auto",
+            }
+            unmounted = rust.call_tool("disk_unmount", unmount_args, timeout=600.0)
+            unmount_error = (
+                unmounted.get("_error", {}).get("message")
+                if "_error" in unmounted
+                else None
+            )
+            self._record_tool(
+                py,
+                "disk_unmount",
+                self._output_hash(unmounted),
+                {
+                    "mount_id": mount_id,
+                    "status": unmounted.get("status", "error"),
+                    **({"error": unmount_error} if unmount_error else {}),
+                },
+                arguments=unmount_args,
+            )
+            if unmount_error:
+                self.analysis_limitations.append(
+                    f"disk_unmount failed for {mount_id}: {unmount_error}"
+                )
+
+    def _registry_triage_keys(self, hive_path: str) -> list[str]:
+        name = PurePosixPath(str(hive_path).replace("\\", "/")).name.lower()
+        if name == "software":
+            return [
+                r"Microsoft\Windows\CurrentVersion\Run",
+                r"Microsoft\Windows\CurrentVersion\RunOnce",
+                r"Microsoft\Windows NT\CurrentVersion\Image File Execution Options",
+            ]
+        if name == "system":
+            return [r"ControlSet001\Services"]
+        if name in {"ntuser.dat", "usrclass.dat"}:
+            return [
+                r"Software\Microsoft\Windows\CurrentVersion\Run",
+                r"Software\Microsoft\Windows\CurrentVersion\RunOnce",
+            ]
+        return [""]
+
+    def investigate_extracted_disk_artifacts(
+        self, rust: SshMcpClient, py: SshMcpClient, entries: list[dict[str, Any]]
+    ) -> None:
+        print("\n=== extracted disk artifact investigation ===")
+        by_class: dict[str, list[dict[str, Any]]] = {
+            name: [] for name in EXTRACTED_DISK_CLASSES
+        }
+        by_class["yara_target"] = []
+        for entry in entries:
+            artifact_class = str(entry.get("artifact_class") or "")
+            if artifact_class in by_class:
+                by_class[artifact_class].append(entry)
+
+        disk_summary = self._disk_summary()
+        for artifact_class, rows_for_class in by_class.items():
+            disk_summary["artifact_counts"][artifact_class] += len(rows_for_class)
+
+        extracted_tcid = next(
+            (
+                str(tc.get("tool_call_id"))
+                for tc in reversed(self.tool_calls)
+                if tc.get("tool") == "disk_extract_artifacts"
+            ),
+            "",
+        )
+        if extracted_tcid:
+            self._timeline_add(
+                datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "disk_extract_artifacts",
+                "disk/filesystem",
+                "supported disk artifacts extracted for typed parsing",
+                extracted_tcid,
+                {
+                    "artifact_counts": {
+                        name: len(rows_for_class)
+                        for name, rows_for_class in by_class.items()
+                    }
+                },
+            )
+
+        for entry in by_class["mft"][:3]:
+            path = str(entry["path"])
+            args = {"case_id": self.handle["id"], "mft_path": path, "limit": 5000}
+            out = rust.call_tool("mft_timeline", args, timeout=1800.0)
+            error = out.get("_error", {}).get("message") if "_error" in out else None
+            if error:
+                self.analysis_limitations.append(
+                    f"mft_timeline failed for {path}: {error}"
+                )
+                out = {
+                    "_error": {"message": error},
+                    "entries": [],
+                    "records_seen": 0,
+                    "parse_errors": 0,
+                }
+            rows = out.get("entries", [])
+            tcid = self._record_tool(
+                py,
+                "mft_timeline",
+                self._output_hash(out),
+                {
+                    "artifact_path": path,
+                    "row_count": out.get("row_count", len(rows)),
+                    "records_seen": out.get("records_seen", 0),
+                    "parse_errors": out.get("parse_errors", 0),
+                    **({"error": error} if error else {}),
+                },
+                arguments=args,
+            )
+            _merge_disk_tool_summary(
+                disk_summary,
+                "mft_timeline",
+                tcid,
+                {
+                    "artifact_path": path,
+                    "row_count": len(rows),
+                    "records_seen": out.get("records_seen", 0),
+                    "parse_errors": out.get("parse_errors", 0),
+                    "sample_paths": [
+                        row.get("full_path") or row.get("name")
+                        for row in rows[:5]
+                        if isinstance(row, dict)
+                    ],
+                    **({"error": error} if error else {}),
+                },
+            )
+            for row in rows[:500]:
+                ts = (
+                    row.get("fn_modified_iso")
+                    or row.get("si_modified_iso")
+                    or row.get("fn_created_iso")
+                )
+                name = row.get("full_path") or row.get("name") or "unknown"
+                self._timeline_add(
+                    ts,
+                    "mft_timeline",
+                    "mft",
+                    f"mft entry: {name}",
+                    tcid,
+                    {
+                        "record_number": row.get("record_number"),
+                        "is_allocated": row.get("is_allocated"),
+                    },
+                )
+            print(f"  mft_timeline: {path} rows={len(rows)}")
+
+        for entry in by_class["usnjrnl"][:3]:
+            path = str(entry["path"])
+            args = {"case_id": self.handle["id"], "usnjrnl_path": path, "limit": 5000}
+            out = rust.call_tool("usnjrnl_query", args, timeout=1800.0)
+            error = out.get("_error", {}).get("message") if "_error" in out else None
+            if error:
+                self.analysis_limitations.append(
+                    f"usnjrnl_query failed for {path}: {error}"
+                )
+                out = {
+                    "_error": {"message": error},
+                    "entries": [],
+                    "records_seen": 0,
+                    "parse_errors": 0,
+                }
+            rows = out.get("entries", [])
+            tcid = self._record_tool(
+                py,
+                "usnjrnl_query",
+                self._output_hash(out),
+                {
+                    "artifact_path": path,
+                    "row_count": out.get("row_count", len(rows)),
+                    "records_seen": out.get("records_seen", 0),
+                    "parse_errors": out.get("parse_errors", 0),
+                    **({"error": error} if error else {}),
+                },
+                arguments=args,
+            )
+            reason_values = [
+                ",".join(row.get("reason_flags", []))
+                for row in rows
+                if isinstance(row, dict)
+            ]
+            _merge_disk_tool_summary(
+                disk_summary,
+                "usnjrnl_query",
+                tcid,
+                {
+                    "artifact_path": path,
+                    "row_count": len(rows),
+                    "records_seen": out.get("records_seen", 0),
+                    "parse_errors": out.get("parse_errors", 0),
+                    "top_reason_flags": _top_counter(reason_values, 5),
+                    "sample_filenames": [
+                        row.get("filename") for row in rows[:5] if isinstance(row, dict)
+                    ],
+                    **({"error": error} if error else {}),
+                },
+            )
+            for row in rows[:500]:
+                self._timeline_add(
+                    row.get("timestamp_iso"),
+                    "usnjrnl_query",
+                    "usnjrnl",
+                    f"usn change: {row.get('filename', 'unknown')}",
+                    tcid,
+                    {
+                        "usn": row.get("usn"),
+                        "reason_flags": row.get("reason_flags", []),
+                    },
+                )
+            print(f"  usnjrnl_query: {path} rows={len(rows)}")
+
+        for entry in by_class["prefetch"][:50]:
+            path = str(entry["path"])
+            args = {"case_id": self.handle["id"], "prefetch_path": path}
+            out = rust.call_tool("prefetch_parse", args)
+            error = out.get("_error", {}).get("message") if "_error" in out else None
+            if error:
+                self.analysis_limitations.append(
+                    f"prefetch_parse failed for {path}: {error}"
+                )
+                out = {
+                    "_error": {"message": error},
+                    "last_run_times_iso": [],
+                    "run_count": 0,
+                }
+            tcid = self._record_tool(
+                py,
+                "prefetch_parse",
+                self._output_hash(out),
+                {
+                    "artifact_path": path,
+                    "executable_name": out.get("executable_name"),
+                    "run_count": out.get("run_count", 0),
+                    **({"error": error} if error else {}),
+                },
+                arguments=args,
+            )
+            exe = out.get("executable_name") or PurePosixPath(path).name
+            _merge_disk_tool_summary(
+                disk_summary,
+                "prefetch_parse",
+                tcid,
+                {
+                    "artifact_path": path,
+                    "executable_name": exe,
+                    "run_count": out.get("run_count", 0),
+                    "last_run_times_iso": out.get("last_run_times_iso", [])[:8],
+                    **({"error": error} if error else {}),
+                },
+            )
+            for ts in out.get("last_run_times_iso", [])[:8]:
+                self._timeline_add(
+                    ts,
+                    "prefetch_parse",
+                    "prefetch",
+                    f"prefetch run: {exe}",
+                    tcid,
+                    {"run_count": out.get("run_count", 0), "prefetch_path": path},
+                )
+            print(f"  prefetch_parse: {path} runs={out.get('run_count', 0)}")
+
+        registry_calls = 0
+        for entry in by_class["registry"][:20]:
+            path = str(entry["path"])
+            for key_path in self._registry_triage_keys(path):
+                registry_calls += 1
+                if registry_calls > 60:
+                    break
+                args = {
+                    "case_id": self.handle["id"],
+                    "hive_path": path,
+                    "key_path": key_path,
+                    "recursive": False,
+                    "limit": 200,
+                }
+                out = rust.call_tool("registry_query", args)
+                error = (
+                    out.get("_error", {}).get("message") if "_error" in out else None
+                )
+                if error:
+                    self.analysis_limitations.append(
+                        f"registry_query failed for {path} {key_path or '<root>'}: {error}"
+                    )
+                    out = {
+                        "_error": {"message": error},
+                        "entries": [],
+                        "keys_visited": 0,
+                        "parse_errors": 0,
+                    }
+                rows = out.get("entries", [])
+                tcid = self._record_tool(
+                    py,
+                    "registry_query",
+                    self._output_hash(out),
+                    {
+                        "artifact_path": path,
+                        "key_path": key_path,
+                        "entries_returned": len(rows),
+                        "keys_visited": out.get("keys_visited", 0),
+                        "parse_errors": out.get("parse_errors", 0),
+                        **({"error": error} if error else {}),
+                    },
+                    arguments=args,
+                )
+                _merge_disk_tool_summary(
+                    disk_summary,
+                    "registry_query",
+                    tcid,
+                    {
+                        "artifact_path": path,
+                        "key_path": key_path,
+                        "entries_returned": len(rows),
+                        "keys_visited": out.get("keys_visited", 0),
+                        "parse_errors": out.get("parse_errors", 0),
+                        "sample_keys": [
+                            row.get("key_path")
+                            for row in rows[:5]
+                            if isinstance(row, dict)
+                        ],
+                        **({"error": error} if error else {}),
+                    },
+                )
+                for row in rows[:200]:
+                    self._timeline_add(
+                        row.get("last_write_time_iso"),
+                        "registry_query",
+                        "registry",
+                        f"registry key: {row.get('key_path', key_path or '<root>')}",
+                        tcid,
+                        {"hive_path": path, "value_count": len(row.get("values", []))},
+                    )
+                print(
+                    f"  registry_query: {path} {key_path or '<root>'} entries={len(rows)}"
+                )
+
+        if DISK_YARA_RULES:
+            for entry in by_class["yara_target"][:50]:
+                path = str(entry["path"])
+                args = {
+                    "case_id": self.handle["id"],
+                    "target_path": path,
+                    "rules_path": DISK_YARA_RULES,
+                    "recursive": False,
+                    "limit": 200,
+                }
+                out = rust.call_tool("yara_scan", args, timeout=1800.0)
+                error = (
+                    out.get("_error", {}).get("message") if "_error" in out else None
+                )
+                if error:
+                    self.analysis_limitations.append(
+                        f"disk yara_scan failed for {path}: {error}"
+                    )
+                    out = {
+                        "_error": {"message": error},
+                        "matches": [],
+                        "files_scanned": 0,
+                        "rules_compiled": 0,
+                        "scan_errors": 0,
+                    }
+                matches = out.get("matches", [])
+                if not isinstance(matches, list):
+                    matches = []
+                tcid = self._record_tool(
+                    py,
+                    "yara_scan",
+                    self._output_hash(out),
+                    {
+                        "artifact_path": path,
+                        "rules_path": DISK_YARA_RULES,
+                        "matches_returned": len(matches),
+                        "files_scanned": out.get("files_scanned", 0),
+                        "rules_compiled": out.get("rules_compiled", 0),
+                        "scan_errors": out.get("scan_errors", 0),
+                        **({"error": error} if error else {}),
+                    },
+                    arguments=args,
+                )
+                _merge_disk_tool_summary(
+                    disk_summary,
+                    "yara_scan",
+                    tcid,
+                    {
+                        "artifact_path": path,
+                        "rules_path": DISK_YARA_RULES,
+                        "matches_returned": len(matches),
+                        "match_rules": [
+                            match.get("rule") or match.get("rule_name")
+                            for match in matches[:10]
+                            if isinstance(match, dict)
+                        ],
+                        "scan_errors": out.get("scan_errors", 0),
+                        **({"error": error} if error else {}),
+                    },
+                )
+                print(f"  yara_scan: {path} matches={len(matches)}")
+        elif by_class["yara_target"]:
+            self.analysis_limitations.append(
+                "YARA-target disk artifacts were identified but FIND_EVIL_DISK_YARA_RULES is not set; files were summarized for follow-up only."
+            )
+
+        disk_summary["timeline_event_count"] = len(
+            [
+                event
+                for event in self.timeline_events
+                if event.get("artifact_class")
+                in {"disk/filesystem", "mft", "usnjrnl", "prefetch", "registry", "evtx"}
+            ]
+        )
+        self.disk_artifact_summary = _finalize_disk_artifact_summary(disk_summary)
+
+    def _network_finding(
+        self,
+        pool: str,
+        finding_id: str,
+        tool_call_id: str,
+        artifact_path: str,
+        description: str,
+        technique: str,
+    ) -> None:
+        target = self.findings_pool_a if pool == "A" else self.findings_pool_b
+        if any(f.get("finding_id") == finding_id for f in target):
+            return
+        target.append(
+            {
+                "case_id": self.handle["id"],
+                "finding_id": finding_id,
+                "tool_call_id": tool_call_id,
+                "artifact_path": artifact_path,
+                "description": description,
+                "confidence": "HYPOTHESIS",
+                "pool_origin": pool,
+                "mitre_technique": technique,
+            }
+        )
+
+    def _disk_summary(self) -> dict[str, Any]:
+        if self.disk_artifact_summary is None:
+            self.disk_artifact_summary = _disk_summary_template()
+        return self.disk_artifact_summary
+
+    def _add_network_summary_findings(
+        self, tool: str, out: dict[str, Any], tcid: str, artifact_path: str
+    ) -> None:
+        dns_rows = out.get("top_dns_queries") or out.get("dns_queries") or []
+        for row in dns_rows[:10]:
+            if not isinstance(row, dict):
+                continue
+            host = _count_value(row)
+            suspicious, reason = _host_is_suspicious(host)
+            if suspicious:
+                self._network_finding(
+                    "B",
+                    self._finding_id_for(f"f-B-{tool}-suspicious-dns", artifact_path),
+                    tcid,
+                    artifact_path,
+                    (
+                        f"{tool} observed suspicious DNS query `{host}` "
+                        f"({reason}, count={_count_count(row)}). Treat as a DNS/C2 "
+                        "triage lead until endpoint process, payload, or additional network "
+                        "evidence corroborates it. This is not proof of data loss by itself."
+                    ),
+                    "T1071.004",
+                )
+                break
+
+        http_rows = out.get("top_http_hosts") or out.get("http_hosts") or []
+        for row in http_rows[:10]:
+            if not isinstance(row, dict):
+                continue
+            host = _count_value(row)
+            suspicious, reason = _host_is_suspicious(host)
+            if suspicious:
+                self._network_finding(
+                    "B",
+                    self._finding_id_for(f"f-B-{tool}-suspicious-http", artifact_path),
+                    tcid,
+                    artifact_path,
+                    (
+                        f"{tool} observed suspicious HTTP host `{host}` "
+                        f"({reason}, count={_count_count(row)}). Treat as a web-protocol "
+                        "C2/download triage lead until process, file, or proxy context "
+                        "corroborates it. This is not proof of data loss by itself."
+                    ),
+                    "T1071.001",
+                )
+                break
+
+        conversations = out.get("notable_connections") or out.get("conversations") or []
+        for row in conversations[:25]:
+            if not isinstance(row, dict):
+                continue
+            notable, reason = _conversation_is_notable(row)
+            if notable:
+                dst = row.get("dst") or row.get("destination_ip")
+                port = row.get("dst_port") or row.get("destination_port")
+                self._network_finding(
+                    "A",
+                    self._finding_id_for(
+                        f"f-A-{tool}-external-conversation", artifact_path
+                    ),
+                    tcid,
+                    artifact_path,
+                    (
+                        f"{tool} observed a notable external conversation to {dst}:{port} "
+                        f"({reason}). Treat as network triage context for C2 or transfer "
+                        "hypotheses only; do not claim data loss without separate "
+                        "collection/staging plus tool or data-movement evidence."
+                    ),
+                    "T1071.001",
+                )
+                break
+
+    def _add_sysmon_network_findings(
+        self, rows: list[dict[str, Any]], tcid: str, artifact_path: str
+    ) -> None:
+        for row in rows[:200]:
+            if not isinstance(row, dict):
+                continue
+            notable, reason = _sysmon_network_row_is_notable(row)
+            if not notable:
+                continue
+            image = row.get("image") or "unknown process"
+            dst = row.get("destination_ip") or "unknown destination"
+            port = row.get("destination_port") or ""
+            host = row.get("destination_hostname") or ""
+            self._network_finding(
+                "A",
+                self._finding_id_for("f-A-sysmon-network-lead", artifact_path),
+                tcid,
+                artifact_path,
+                (
+                    f"Sysmon network telemetry shows {image} connecting to external "
+                    f"destination {dst}:{port} {host or ''} ({reason}). Treat as a "
+                    "process-to-network triage lead requiring process ancestry, file, "
+                    "DNS/proxy, and endpoint corroboration before raising confidence. "
+                    "This is not proof of data loss by itself."
+                ),
+                "T1071.001",
+            )
+            break
+
+    def investigate_network_artifacts(
+        self, rust: SshMcpClient, py: SshMcpClient, entries: list[dict[str, Any]]
+    ) -> None:
+        print("\n=== network artifact investigation ===")
+        by_class: dict[str, list[dict[str, Any]]] = {
+            name: [] for name in NETWORK_CLASSES
+        }
+        for entry in entries:
+            artifact_class = str(entry.get("artifact_class") or "")
+            if artifact_class in by_class:
+                by_class[artifact_class].append(entry)
+
+        for entry in by_class["sysmon_network"][:20]:
+            path = str(entry["path"])
+            args = {"case_id": self.handle["id"], "evtx_path": path, "limit": 1000}
+            out = rust.call_tool("sysmon_network_query", args)
+            error = out.get("_error", {}).get("message") if "_error" in out else None
+            if error:
+                self.analysis_limitations.append(
+                    f"sysmon_network_query failed for {path}: {error}"
+                )
+                out = {"_error": {"message": error}, "rows": [], "records_seen": 0}
+            rows = out.get("rows", [])
+            tcid = self._record_tool(
+                py,
+                "sysmon_network_query",
+                self._output_hash(out),
+                {
+                    "artifact_path": path,
+                    "row_count": out.get("row_count", len(rows)),
+                    "records_seen": out.get("records_seen", 0),
+                    "parse_errors": out.get("parse_errors", 0),
+                    **({"error": error} if error else {}),
+                },
+                arguments=args,
+            )
+            for row in rows[:500]:
+                self._timeline_add(
+                    row.get("ts"),
+                    "sysmon_network_query",
+                    "network",
+                    "sysmon network connection: "
+                    f"{row.get('source_ip', '')}->{row.get('destination_ip', '')}:"
+                    f"{row.get('destination_port', '')}",
+                    tcid,
+                    {
+                        "image": row.get("image"),
+                        "process_id": row.get("process_id"),
+                        "user": row.get("user"),
+                        "protocol": row.get("protocol"),
+                        "destination_hostname": row.get("destination_hostname"),
+                        "record_id": row.get("record_id"),
+                    },
+                )
+            self._add_sysmon_network_findings(rows, tcid, path)
+            print(f"  sysmon_network_query: {path} rows={len(rows)}")
+
+        zeek_dirs = sorted(
+            {
+                str(PurePosixPath(str(entry["path"]).replace("\\", "/")).parent)
+                for entry in by_class["zeek"]
+                if entry.get("path")
+            }
+        )
+        zeek_targets = zeek_dirs[:5] or [
+            str(entry["path"]) for entry in by_class["zeek"][:5]
+        ]
+        for path in zeek_targets:
+            args = {"case_id": self.handle["id"], "zeek_path": path, "limit": 100000}
+            out = rust.call_tool("zeek_summary", args)
+            error = out.get("_error", {}).get("message") if "_error" in out else None
+            if error:
+                self.analysis_limitations.append(
+                    f"zeek_summary failed for {path}: {error}"
+                )
+                out = {"_error": {"message": error}, "rows_seen": 0}
+            tcid = self._record_tool(
+                py,
+                "zeek_summary",
+                self._output_hash(out),
+                {
+                    "artifact_path": path,
+                    "rows_seen": out.get("rows_seen", 0),
+                    "conn_count": out.get("conn_count", 0),
+                    "dns_count": out.get("dns_count", 0),
+                    "http_count": out.get("http_count", 0),
+                    "parse_errors": out.get("parse_errors", 0),
+                    **({"error": error} if error else {}),
+                },
+                arguments=args,
+            )
+            for row in out.get("notable_connections", [])[:200]:
+                self._timeline_add(
+                    row.get("ts"),
+                    "zeek_summary",
+                    "network",
+                    f"zeek connection: {row.get('src', '')}->{row.get('dst', '')}:{row.get('dst_port', '')}",
+                    tcid,
+                    {
+                        "proto": row.get("proto"),
+                        "service": row.get("service"),
+                        "orig_bytes": row.get("orig_bytes"),
+                        "resp_bytes": row.get("resp_bytes"),
+                        "conn_state": row.get("conn_state"),
+                    },
+                )
+            self._add_network_summary_findings("zeek_summary", out, tcid, path)
+            print(f"  zeek_summary: {path} rows={out.get('rows_seen', 0)}")
+
+        for entry in by_class["pcap"][:5]:
+            path = str(entry["path"])
+            args = {"case_id": self.handle["id"], "pcap_path": path, "limit": 10000}
+            out = rust.call_tool("pcap_triage", args, timeout=1800.0)
+            error = out.get("_error", {}).get("message") if "_error" in out else None
+            if error:
+                self.analysis_limitations.append(
+                    f"pcap_triage failed for {path}: {error}"
+                )
+                out = {"_error": {"message": error}, "packets_seen": 0}
+            tcid = self._record_tool(
+                py,
+                "pcap_triage",
+                self._output_hash(out),
+                {
+                    "artifact_path": path,
+                    "packets_seen": out.get("packets_seen", 0),
+                    "conversation_count": len(out.get("conversations", [])),
+                    "analyzer": out.get("analyzer"),
+                    **({"error": error} if error else {}),
+                },
+                arguments=args,
+            )
+            self._add_network_summary_findings("pcap_triage", out, tcid, path)
+            zeek = out.get("zeek")
+            if isinstance(zeek, dict):
+                self._add_network_summary_findings("pcap_triage", zeek, tcid, path)
+                for row in zeek.get("notable_connections", [])[:100]:
+                    if not isinstance(row, dict):
+                        continue
+                    self._timeline_add(
+                        row.get("ts"),
+                        "pcap_triage",
+                        "network",
+                        f"pcap-derived connection: {row.get('src', '')}->{row.get('dst', '')}:{row.get('dst_port', '')}",
+                        tcid,
+                        {
+                            "proto": row.get("proto"),
+                            "service": row.get("service"),
+                            "orig_bytes": row.get("orig_bytes"),
+                            "resp_bytes": row.get("resp_bytes"),
+                        },
+                    )
+            print(f"  pcap_triage: {path} packets={out.get('packets_seen', 0)}")
+
+    def investigate_velociraptor_zip(
+        self, rust: SshMcpClient, py: SshMcpClient, evidence_path: str | None = None
+    ) -> None:
+        evidence_path = evidence_path or self.evidence
+        print(f"\n=== Velociraptor zip investigation: {evidence_path} ===")
+        zip_digest = hashlib.sha256(evidence_path.encode("utf-8")).hexdigest()[:12]
+        output_dir = f"{self.case_dir}/velociraptor_zip/{zip_digest}"
+        try:
+            extraction = extract_velociraptor_zip_artifacts(
+                evidence_path,
+                output_dir,
+                limit=500,
+            )
+        except RuntimeError as exc:
+            limitation = (
+                f"Velociraptor zip extraction failed for {evidence_path}: {exc}"
+            )
+            self.analysis_limitations.append(limitation)
+            self._audit(
+                py,
+                "agent_message",
+                {
+                    "role": "supervisor",
+                    "content": limitation,
+                    "artifact_path": evidence_path,
+                },
+            )
+            print(f"  zip extraction error: {str(exc)[:120]}")
+            return
+
+        entries = list(extraction.get("entries", []))
+        self.velociraptor_zip_extractions.append(
+            {
+                "zip_path": evidence_path,
+                "entry_count": len(entries),
+                "unsupported_count": extraction.get("unsupported_count", 0),
+                "skipped_unsafe": extraction.get("skipped_unsafe", 0),
+                "skipped_oversize": extraction.get("skipped_oversize", 0),
+                "truncated": extraction.get("truncated", False),
+            }
+        )
         self._audit(
             py,
-            "agent_message",
-            {"role": "supervisor", "content": limitation},
+            "velociraptor_zip_extract",
+            {
+                "zip_path": evidence_path,
+                "output_dir": extraction.get("output_dir", output_dir),
+                "entry_count": len(entries),
+                "unsupported_count": extraction.get("unsupported_count", 0),
+                "unsupported_samples": extraction.get("unsupported_samples", []),
+                "skipped_unsafe": extraction.get("skipped_unsafe", 0),
+                "skipped_oversize": extraction.get("skipped_oversize", 0),
+                "truncated": extraction.get("truncated", False),
+                "limit": extraction.get("limit", 500),
+            },
         )
+        print(
+            "  zip_extract: "
+            f"{len(entries)} supported, "
+            f"{extraction.get('unsupported_count', 0)} unsupported"
+        )
+
+        if extraction.get("truncated"):
+            self.analysis_limitations.append(
+                "Velociraptor zip extraction hit the artifact limit; scoped verdicts require rerun with a narrower collection or higher limit."
+            )
+        if extraction.get("skipped_unsafe"):
+            self.analysis_limitations.append(
+                f"Velociraptor zip skipped {extraction.get('skipped_unsafe')} unsafe member path(s)."
+            )
+        if extraction.get("skipped_oversize"):
+            self.analysis_limitations.append(
+                f"Velociraptor zip skipped {extraction.get('skipped_oversize')} oversized member(s)."
+            )
+        if not entries:
+            self.analysis_limitations.append(
+                "Velociraptor zip contained no supported EVTX/Prefetch/Registry/MFT/USN/network artifacts for typed parsing."
+            )
+            return
+
+        evtx_entries = [
+            entry for entry in entries if entry.get("evidence_type") == "evtx"
+        ]
+        extracted_entries = [
+            entry
+            for entry in entries
+            if entry.get("artifact_class") in EXTRACTED_DISK_CLASSES | {"yara_target"}
+        ]
+        network_entries = [
+            entry for entry in entries if entry.get("artifact_class") in NETWORK_CLASSES
+        ]
+        evtx_parent_counts = Counter(
+            str(PurePosixPath(str(entry["path"]).replace("\\", "/")).parent)
+            for entry in evtx_entries
+            if entry.get("path")
+        )
+        hayabusa_dirs = [
+            parent
+            for parent, count in evtx_parent_counts.items()
+            if parent and parent != "." and count >= 2
+        ]
+
+        for entry in evtx_entries[:50]:
+            self.investigate_evtx(rust, py, str(entry["path"]))
+        for evtx_dir in hayabusa_dirs[:5]:
+            self.investigate_hayabusa_dir(rust, py, evtx_dir)
+        if extracted_entries:
+            self.investigate_extracted_disk_artifacts(rust, py, extracted_entries)
+        if network_entries:
+            self.investigate_network_artifacts(rust, py, network_entries)
+
+    def investigate_inventory(self, rust: SshMcpClient, py: SshMcpClient) -> None:
+        if not self.evidence_inventory:
+            return
+        entries = inventory_supported_entries(self.evidence_inventory)
+        memory_entries = [
+            entry for entry in entries if entry.get("evidence_type") == "memory"
+        ]
+        evtx_entries = [
+            entry for entry in entries if entry.get("evidence_type") == "evtx"
+        ]
+        evtx_parent_counts = Counter(
+            str(PurePosixPath(str(entry["path"]).replace("\\", "/")).parent)
+            for entry in evtx_entries
+            if entry.get("path")
+        )
+        hayabusa_dirs = [
+            parent
+            for parent, count in evtx_parent_counts.items()
+            if parent and parent != "." and count >= 2
+        ]
+        raw_disk_entries = [
+            entry for entry in entries if entry.get("artifact_class") == "raw_disk"
+        ]
+        extracted_entries = [
+            entry
+            for entry in entries
+            if entry.get("artifact_class") in EXTRACTED_DISK_CLASSES | {"yara_target"}
+        ]
+        network_entries = [
+            entry for entry in entries if entry.get("artifact_class") in NETWORK_CLASSES
+        ]
+        velociraptor_entries = [
+            entry for entry in entries if entry.get("artifact_class") == "velociraptor"
+        ]
+
+        for entry in memory_entries[:3]:
+            self.investigate_memory(rust, py, str(entry["path"]))
+        for entry in evtx_entries[:50]:
+            self.investigate_evtx(rust, py, str(entry["path"]))
+        for evtx_dir in hayabusa_dirs[:5]:
+            self.investigate_hayabusa_dir(rust, py, evtx_dir)
+        if extracted_entries:
+            self.investigate_extracted_disk_artifacts(rust, py, extracted_entries)
+        if network_entries:
+            self.investigate_network_artifacts(rust, py, network_entries)
+        for entry in velociraptor_entries[:10]:
+            self.investigate_velociraptor_zip(rust, py, str(entry["path"]))
+        for entry in raw_disk_entries:
+            self.investigate_disk(rust, py, str(entry["path"]))
+        if not (
+            memory_entries
+            or evtx_entries
+            or extracted_entries
+            or network_entries
+            or velociraptor_entries
+            or raw_disk_entries
+        ):
+            limitation = (
+                "No supported evidence artifacts were discovered in the case inventory."
+            )
+            self.analysis_limitations.append(limitation)
+            self._audit(
+                py, "agent_message", {"role": "supervisor", "content": limitation}
+            )
+
+    def _tool_call_index(self) -> dict[str, dict[str, Any]]:
+        return {
+            str(tc["tool_call_id"]): {
+                "tool_name": tc.get("tool"),
+                "arguments": tc.get("arguments", {}),
+                "output_sha256": tc.get("output_hash"),
+            }
+            for tc in self.tool_calls
+            if tc.get("tool_call_id") and tc.get("tool") and tc.get("output_hash")
+        }
+
+    def _verify_pool(
+        self, py: SshMcpClient, findings: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        actions: list[dict[str, Any]] = []
+        tool_call_index = self._tool_call_index()
+        for finding in findings:
+            verify_args = {
+                "finding": finding,
+                "tool_call_index": tool_call_index,
+                "findevil_mcp_command": RUST_REPLAY_COMMAND,
+            }
+            if self.force_fresh_replay:
+                verify_args["force_fresh_replay"] = True
+            result = py.call_tool(
+                "verify_finding",
+                verify_args,
+                timeout=1800.0,
+            )
+            finding_id = str(finding.get("finding_id") or "unknown")
+            if "_error" in result:
+                action = {
+                    "case_id": self.handle["id"],
+                    "finding_id": finding_id,
+                    "action": "rejected",
+                    "reason": result["_error"].get("message", "verify_finding failed"),
+                }
+                replay = {
+                    "replay_error": action["reason"],
+                    "replay_matched": False,
+                }
+            else:
+                action = {
+                    "case_id": self.handle["id"],
+                    "finding_id": result.get("finding_id", finding_id),
+                    "action": result.get("action", "rejected"),
+                    "reason": result.get("reason", "verify_finding returned no reason"),
+                }
+                replay = {
+                    "verifier_action": action["action"],
+                    "replay_tool_name": result.get("replay_tool_name"),
+                    "replay_expected_sha256": result.get("replay_expected_sha256"),
+                    "replay_actual_sha256": result.get("replay_actual_sha256"),
+                    "replay_matched": result.get("replay_matched"),
+                    "replay_error": result.get("replay_error"),
+                    "replay_artifact": result.get("replay_artifact"),
+                }
+            actions.append(action)
+            action_finding_id = str(action.get("finding_id") or finding_id)
+            replay_record_sha256 = self._hash_obj({**action, **replay})
+            action["replay_record_sha256"] = replay_record_sha256
+            replay["replay_record_sha256"] = replay_record_sha256
+            self.verifier_replays[action_finding_id] = replay
+            if (
+                action.get("action") == "rejected"
+                or replay.get("replay_matched") is False
+            ):
+                failure = (
+                    f"verify_finding rejected or failed for {action_finding_id}: "
+                    f"{action.get('reason') or replay.get('replay_error') or 'unknown verifier failure'}"
+                )
+                self.verifier_replay_failures.append(failure)
+                self.analysis_limitations.append(failure)
+            self._audit(
+                py,
+                "verifier_action",
+                {**action, **replay},
+            )
+            self._audit(
+                py,
+                "replay",
+                {
+                    "finding_id": action_finding_id,
+                    "replay_record_sha256": replay_record_sha256,
+                    "force_fresh_replay": self.force_fresh_replay,
+                    "replay_artifact": replay.get("replay_artifact"),
+                    "legacy_replay": {
+                        k: v for k, v in replay.items() if k.startswith("replay_")
+                    },
+                },
+            )
+            handoff = py.call_tool(
+                "pool_handoff",
+                {
+                    "audit_path": self.audit_path,
+                    "from_role": "verifier",
+                    "to_role": "judge",
+                    "correlation_id": action_finding_id,
+                    "payload": {
+                        "finding_id": action_finding_id,
+                        "action": action.get("action"),
+                        "reason": action.get("reason"),
+                        "replay_record_sha256": replay_record_sha256,
+                    },
+                },
+            )
+            if "_error" in handoff:
+                self.analysis_limitations.append(
+                    "pool_handoff failed for verifier->judge: "
+                    f"{handoff['_error'].get('message', 'unknown handoff failure')}"
+                )
+        return actions
+
+    def _embed_verifier_replays(
+        self, findings: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        enriched = []
+        for finding in findings:
+            finding_id = str(finding.get("finding_id") or "")
+            replay = self.verifier_replays.get(finding_id)
+            enriched.append({**finding, **replay} if replay else finding)
+        return enriched
+
+    def _apply_verifier_actions(
+        self, findings: list[dict[str, Any]], actions: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        action_by_finding = {str(a.get("finding_id")): a for a in actions}
+        downgrade = {
+            "CONFIRMED": "INFERRED",
+            "INFERRED": "HYPOTHESIS",
+            "HYPOTHESIS": "HYPOTHESIS",
+        }
+        verified: list[dict[str, Any]] = []
+        for finding in findings:
+            finding_id = str(finding.get("finding_id") or "")
+            action = action_by_finding.get(finding_id)
+            if action and action.get("action") == "rejected":
+                continue
+            next_finding = dict(finding)
+            if action and action.get("action") == "downgraded":
+                next_finding["confidence"] = downgrade.get(
+                    str(next_finding.get("confidence")),
+                    next_finding.get("confidence"),
+                )
+            verified.append(next_finding)
+        return verified
 
     def reason(self, py: SshMcpClient) -> tuple[list[dict[str, Any]], int, int, int]:
         print("\n=== reasoning phase ===")
@@ -1978,14 +5154,32 @@ class Investigation:
         contras = cs.get("contradictions", []) if "_error" not in cs else []
         print(f"  contradictions: {len(contras)}")
 
+        # verify_finding before judge_findings. The verifier re-runs the
+        # cited typed tool call and approves, downgrades, or rejects each
+        # Finding before the credibility-weighted judge sees it.
+        pool_a_actions = self._verify_pool(py, self.findings_pool_a)
+        pool_b_actions = self._verify_pool(py, self.findings_pool_b)
+        print(
+            "  verifier: "
+            f"{sum(1 for a in pool_a_actions + pool_b_actions if a.get('action') == 'approved')} approved, "
+            f"{sum(1 for a in pool_a_actions + pool_b_actions if a.get('action') == 'downgraded')} downgraded, "
+            f"{sum(1 for a in pool_a_actions + pool_b_actions if a.get('action') == 'rejected')} rejected"
+        )
+        pool_a_verified = self._apply_verifier_actions(
+            self.findings_pool_a, pool_a_actions
+        )
+        pool_b_verified = self._apply_verifier_actions(
+            self.findings_pool_b, pool_b_actions
+        )
+
         # judge_findings
         j = py.call_tool(
             "judge_findings",
             {
-                "pool_a_findings": self.findings_pool_a,
-                "pool_b_findings": self.findings_pool_b,
-                "pool_a_verifier_actions": [],
-                "pool_b_verifier_actions": [],
+                "pool_a_findings": pool_a_verified,
+                "pool_b_findings": pool_b_verified,
+                "pool_a_verifier_actions": pool_a_actions,
+                "pool_b_verifier_actions": pool_b_actions,
             },
         )
         merged = (
@@ -2006,6 +5200,7 @@ class Investigation:
         else:
             kept = downgraded = 0
 
+        merged = self._embed_verifier_replays(merged)
         return merged, len(contras), kept, downgraded
 
     def _emit_judge_selfscore(
@@ -2127,8 +5322,351 @@ class Investigation:
                 {"criterion": criterion, "question": question, "answer": answer},
             )
 
-    def finalize(self, py: SshMcpClient) -> dict[str, Any]:
+    def _build_report_metadata(
+        self, merged: list[dict[str, Any]], verdict: str
+    ) -> dict[str, Any]:
+        timeline = sorted(self.timeline_events, key=lambda e: e["ts"])
+        case_completeness = self._case_completeness()
+        attack_coverage = build_attack_coverage(
+            self.tool_calls, merged, case_completeness
+        )
+        attck_practitioner_coverage = build_attck_practitioner_coverage(
+            self.tool_calls, merged, case_completeness, attack_coverage
+        )
+        next_actions = build_next_actions(
+            merged, attack_coverage, case_completeness, timeline
+        )
+        source_bibliography = build_source_bibliography()
+        normalized_timeline = build_normalized_timeline(timeline, merged)
+        self.normalized_timeline = normalized_timeline
+        report_evidence_cards = build_report_evidence_cards(
+            merged, normalized_timeline["events"], source_bibliography
+        )
+        expert_rules = load_expert_rules()
+        expert_doctrine = build_expert_doctrine(expert_rules)
+        report_qa = build_report_qa_signoff(
+            merged,
+            self.tool_calls,
+            verdict,
+            case_completeness,
+            attack_coverage,
+            normalized_timeline,
+            self.analysis_limitations,
+            expert_rules,
+        )
+        expert_miss_summary = build_expert_miss_summary(self.case_id)
+        attack_story = build_executive_attack_story(
+            merged,
+            verdict,
+            normalized_timeline,
+            case_completeness,
+            attack_coverage,
+            report_qa,
+            next_actions,
+            self.analysis_limitations,
+            self.evidence,
+        )
+        attach_expert_miss_summary(attack_story, expert_miss_summary)
+        visible_text = customer_visible_report_text(
+            attack_story,
+            next_actions,
+            self.analysis_limitations,
+            report_evidence_cards,
+        )
+        report_qa = build_report_qa_signoff(
+            merged,
+            self.tool_calls,
+            verdict,
+            case_completeness,
+            attack_coverage,
+            normalized_timeline,
+            self.analysis_limitations,
+            expert_rules,
+            customer_visible_text=visible_text,
+        )
+        attack_story = build_executive_attack_story(
+            merged,
+            verdict,
+            normalized_timeline,
+            case_completeness,
+            attack_coverage,
+            report_qa,
+            next_actions,
+            self.analysis_limitations,
+            self.evidence,
+        )
+        attach_expert_miss_summary(attack_story, expert_miss_summary)
+        return {
+            "timeline": timeline,
+            "case_completeness": case_completeness,
+            "attack_coverage": attack_coverage,
+            "attck_practitioner_coverage": attck_practitioner_coverage,
+            "next_actions": next_actions,
+            "source_bibliography": source_bibliography,
+            "normalized_timeline": normalized_timeline,
+            "report_evidence_cards": report_evidence_cards,
+            "expert_doctrine": expert_doctrine,
+            "expert_miss_summary": expert_miss_summary,
+            "report_qa": report_qa,
+            "attack_story": attack_story,
+        }
+
+    def _emit_report_qa(self, py: SshMcpClient, report_qa: dict[str, Any]) -> None:
+        print("\n=== report QA / expert signoff ===")
+        print(f"  status: {report_qa.get('status')}")
+        print(f"  packet_state: {report_qa.get('packet_state')}")
+        print(
+            "  ready_for_expert_signoff: "
+            f"{report_qa.get('ready_for_expert_signoff')}"
+        )
+        payload = {
+            "status": report_qa.get("status"),
+            "packet_state": report_qa.get("packet_state"),
+            "ready_for_expert_signoff": report_qa.get("ready_for_expert_signoff"),
+            "ready_for_customer_pdf": report_qa.get("ready_for_customer_pdf"),
+            "customer_release_candidate": report_qa.get(
+                "customer_release_candidate", False
+            ),
+            "customer_releasable": report_qa.get("customer_releasable", False),
+            "expert_decision": report_qa.get("expert_decision", "pending"),
+            "expert_signoff_required": report_qa.get("expert_signoff_required", True),
+            "report_qa_sha256": self._hash_obj(report_qa),
+            "report_qa": report_qa,
+            "failed_checks": [
+                row.get("check_id")
+                for row in report_qa.get("checks", [])
+                if row.get("status") == "FAIL"
+            ],
+            "warning_checks": [
+                row.get("check_id")
+                for row in report_qa.get("checks", [])
+                if row.get("status") == "WARN"
+            ],
+        }
+        self._audit(py, "report_qa", payload)
+
+    def _build_release_gate(
+        self,
+        report_qa: dict[str, Any],
+        manifest_verification: dict[str, Any] | None = None,
+        manifest: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        failed_checks = [
+            row.get("check_id")
+            for row in report_qa.get("checks", [])
+            if row.get("status") == "FAIL"
+        ]
+        warning_checks = [
+            row.get("check_id")
+            for row in report_qa.get("checks", [])
+            if row.get("status") == "WARN"
+        ]
+        expert_decision = str(report_qa.get("expert_decision", "pending"))
+        machine_qa_passed = report_qa.get("status") == "PASS"
+        signer_customer_ok = self.signer == "sigstore"
+        manifest_verified = bool((manifest_verification or {}).get("overall"))
+        manifest_signature_present = bool((manifest or {}).get("signature"))
+        expert_approved = expert_decision == "approved"
+        customer_releasable = (
+            machine_qa_passed
+            and signer_customer_ok
+            and manifest_verified
+            and manifest_signature_present
+            and expert_approved
+        )
+        release_blockers = list(report_qa.get("customer_release_blockers", []))
+        if not signer_customer_ok:
+            release_blockers.append(
+                "customer release requires manifest_finalize signer=sigstore; stub signatures are dev/offline only"
+            )
+        if not expert_approved:
+            release_blockers.append(
+                "explicit human expert approval is required before customer release"
+            )
+        if not manifest_verified:
+            release_blockers.append("manifest_verify must pass before customer release")
+        if not manifest_signature_present:
+            release_blockers.append(
+                "finalized manifest signature metadata must be present before customer release"
+            )
+        return {
+            "qa_status": report_qa.get("status"),
+            "packet_state": report_qa.get("packet_state"),
+            "expert_decision": expert_decision,
+            "expert_signoff_required": report_qa.get("expert_signoff_required", True),
+            "customer_release_candidate": report_qa.get(
+                "customer_release_candidate", False
+            ),
+            "customer_releasable": customer_releasable,
+            "ready_for_customer_pdf": customer_releasable,
+            "report_render_allowed": report_qa.get("ready_for_expert_signoff", False),
+            "signer": self.signer,
+            "signer_customer_release_ok": signer_customer_ok,
+            "manifest_verified": manifest_verified,
+            "manifest_signature_present": manifest_signature_present,
+            "machine_qa_passed": machine_qa_passed,
+            "expert_approved": expert_approved,
+            "failed_checks": failed_checks,
+            "warning_checks": warning_checks,
+            "release_blockers": sorted(set(release_blockers)),
+        }
+
+    def _emit_release_gate(
+        self, py: SshMcpClient, report_qa: dict[str, Any]
+    ) -> dict[str, Any]:
+        release_gate = self._build_release_gate(report_qa)
+        self._audit(
+            py,
+            "customer_release_gate",
+            {**release_gate, "report_qa_sha256": self._hash_obj(report_qa)},
+        )
+        return release_gate
+
+    def _emit_final_findings(
+        self, py: SshMcpClient, merged: list[dict[str, Any]]
+    ) -> None:
+        for index, finding in enumerate(merged, 1):
+            finding_id = _finding_id(finding, index)
+            self._audit(
+                py,
+                "finding_approved",
+                {
+                    "finding_id": finding_id,
+                    "confidence": finding.get("confidence"),
+                    "tool_call_id": finding.get("tool_call_id"),
+                    "finding_sha256": self._hash_obj(finding),
+                    "finding": finding,
+                },
+            )
+
+    def _build_packet_attestation(
+        self,
+        merged: list[dict[str, Any]],
+        verdict: str,
+        contras: int,
+        kept: int,
+        downgraded: int,
+        report_metadata: dict[str, Any],
+        release_gate: dict[str, Any],
+    ) -> dict[str, Any]:
+        verdict_preimage = {
+            "case_id": self.handle["id"],
+            "run_id": self.run_id,
+            "evidence_path": self.evidence,
+            "evidence_type": "directory"
+            if self.evidence_inventory
+            else detect_evidence_type(self.evidence),
+            "evidence_inventory": self.evidence_inventory,
+            "started_at": self.started_at,
+            "verdict": verdict,
+            "analysis_limitations": self.analysis_limitations,
+            "findings": merged,
+            "findings_summary": {
+                "total_merged": len(merged),
+                "contradictions_surfaced": contras,
+                "soul_md_kept": kept,
+                "soul_md_downgraded": downgraded,
+                "by_confidence": _confidence_distribution(merged),
+            },
+            "tool_calls": self.tool_calls,
+            "case_completeness": report_metadata["case_completeness"],
+            "attack_coverage": report_metadata["attack_coverage"],
+            "report_qa": report_metadata["report_qa"],
+            "release_gate": release_gate,
+            "signer": self.signer,
+        }
+        return {
+            "verdict_packet_sha256": self._hash_obj(verdict_preimage),
+            "report_qa_sha256": self._hash_obj(report_metadata["report_qa"]),
+            "release_gate_sha256": self._hash_obj(release_gate),
+            "final_finding_ids": [
+                _finding_id(finding, index) for index, finding in enumerate(merged, 1)
+            ],
+            "packet_state": release_gate.get("packet_state"),
+            "customer_release_candidate": release_gate.get(
+                "customer_release_candidate", False
+            ),
+            "customer_releasable": release_gate.get("customer_releasable", False),
+        }
+
+    def _emit_packet_attestation(
+        self, py: SshMcpClient, packet_attestation: dict[str, Any]
+    ) -> None:
+        self._audit(py, "verdict_packet", packet_attestation)
+
+    def _build_expert_signoff_packet(
+        self,
+        report_qa: dict[str, Any],
+        release_gate: dict[str, Any],
+        packet_attestation: dict[str, Any] | None = None,
+        expert_miss_summary: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        decision = str(release_gate.get("expert_decision", "pending"))
+        miss_summary = expert_miss_summary or {"total": 0, "items": []}
+        return {
+            "version": 1,
+            "status": "APPROVED" if decision == "approved" else "PENDING_EXPERT_REVIEW",
+            "decision": decision,
+            "reviewer_identity": None,
+            "reviewed_at": None,
+            "review_time_minutes": None,
+            "required_before_customer_release": True,
+            "customer_releasable": release_gate.get("customer_releasable", False),
+            "feedback_items": list(miss_summary.get("items", []) or []),
+            "expert_miss_summary": miss_summary,
+            "release_conditions": {
+                "machine_qa_passed": release_gate.get("machine_qa_passed", False),
+                "sigstore_signer": release_gate.get(
+                    "signer_customer_release_ok", False
+                ),
+                "expert_approved": release_gate.get("expert_approved", False),
+            },
+            "referenced_hashes": {
+                "run_manifest_sha256": None,
+                "report_qa_sha256": self._hash_obj(report_qa),
+                "release_gate_sha256": self._hash_obj(release_gate),
+                "verdict_packet_sha256": (packet_attestation or {}).get(
+                    "verdict_packet_sha256"
+                ),
+            },
+            "referenced_paths": {
+                "run_manifest": self.manifest_path,
+                "verdict": self.verdict_path,
+            },
+            "release_blockers": release_gate.get("release_blockers", []),
+            "signoff_question": "Would I send this report to a company without rewriting it?",
+        }
+
+    def _emit_expert_signoff_packet(
+        self, py: SshMcpClient, expert_signoff_packet: dict[str, Any]
+    ) -> None:
+        self._audit(
+            py,
+            "expert_signoff_packet",
+            {
+                "expert_signoff_sha256": self._hash_obj(expert_signoff_packet),
+                "expert_signoff": expert_signoff_packet,
+            },
+        )
+
+    def finalize(
+        self, py: SshMcpClient, packet_attestation: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         print("\n=== manifest finalize ===")
+        extra = {
+            "image_path": self.evidence,
+            "model": "find-evil-auto",
+            "evidence_type": detect_evidence_type(self.evidence),
+            "signer": self.signer,
+        }
+        if self.evidence_inventory:
+            extra["evidence_inventory"] = {
+                "parent_case_id": self.evidence_inventory.get("parent_case_id"),
+                "inventory_sha256": self.evidence_inventory.get("inventory_sha256"),
+                "summary": self.evidence_inventory.get("summary"),
+            }
+        if packet_attestation:
+            extra["packet_attestation"] = packet_attestation
         mf = py.call_tool(
             "manifest_finalize",
             {
@@ -2137,12 +5675,8 @@ class Investigation:
                 "started_at": self.started_at,
                 "audit_log_path": self.audit_path,
                 "output_path": self.manifest_path,
-                "signer": "stub",
-                "extra": {
-                    "image_path": self.evidence,
-                    "model": "find-evil-auto",
-                    "evidence_type": detect_evidence_type(self.evidence),
-                },
+                "signer": self.signer,
+                "extra": extra,
             },
         )
         if "_error" in mf:
@@ -2153,7 +5687,7 @@ class Investigation:
         # The MCP response is a digest of the finalize step; the full manifest
         # (with signature, finalized_at, leaves[]) is only in the on-disk file.
         # Read it back so the verdict + report have everything they need.
-        code, stdout, _ = ssh_run(f"cat {self.manifest_path}", timeout=30)
+        code, stdout, _ = ssh_run(f"cat {shlex.quote(self.manifest_path)}", timeout=30)
         if code == 0 and stdout.strip():
             try:
                 full = json.loads(stdout)
@@ -2165,6 +5699,21 @@ class Investigation:
             except json.JSONDecodeError:
                 pass
         return mf
+
+    def verify_final_manifest(self, py: SshMcpClient) -> dict[str, Any]:
+        result = py.call_tool(
+            "manifest_verify",
+            {"manifest_path": self.manifest_path, "audit_log_path": self.audit_path},
+            timeout=600.0,
+        )
+        if "_error" in result:
+            result = {
+                "overall": False,
+                "error": result["_error"].get("message", "manifest_verify failed"),
+            }
+        self.post_finalize_verification = result
+        print("  manifest_verify = " f"{'PASS' if result.get('overall') else 'FAIL'}")
+        return result
 
     def compute_verdict(self, merged: list[dict[str, Any]]) -> str:
         """Verdict policy:
@@ -2181,6 +5730,59 @@ class Investigation:
           case_open/chain-of-custody ran.
         """
         if not merged:
+            if self is not None and getattr(self, "verifier_replay_failures", []):
+                return "INDETERMINATE"
+            if self is not None:
+                inventory = getattr(self, "evidence_inventory", None)
+                if inventory and inventory.get("summary", {}).get("truncated"):
+                    return "INDETERMINATE"
+                evidence_type = (
+                    "directory" if inventory else detect_evidence_type(self.evidence)
+                )
+                tools_run = {tc.get("tool") for tc in getattr(self, "tool_calls", [])}
+                if any(tc.get("error") for tc in getattr(self, "tool_calls", [])):
+                    return "INDETERMINATE"
+                substantive_tools_by_type = {
+                    "directory": {
+                        "vol_pslist",
+                        "vol_psscan",
+                        "vol_psxview",
+                        "vol_malfind",
+                        "evtx_query",
+                        "hayabusa_scan",
+                        "mft_timeline",
+                        "usnjrnl_query",
+                        "prefetch_parse",
+                        "registry_query",
+                        "yara_scan",
+                    },
+                    "memory": {
+                        "vol_pslist",
+                        "vol_psscan",
+                        "vol_psxview",
+                        "vol_malfind",
+                        "yara_scan",
+                    },
+                    "evtx": {"evtx_query", "hayabusa_scan"},
+                    "network": {
+                        "pcap_triage",
+                        "zeek_summary",
+                        "sysmon_network_query",
+                    },
+                    "disk": {
+                        "mft_timeline",
+                        "usnjrnl_query",
+                        "prefetch_parse",
+                        "registry_query",
+                        "yara_scan",
+                    },
+                }
+                if evidence_type == "unknown":
+                    return "INDETERMINATE"
+                substantive_tools = substantive_tools_by_type.get(evidence_type, set())
+                if not (tools_run & substantive_tools):
+                    return "INDETERMINATE"
+
             if self is not None and detect_evidence_type(self.evidence) == "disk":
                 substantive_disk_tools = {
                     "mft_timeline",
@@ -2208,39 +5810,57 @@ class Investigation:
         self,
         py: SshMcpClient,
         merged: list[dict[str, Any]],
-        mf: dict[str, Any],
+        mf: dict[str, Any] | None,
         verdict: str,
         contras: int,
         kept: int,
         downgraded: int,
+        report_metadata: dict[str, Any] | None = None,
     ) -> str:
-        timeline = sorted(self.timeline_events, key=lambda e: e["ts"])
-        case_completeness = self._case_completeness()
-        attack_coverage = build_attack_coverage(
-            self.tool_calls, merged, case_completeness
+        meta = report_metadata or self._build_report_metadata(merged, verdict)
+        timeline = meta["timeline"]
+        case_completeness = meta["case_completeness"]
+        attack_coverage = meta["attack_coverage"]
+        attck_practitioner_coverage = meta["attck_practitioner_coverage"]
+        next_actions = meta["next_actions"]
+        source_bibliography = meta["source_bibliography"]
+        normalized_timeline = meta["normalized_timeline"]
+        report_evidence_cards = meta["report_evidence_cards"]
+        report_qa = meta["report_qa"]
+        release_gate = meta.get("release_gate") or self._build_release_gate(report_qa)
+        packet_attestation = meta.get("packet_attestation", {})
+        expert_signoff_packet = meta.get(
+            "expert_signoff_packet"
+        ) or self._build_expert_signoff_packet(
+            report_qa,
+            release_gate,
+            packet_attestation,
+            meta.get("expert_miss_summary"),
         )
-        attck_practitioner_coverage = build_attck_practitioner_coverage(
-            self.tool_calls, merged, case_completeness, attack_coverage
-        )
-        next_actions = build_next_actions(
-            merged, attack_coverage, case_completeness, timeline
-        )
-        source_bibliography = build_source_bibliography()
-        normalized_timeline = build_normalized_timeline(timeline, merged)
-        self.normalized_timeline = normalized_timeline
-        report_evidence_cards = build_report_evidence_cards(
-            merged, normalized_timeline["events"], source_bibliography
-        )
+        mf = mf or {}
+        cryptographic_attestation: dict[str, Any] = {
+            "manifest_path": self.manifest_path,
+            "packet_attestation": packet_attestation,
+            "manifest_finalized_after_verdict": "merkle_root_hex" not in mf,
+        }
+        if mf.get("merkle_root_hex"):
+            cryptographic_attestation.update(
+                {
+                    "merkle_root_hex": mf["merkle_root_hex"],
+                    "audit_log_final_hash": mf["audit_log_final_hash"],
+                    "signature_payload_sha256": mf["signature"]["payload_sha256"],
+                }
+            )
         verdict_obj = {
             "case_id": self.handle["id"],
             "run_id": self.run_id,
             "evidence_path": self.evidence,
-            "evidence_type": detect_evidence_type(self.evidence),
+            "evidence_type": "directory"
+            if self.evidence_inventory
+            else detect_evidence_type(self.evidence),
+            "evidence_inventory": self.evidence_inventory,
             "started_at": self.started_at,
-            "finalized_at": mf.get(
-                "finalized_at",
-                datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            ),
+            "finalized_at": mf.get("finalized_at"),
             "verdict": verdict,
             "analysis_limitations": self.analysis_limitations,
             "findings_summary": {
@@ -2263,10 +5883,32 @@ class Investigation:
             "findings": merged,
             "tool_calls": self.tool_calls,
             "evtx_summary": self.evtx_summary,
+            "disk_artifact_summary": self.disk_artifact_summary,
             "case_completeness": case_completeness,
             "attack_coverage": attack_coverage,
             "attck_practitioner_coverage": attck_practitioner_coverage,
             "next_actions": next_actions,
+            "expert_doctrine": meta["expert_doctrine"],
+            "expert_miss_summary": meta.get("expert_miss_summary"),
+            "report_qa": report_qa,
+            "release_gate": release_gate,
+            "expert_signoff": {
+                "status": expert_signoff_packet.get("status")
+                or "PENDING_EXPERT_REVIEW",
+                "expert_decision": expert_signoff_packet.get("decision", "pending"),
+                "expert_signoff_required": True,
+                "customer_release_candidate": release_gate.get(
+                    "customer_release_candidate", False
+                ),
+                "customer_releasable": release_gate.get("customer_releasable", False),
+                "ready_for_customer_pdf": release_gate.get(
+                    "ready_for_customer_pdf", False
+                ),
+                "signer": self.signer,
+                "signoff_question": "Would I send this report to a company without rewriting it?",
+            },
+            "expert_signoff_packet": expert_signoff_packet,
+            "attack_story": meta["attack_story"],
             "malware_triage": self.malware_triage,
             "normalized_timeline": normalized_timeline,
             "report_evidence_cards": report_evidence_cards,
@@ -2280,16 +5922,12 @@ class Investigation:
                 ),
                 "exports": ["timeline.json", "timeline.csv"],
             },
-            "cryptographic_attestation": {
-                "merkle_root_hex": mf["merkle_root_hex"],
-                "audit_log_final_hash": mf["audit_log_final_hash"],
-                "signature_payload_sha256": mf["signature"]["payload_sha256"],
-                "manifest_path": self.manifest_path,
-            },
+            "cryptographic_attestation": cryptographic_attestation,
             "agent": "find-evil-auto MVP",
         }
         # Write inside the VM
         verdict_json = json.dumps(verdict_obj, indent=2, sort_keys=True)
+        verdict_bytes = verdict_json.encode("utf-8")
         # Use a heredoc via SSH to avoid quoting hell
         proc = subprocess.run(
             [
@@ -2299,15 +5937,15 @@ class Investigation:
                 "-o",
                 "BatchMode=yes",
                 f"{GUEST_USER}@{GUEST_IP}",
-                f"cat > {self.verdict_path}",
+                f"cat > {shlex.quote(self.verdict_path)}",
             ],
-            input=verdict_json,
-            text=True,
+            input=verdict_bytes,
             capture_output=True,
             timeout=30,
         )
         if proc.returncode != 0:
-            print(f"  WARN: failed to write verdict.json: {proc.stderr}")
+            stderr = proc.stderr.decode("utf-8", errors="replace")
+            print(f"  WARN: failed to write verdict.json: {stderr}")
         print(f"  verdict          = {verdict}")
         print(f"  verdict_path     = {self.verdict_path}")
         return verdict_json
@@ -2319,12 +5957,13 @@ class Investigation:
             Path(__file__).resolve().parent.parent / "tmp" / "auto-runs" / self.case_id
         )
         local_dir.mkdir(parents=True, exist_ok=True)
+        self.local_run_dir = local_dir
         for remote, name in [
             (self.audit_path, "audit.jsonl"),
             (self.manifest_path, "run.manifest.json"),
             (self.verdict_path, "verdict.json"),
         ]:
-            subprocess.run(
+            proc = subprocess.run(
                 [
                     "scp",
                     "-i",
@@ -2337,6 +5976,11 @@ class Investigation:
                 capture_output=True,
                 timeout=30,
             )
+            if proc.returncode != 0:
+                stderr = proc.stderr.decode("utf-8", errors="replace")
+                raise RuntimeError(
+                    f"failed to fetch {name} from SIFT VM: {stderr[:300]}"
+                )
         # Also persist psscan output if we have it (for the report)
         if "psscan_json" in self.local_artifacts:
             (local_dir / "psscan.json").write_text(
@@ -2355,6 +5999,45 @@ class Investigation:
                 json.dumps(self.malware_triage, indent=2, sort_keys=True),
                 encoding="utf-8",
             )
+        if self.disk_artifact_summary:
+            (local_dir / "disk_artifact_summary.json").write_text(
+                json.dumps(self.disk_artifact_summary, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+        if self.evidence_inventory:
+            (local_dir / "evidence_inventory.json").write_text(
+                json.dumps(self.evidence_inventory, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+        if self.expert_signoff_packet:
+            signoff_sha256 = self._hash_obj(self.expert_signoff_packet)
+            (local_dir / "expert_signoff.json").write_text(
+                json.dumps(self.expert_signoff_packet, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            manifest_file = local_dir / "run.manifest.json"
+            if manifest_file.is_file():
+                manifest_link = {
+                    "version": 1,
+                    "expert_signoff_sha256": signoff_sha256,
+                    "run_manifest_sha256": sha256_file_local(manifest_file),
+                    "local_run_manifest": str(manifest_file),
+                    "note": "Post-finalize linkage artifact; expert_signoff.json remains the immutable audited packet.",
+                }
+                (local_dir / "expert_signoff_manifest_link.json").write_text(
+                    json.dumps(manifest_link, indent=2, sort_keys=True),
+                    encoding="utf-8",
+                )
+        if self.post_finalize_verification:
+            (local_dir / "manifest_verify.json").write_text(
+                json.dumps(self.post_finalize_verification, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+        if self.final_release_gate:
+            (local_dir / "customer_release_gate.final.json").write_text(
+                json.dumps(self.final_release_gate, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
         timeline = sorted(self.timeline_events, key=lambda e: e["ts"])
         normalized_timeline = self.normalized_timeline or build_normalized_timeline(
             timeline, []
@@ -2367,6 +6050,121 @@ class Investigation:
         )
         return local_dir
 
+    def _summary_path(self, local_name: str, remote_path: str) -> str | None:
+        if self.local_run_dir is not None:
+            path = self.local_run_dir / local_name
+            if path.exists():
+                return str(path)
+        return remote_path if remote_path else None
+
+    def _summary_report_paths(self) -> list[str]:
+        if self.local_run_dir is None or not self.local_run_dir.exists():
+            return []
+        names = ("REPORT.md", "REPORT.html", "REPORT.pdf")
+        return [
+            str(self.local_run_dir / name)
+            for name in names
+            if (self.local_run_dir / name).exists()
+        ]
+
+    def _summary_timeline_paths(self) -> list[str]:
+        paths: list[str] = []
+        if self.local_run_dir is not None:
+            for name in ("timeline.json", "timeline.csv"):
+                path = self.local_run_dir / name
+                if path.exists():
+                    paths.append(str(path))
+        if not paths and self.normalized_timeline is not None:
+            paths = [f"{self.case_dir}/timeline.json", f"{self.case_dir}/timeline.csv"]
+        return paths
+
+    def build_run_summary(
+        self,
+        *,
+        readiness_state: str,
+        error: str | None = None,
+        result: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        report_qa: dict[str, Any] | None = None
+        release_gate = self.final_release_gate
+        expert_signoff: dict[str, Any] | None = None
+
+        verdict_obj: dict[str, Any] = {}
+        verdict_path = self._summary_path("verdict.json", self.verdict_path)
+        if verdict_path and Path(verdict_path).is_file():
+            try:
+                verdict_obj = json.loads(Path(verdict_path).read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                verdict_obj = {}
+        report_qa = (
+            verdict_obj.get("report_qa") if isinstance(verdict_obj, dict) else None
+        )
+        release_gate = release_gate or verdict_obj.get("release_gate")
+        expert_signoff = verdict_obj.get("expert_signoff")
+
+        blockers: list[str] = []
+        warnings: list[str] = []
+        if release_gate:
+            blockers.extend(
+                str(item) for item in release_gate.get("release_blockers", []) or []
+            )
+            warnings.extend(
+                str(item) for item in release_gate.get("warning_checks", []) or []
+            )
+        if report_qa:
+            blockers.extend(
+                str(row.get("check_id"))
+                for row in report_qa.get("checks", [])
+                if row.get("status") == "FAIL" and row.get("check_id")
+            )
+            warnings.extend(
+                str(row.get("check_id"))
+                for row in report_qa.get("checks", [])
+                if row.get("status") == "WARN" and row.get("check_id")
+            )
+        blockers.extend(self.verifier_replay_failures)
+        warnings.extend(self.analysis_limitations)
+        if error:
+            blockers.append(error)
+
+        manifest_verify_path = None
+        if (
+            self.local_run_dir is not None
+            and (self.local_run_dir / "manifest_verify.json").exists()
+        ):
+            manifest_verify_path = str(self.local_run_dir / "manifest_verify.json")
+
+        summary = {
+            "schema_version": 1,
+            "run_id": self.run_id,
+            "case_id": self.handle.get("id") or self.case_id,
+            "evidence_path": self.evidence,
+            "run_dir": str(self.local_run_dir) if self.local_run_dir else self.case_dir,
+            "audit_path": self._summary_path("audit.jsonl", self.audit_path),
+            "verdict_path": verdict_path,
+            "manifest_path": self._summary_path(
+                "run.manifest.json", self.manifest_path
+            ),
+            "manifest_verify_path": manifest_verify_path,
+            "report_paths": self._summary_report_paths(),
+            "timeline_paths": self._summary_timeline_paths(),
+            "inventory_path": self._summary_path("evidence_inventory.json", "")
+            if self.evidence_inventory
+            else None,
+            "report_qa": report_qa,
+            "release_gate": release_gate,
+            "expert_signoff": expert_signoff or self.expert_signoff_packet,
+            "signer": self.signer,
+            "readiness_state": readiness_state,
+            "blockers": sorted(set(blockers)),
+            "warnings": sorted(set(warnings)),
+        }
+        if result:
+            summary["result"] = result
+        if error:
+            summary["error"] = error
+        return summary
+
     # ------------------------------------------------------------------
     # Top-level run
     # ------------------------------------------------------------------
@@ -2376,7 +6174,11 @@ class Investigation:
         print(f"  case_id         = {self.case_id}")
         print(f"  run_id          = {self.run_id}")
         print(f"  unattended      = {self.unattended}")
-        print(f"  evidence_type   = {detect_evidence_type(self.evidence)}")
+        etype = detect_evidence_type(self.evidence)
+        if etype == "unknown" and self._evidence_is_remote_directory():
+            etype = "directory"
+        print(f"  evidence_type   = {etype}")
+        print(f"  signer          = {self.signer}")
 
         rust = SshMcpClient(PY_LAUNCHER, "rust-mcp")
         py = SshMcpClient(PY_MCP_LAUNCHER, "py-mcp")
@@ -2394,14 +6196,33 @@ class Investigation:
                 client.notify("notifications/initialized")
 
             # Phase 1: Investigation
-            self.case_open(rust, py)
-            etype = detect_evidence_type(self.evidence)
+            if etype == "directory":
+                self.case_open_directory(py)
+                self.investigate_inventory(rust, py)
+            else:
+                self.case_open(rust, py)
             if etype == "memory":
                 self.investigate_memory(rust, py)
             elif etype == "evtx":
                 self.investigate_evtx(rust, py)
             elif etype == "disk":
                 self.investigate_disk(rust, py)
+            elif etype == "network":
+                classification = classify_artifact_path(self.evidence)
+                self.investigate_network_artifacts(
+                    rust,
+                    py,
+                    [
+                        {
+                            "path": self.evidence,
+                            "artifact_class": classification["artifact_class"],
+                        }
+                    ],
+                )
+            elif etype == "velociraptor":
+                self.investigate_velociraptor_zip(rust, py)
+            elif etype == "directory":
+                pass
             else:
                 print(f"\n  WARN: unknown evidence type for {self.evidence}")
 
@@ -2414,15 +6235,75 @@ class Investigation:
             # attestation — the agent doesn't get to revise after the
             # fact. See agent-config/JUDGING.md §End-of-investigation.
             self._emit_judge_selfscore(py, merged, contras, kept, downgraded)
+            verdict = self.compute_verdict(merged)
+            report_metadata = self._build_report_metadata(merged, verdict)
+            self._emit_report_qa(py, report_metadata["report_qa"])
+            release_gate = self._emit_release_gate(py, report_metadata["report_qa"])
+            report_metadata["release_gate"] = release_gate
+            self._emit_final_findings(py, merged)
+            packet_attestation = self._build_packet_attestation(
+                merged,
+                verdict,
+                contras,
+                kept,
+                downgraded,
+                report_metadata,
+                release_gate,
+            )
+            report_metadata["packet_attestation"] = packet_attestation
+            expert_signoff_packet = self._build_expert_signoff_packet(
+                report_metadata["report_qa"],
+                release_gate,
+                packet_attestation,
+                report_metadata.get("expert_miss_summary"),
+            )
+            self.expert_signoff_packet = expert_signoff_packet
+            report_metadata["expert_signoff_packet"] = expert_signoff_packet
+            verdict_json = self.write_verdict(
+                py,
+                merged,
+                None,
+                verdict,
+                contras,
+                kept,
+                downgraded,
+                report_metadata,
+            )
+            verdict_artifact_bytes = verdict_json.encode("utf-8")
+            verdict_artifact_sha256 = hashlib.sha256(verdict_artifact_bytes).hexdigest()
+            packet_attestation["verdict_artifact_sha256"] = verdict_artifact_sha256
+            packet_attestation["verdict_artifact_path"] = self.verdict_path
+            packet_attestation["verdict_artifact_bytes"] = len(verdict_artifact_bytes)
+            expert_signoff_packet["referenced_hashes"]["verdict_artifact_sha256"] = (
+                verdict_artifact_sha256
+            )
+            packet_attestation["expert_signoff_packet_sha256"] = self._hash_obj(
+                expert_signoff_packet
+            )
+            self._audit(
+                py,
+                "verdict_artifact",
+                {
+                    "path": self.verdict_path,
+                    "sha256": verdict_artifact_sha256,
+                    "byte_count": packet_attestation["verdict_artifact_bytes"],
+                },
+            )
+            self._emit_expert_signoff_packet(py, expert_signoff_packet)
+            self._emit_packet_attestation(py, packet_attestation)
+            report_metadata["packet_attestation"] = packet_attestation
 
             # Phase 3: Crypto custody
-            mf = self.finalize(py)
-            verdict = self.compute_verdict(merged)
-            self.write_verdict(py, merged, mf, verdict, contras, kept, downgraded)
+            mf = self.finalize(py, packet_attestation)
+            manifest_verification = self.verify_final_manifest(py)
+            final_release_gate = self._build_release_gate(
+                report_metadata["report_qa"], manifest_verification, mf
+            )
+            self.final_release_gate = final_release_gate
 
             # Phase 4: Local artifacts + optional report
             local_dir = self.fetch_artifacts_to_host()
-            if self.with_report:
+            if self.with_report and release_gate.get("report_render_allowed"):
                 try:
                     from render_report import render_report
 
@@ -2439,13 +6320,38 @@ class Investigation:
                     print(f"\n  report PDF       = {pdf_path}")
                 except Exception as e:
                     print(f"\n  report generation skipped: {e}")
+            elif self.with_report:
+                print(
+                    "\n  report generation blocked by report QA: "
+                    f"{release_gate.get('packet_state')}"
+                )
 
             print(f"\n{'='*70}\nDONE — verdict: {verdict}\n{'='*70}")
+            print(f"  packet_state    = {final_release_gate.get('packet_state')}")
+            print(
+                "  customer_ready  = "
+                f"{final_release_gate.get('customer_releasable', False)}"
+            )
+            if final_release_gate.get("failed_checks") or final_release_gate.get(
+                "warning_checks"
+            ):
+                print(
+                    "  qa_checks       = "
+                    f"failed={final_release_gate.get('failed_checks', [])} "
+                    f"warnings={final_release_gate.get('warning_checks', [])}"
+                )
+            if final_release_gate.get("release_blockers"):
+                print("  release_blockers:")
+                for blocker in final_release_gate.get("release_blockers", [])[:5]:
+                    print(f"    - {blocker}")
             print(f"  Inside VM      : {self.case_dir}/")
             print(f"  On host (local): {local_dir}")
             return {
                 "case_id": self.case_id,
                 "verdict": verdict,
+                "packet_state": final_release_gate.get("packet_state"),
+                "customer_ready": final_release_gate.get("customer_releasable", False),
+                "manifest_verify_overall": manifest_verification.get("overall"),
                 "case_dir_in_vm": self.case_dir,
                 "local_dir": str(local_dir),
             }
@@ -2473,13 +6379,14 @@ def preflight_check() -> None:
             file=sys.stderr,
         )
         sys.exit(2)
+
     # One SSH round-trip checking both MCP server prerequisites:
     # the Rust DFIR binary AND the Python agent_mcp directory + uv
     # binary it needs to spawn. Both must be present or the
     # investigation will fail downstream with a less-helpful error.
     probe = (
-        f"test -x {RUST_BIN} && "
-        f"test -d {GUEST_REPO}/services/agent_mcp && "
+        f"test -x {RUST_BIN_Q} && "
+        f"test -d {AGENT_MCP_DIR_Q} && "
         f"test -x /home/sansforensics/.local/bin/uv && "
         f"echo ok"
     )
@@ -2508,6 +6415,16 @@ def preflight_check() -> None:
         sys.exit(2)
 
 
+def write_run_summary(path: str, summary: dict[str, Any]) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(f".{target.name}.tmp")
+    tmp.write_text(
+        json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    tmp.replace(target)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         prog="find-evil-auto",
@@ -2530,26 +6447,72 @@ def main() -> int:
         help="Skip PDF report generation at the end.",
     )
     p.add_argument(
+        "--signer",
+        choices=("stub", "sigstore"),
+        default="stub",
+        help="Signer passed to manifest_finalize. Use sigstore for customer-release candidates; stub is dev/offline only.",
+    )
+    p.add_argument(
         "--skip-preflight",
         action="store_true",
         help="Skip SSH/VM pre-flight checks. Useful when the orchestrator "
         "is invoked from fleet_investigate.py which already verified "
         "the VM is reachable for the whole fleet run.",
     )
+    p.add_argument(
+        "--force-fresh-replay",
+        action="store_true",
+        help="Bypass verifier replay cache hints and force each cited tool call to be re-run.",
+    )
+    p.add_argument(
+        "--run-summary",
+        metavar="PATH",
+        help="Write a machine-readable JSON run summary to PATH without changing human stdout.",
+    )
     args = p.parse_args()
 
     # Make sibling scripts importable (render_report.py)
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    if not args.skip_preflight:
-        preflight_check()
-
     inv = Investigation(
         args.evidence_path,
         unattended=args.unattended,
         with_report=not args.no_report,
+        signer=args.signer,
+        force_fresh_replay=args.force_fresh_replay,
     )
-    result = inv.run()
+
+    if not args.skip_preflight:
+        try:
+            preflight_check()
+        except SystemExit as exc:
+            if args.run_summary:
+                write_run_summary(
+                    args.run_summary,
+                    inv.build_run_summary(
+                        readiness_state="blocked",
+                        error=f"preflight_check exited with code {exc.code}",
+                    ),
+                )
+            raise
+
+    try:
+        result = inv.run()
+    except Exception as exc:
+        if args.run_summary:
+            write_run_summary(
+                args.run_summary,
+                inv.build_run_summary(readiness_state="partial", error=str(exc)),
+            )
+        raise
+    if args.run_summary:
+        readiness_state = "successful"
+        if result.get("packet_state") not in (None, "READY_FOR_CUSTOMER_RELEASE"):
+            readiness_state = "blocked"
+        write_run_summary(
+            args.run_summary,
+            inv.build_run_summary(readiness_state=readiness_state, result=result),
+        )
     return 0 if result["verdict"] != "ERROR" else 1
 
 

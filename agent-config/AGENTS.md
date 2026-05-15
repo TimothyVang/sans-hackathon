@@ -76,8 +76,9 @@ Pool A):** Pool B's typical `memory_remember` kinds skew toward `ioc`
 (C2 domains, IPs, URLs), `hash` (staged binary hashes, archive
 hashes), and `finding_summary` (one-line of the exfil mechanism).
 Use `memory_recall` whenever you're about to cite an IOC / hash /
-TTP — a prior-case hit converts a HYPOTHESIS into an INFERRED with
-the prior-case `case_id` as the corroborating artifact class.
+TTP. A prior-case hit adds prioritization and context, but it is not
+current-case evidence and must not upgrade a HYPOTHESIS into an
+INFERRED Finding by itself.
 
 ## verifier
 Re-runs every Finding's cited `tool_call_id` via the

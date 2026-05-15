@@ -107,6 +107,37 @@ The fetch script is deliberately strict: SHA pin enforced when supplied, magic-b
 
 ---
 
+## Tiny regression fixture matrix
+
+These are source-controlled smoke fixtures, not bundled evidence images. They keep
+the final automation gates runnable on a laptop while larger public datasets stay
+ignored under `fixtures/` and `goldens/`.
+
+Run the matrix with:
+
+```sh
+python scripts/verdict-policy-smoke.py
+```
+
+| Scenario | Tiny fixture or smoke input | Locked behavior |
+|---|---|---|
+| Benign | Synthetic benign EVTX rows in `scripts/verdict-policy-smoke.py` | Parsed benign rows produce zero Findings and scoped `NO_EVIL`. |
+| EVTX-only | Synthetic Security EID 4698 scheduled-task row | Suspicious task creation emits one cited HYPOTHESIS Finding and remains `INDETERMINATE`. |
+| Memory DKOM | Synthetic `pslist` / `psscan` divergence | Process-view divergence requires `psxview` follow-up and remains evidence-scoped. |
+| Memory injection | Synthetic malfind RWX/MZ observable | Injection triage stays HYPOTHESIS and cites the malfind tool call. |
+| Custody-only disk | Synthetic E01 `case_open`-only observable | Disk custody registration alone stays `INDETERMINATE` and does not mark disk contents touched. |
+| Extracted-disk persistence | Synthetic extracted Prefetch plus Registry artifacts | Extracted disk artifacts dispatch to `prefetch_parse` and `registry_query`. |
+| Network-only | Synthetic PCAP-only execution-overclaim QA packet | Report QA blocks network-only execution wording. |
+| Velociraptor zip | Synthetic Velociraptor zip member inventory with contained Prefetch | Safe contained artifacts extract and dispatch to typed parsers. |
+| Mixed full-case | Synthetic directory containing memory, EVTX, raw disk, and extracted disk artifacts | Mixed inventories mark supplied classes touched and can produce scoped `NO_EVIL` only after substantive parsers run. |
+
+The matrix deliberately avoids fake production evidence and fake malicious demo
+findings. It verifies policy behavior, dispatch coverage, and overclaim blockers
+using tiny synthetic inputs; real-evidence accuracy still belongs to the public
+goldens above and larger ignored fixtures.
+
+---
+
 ## DFIR-Metric benchmark suite
 
 | Attribute | Value |

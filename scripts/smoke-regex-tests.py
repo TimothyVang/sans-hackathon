@@ -195,6 +195,20 @@ AUTONOMOUS_LOOP_RATE_LIMIT_CASES = [
     ),
 ]
 
+AUTONOMOUS_LOOP_MIN_HOURS_CASES = [
+    # (label, now, min_deadline, deadline, expected_wait)
+    ("Before min and max deadlines waits", 10.0, 20.0, 30.0, True),
+    ("After min deadline stops", 25.0, 20.0, 30.0, False),
+    ("After max deadline stops", 31.0, 40.0, 30.0, False),
+]
+
+AUTONOMOUS_LOOP_EMPTY_SLEEP_CASES = [
+    # (label, now, min_deadline, deadline, requested_sleep, expected_sleep)
+    ("Sleep caps at min deadline", 0.0, 100.0, 200.0, 300.0, 100.0),
+    ("Sleep uses requested interval when safe", 0.0, 100.0, 200.0, 30.0, 30.0),
+    ("Sleep caps at max deadline", 0.0, 500.0, 200.0, 300.0, 200.0),
+]
+
 
 PATH_EXISTENCE_ALLOW_CASES = [
     # (label, candidate, expected_allowed)
@@ -286,6 +300,35 @@ def _run_autonomous_loop_cases(auto_loop) -> list[tuple[str, str]]:
                     f"_is_rate_limited({stderr!r}): expected {expected}, got {actual}",
                 )
             )
+    for label, now, min_deadline, deadline, expected in AUTONOMOUS_LOOP_MIN_HOURS_CASES:
+        actual = auto_loop._should_wait_for_queue_item(now, min_deadline, deadline)
+        if actual != expected:
+            failures.append(
+                (
+                    label,
+                    "_should_wait_for_queue_item: "
+                    f"expected {expected}, got {actual}",
+                )
+            )
+    for (
+        label,
+        now,
+        min_deadline,
+        deadline,
+        requested_sleep,
+        expected_sleep,
+    ) in AUTONOMOUS_LOOP_EMPTY_SLEEP_CASES:
+        actual = auto_loop._queue_empty_sleep_seconds(
+            now, min_deadline, deadline, requested_sleep
+        )
+        if actual != expected_sleep:
+            failures.append(
+                (
+                    label,
+                    "_queue_empty_sleep_seconds: "
+                    f"expected {expected_sleep}, got {actual}",
+                )
+            )
     return failures
 
 
@@ -342,8 +385,11 @@ def main() -> int:
         all_failures.append(("path-existence-smoke", label, err))
 
     auto_loop_failures = _run_autonomous_loop_cases(auto_loop)
-    n_auto_loop = len(AUTONOMOUS_LOOP_UNBLOCKED_CASES) + len(
-        AUTONOMOUS_LOOP_RATE_LIMIT_CASES
+    n_auto_loop = (
+        len(AUTONOMOUS_LOOP_UNBLOCKED_CASES)
+        + len(AUTONOMOUS_LOOP_RATE_LIMIT_CASES)
+        + len(AUTONOMOUS_LOOP_MIN_HOURS_CASES)
+        + len(AUTONOMOUS_LOOP_EMPTY_SLEEP_CASES)
     )
     print(
         f"autonomous-loop regexes:  {n_auto_loop - len(auto_loop_failures)}"

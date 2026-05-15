@@ -27,6 +27,7 @@ _MODULES: tuple[str, ...] = (
     "memory_remember",
     "memory_recall",
     "pool_handoff",
+    "expert_miss_capture",
 )
 
 
