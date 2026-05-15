@@ -12,10 +12,10 @@ Find Evil ships two MCP servers in `.mcp.json`:
 
 | Server | Purpose | Expected tools |
 |---|---|---:|
-| `findevil-mcp` | Rust DFIR tool surface over evidence and forensic artifacts | 13 |
-| `findevil-agent-mcp` | Python audit, manifest, verifier, ACH, memory, and ACP support tools | 11 |
+| `findevil-mcp` | Rust DFIR tool surface over evidence and forensic artifacts | 19 |
+| `findevil-agent-mcp` | Python audit, manifest, verifier, ACH, memory, ACP, and expert-feedback support tools | 12 |
 
-Expected total: 24 tools.
+Expected total: 31 tools.
 
 These are the only product-default MCP servers. Do not add generic filesystem, browser, Docker, Kubernetes, GitHub, fetch, or shell MCPs as defaults.
 

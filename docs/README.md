@@ -36,6 +36,13 @@ The authoritative *precedence* hierarchy (which spec overrides which) lives in `
 | `false-positives.md` | **ACTIVE** | Operator's guide. Three architectural FP layers + four operational habits + per-tool FP risk table. |
 | `verdict-semantics.md` | **ACTIVE** | Analyst-facing meaning of `SUSPICIOUS` / `INDETERMINATE` / `NO_EVIL`; mirrors `compute_verdict` in `scripts/find_evil_auto.py`. |
 
+### Current automation outputs
+
+- `scripts/find-evil-auto --run-summary <path>` writes a machine-readable run summary outside the normal case artifact set. It points to the local run directory and records artifact paths, report QA, release-gate/expert-signoff state, signer, readiness state, blockers, warnings, and final result/error.
+- `scripts/readiness-gate.ps1` is the packet-producing readiness flow. Full mode writes `readiness-summary.json`, `readiness-packet-manifest.json`, and `readiness-packet.zip` under `tmp/readiness-gates/<run-id>/`; fixed `-RunId` reruns refresh generated packet contents and may use a timestamped local-build child run; passing states mean ready for human expert review, not customer release.
+- `scripts/readiness-gate.sh` is POSIX strict/check-only. It can print `SUBMISSION_READY` for its legacy checks, but it does not create the readiness packet ZIP.
+- Local smoke gates are `bash scripts/run-all-smokes.sh` for POSIX/Git Bash and `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-all-smokes.ps1` for native Windows. Do not copy old hard-coded smoke counts; the scripts print the current tally.
+
 ## `agent-config/` (runtime DFIR agent identity)
 
 These are read by the agent at investigation start (per CLAUDE.md "Agent investigation prompt").
@@ -45,7 +52,7 @@ These are read by the agent at investigation start (per CLAUDE.md "Agent investi
 | `agent-config/SOUL.md` | **ACTIVE** | Mission + epistemic hierarchy (CONFIRMED > INFERRED > HYPOTHESIS) + FRE 902(14) stance + cross-artifact rule + no-attribution rule. |
 | `agent-config/AGENTS.md` | **ACTIVE** | Supervisor / Pool A / Pool B / judge / verifier / correlator role descriptions. |
 | `agent-config/PLAYBOOK.md` | **ACTIVE** | Tool sequences per evidence type (`.e01`, `.mem`, `.evtx`, Velociraptor `.zip`, mixed dirs). |
-| `agent-config/TOOLS.md` | **ACTIVE** | Typed tool surface — 13 Rust + 11 Python MCP tools. |
+| `agent-config/TOOLS.md` | **ACTIVE** | Typed tool surface — 19 Rust + 12 Python MCP tools. |
 | `agent-config/MEMORY.md` | **ACTIVE** | Tier-1 DFIR caveats (Amcache LastModified ≠ execution, ShimCache order changed at Win8.1, Logon Type 3 vs 10, etc.). |
 | `agent-config/HEARTBEAT.md` | **ACTIVE** | Per-iteration self-check loop. |
 | `agent-config/JUDGING.md` | **ACTIVE** | SANS Find Evil! 2026 rubric (6 criteria, verbatim) + end-of-investigation self-score checklist that emits `kind=judge_selfscore` audit records. |

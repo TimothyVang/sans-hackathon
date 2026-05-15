@@ -1,9 +1,9 @@
 # Spec #3 — Layered Test Sandbox (L0-L3)
 
-> **Status: SHIPPED.** L0 (lint, GHA), L1 (Docker compose, GHA + local), L3 (QEMU microvm Packer build) all live. L2 (Sysbox SIFT-lite) is advisory-only per CLAUDE.md. Live wiring: `.github/workflows/l[0-3]-*.yml` + `docker/l1-compose.yml` + `packer/sift-microvm.pkr.hcl`. Local smoke loop: `bash scripts/run-all-smokes.sh` (14/14 green).
+> **Status: SHIPPED.** L0 (lint, GHA), L1 (Docker compose, GHA + local), L3 (QEMU microvm Packer build) all live. L2 (Sysbox SIFT-lite) is advisory-only per CLAUDE.md. Live wiring: `.github/workflows/l[0-3]-*.yml` + `docker/l1-compose.yml` + `packer/sift-microvm.pkr.hcl`. Local smoke loops are `bash scripts/run-all-smokes.sh` on POSIX/Git Bash and `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-all-smokes.ps1` on native Windows; the runners print the current tally.
 
 **Date:** 2026-04-23
-**Status:** Design — awaiting user approval
+**Status:** Shipped reference; implementation wins where later code diverges
 **Blocks:** Spec #1 (Build Swarm), Spec #2 (Product)
 **Parent:** `2026-04-23-find-evil-automation-master-design.md`
 

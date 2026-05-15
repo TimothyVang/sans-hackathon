@@ -554,9 +554,9 @@ Ensure the typed DFIR tool surface is consistent and judge-facing docs match shi
 
 Implement:
 
-- Confirm Rust MCP tool count is 13.
-- Confirm Python MCP tool count is 11.
-- Confirm total MCP tool count is 24.
+- Confirm Rust MCP tool count is 19.
+- Confirm Python MCP tool count is 12.
+- Confirm total MCP tool count is 31.
 - Confirm vol_psxview is registered, listed, dispatched, exported, tested, and documented.
 - Remove stale active references to old Rust tool counts, old total tool counts, old Python tool counts, and A5-removed timestamping tools.
 
@@ -928,7 +928,7 @@ The final response must include a table like this, with real evidence filled in:
 ```text
 Requirement | Status | Evidence
 Parallel subagents launched | pass/fail | subagent summaries reconciled
-Tool surface consistency | pass/fail | 13 Rust + 11 Python + smoke output
+Tool surface consistency | pass/fail | 19 Rust + 12 Python + smoke output
 Memory DFIR slice | pass/fail | vol_pslist/psscan/psxview/malfind tests or code refs
 EVTX slice | pass/fail | evtx timeline/summary behavior and tests
 Disk artifact honesty | pass/fail | case_open limit + SIFT next actions documented
@@ -979,9 +979,9 @@ Global definition of done:
 
 - Parallel subagents were launched for memory, EVTX, disk, timeline/ATT&CK, report/FP, and docs/validation.
 - Subagent findings were reconciled into one integrated implementation before final edits.
-- Rust MCP surface is 13 tools.
-- Python MCP surface is 11 tools.
-- Total MCP surface is 24 tools.
+- Rust MCP surface is 19 tools.
+- Python MCP surface is 12 tools.
+- Total MCP surface is 25 tools.
 - vol_psxview is integrated, tested, and documented.
 - Memory playbook produces useful process/injection findings and timeline events.
 - EVTX playbook produces useful summaries and timeline events.

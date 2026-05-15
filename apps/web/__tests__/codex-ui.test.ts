@@ -1,4 +1,6 @@
 import path from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 import { describe, expect, it } from "vitest";
 
@@ -9,6 +11,7 @@ import {
 } from "@/lib/codex-presets";
 import {
   buildCodexCommandSpec,
+  getLatestCodexReadinessSummary,
   isAllowedCodexEvidencePath,
   validateCodexRequest,
 } from "@/lib/codex-server";
@@ -87,5 +90,34 @@ describe("Codex UI server guardrails", () => {
     expect(spec.args).toContain("shell_tool");
     expect(spec.args.join(" ")).toContain("enabled_tools=['case_open','evtx_query']");
     expect(spec.prompt).toContain("Execution claims require at least two artifact classes");
+  });
+
+  it("loads the latest local readiness summary for the operator surface", () => {
+    const repoRoot = mkdtempSync(path.join(tmpdir(), "findevil-codex-ready-"));
+    const runRoot = path.join(repoRoot, "tmp", "readiness-gates", "ready-run");
+    const evidenceRunDir = path.join(repoRoot, "tmp", "auto-runs", "auto-1");
+    mkdirSync(runRoot, { recursive: true });
+    mkdirSync(evidenceRunDir, { recursive: true });
+    writeFileSync(path.join(evidenceRunDir, "REPORT.html"), "<h1>Report</h1>");
+    writeFileSync(
+      path.join(runRoot, "readiness-summary.json"),
+      JSON.stringify({
+        generated_at: "2026-05-14T00:00:00Z",
+        run_id: "ready-run",
+        readiness_state: "PACKET_READY_FOR_EXPERT_REVIEW",
+        evidence_run_dir: evidenceRunDir,
+        packet_zip: path.join(runRoot, "readiness-packet.zip"),
+        customer_releasable: false,
+        blockers: [],
+        warnings: ["REPORT.pdf missing; packet contains HTML report only"],
+      }),
+    );
+
+    const summary = getLatestCodexReadinessSummary(repoRoot);
+
+    expect(summary?.readinessState).toBe("PACKET_READY_FOR_EXPERT_REVIEW");
+    expect(summary?.packetZip).toContain("readiness-packet.zip");
+    expect(summary?.warnings).toContain("REPORT.pdf missing; packet contains HTML report only");
+    expect(summary?.reportLinks.map((link) => link.label)).toContain("REPORT.html");
   });
 });

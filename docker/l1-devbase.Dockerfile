@@ -17,7 +17,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/usr/local/cargo/bin:/usr/local/fnm:/usr/local/bin:${PATH}
 
 # System deps matching BUILD_PLAN_v2.md §10 week-1 skeleton + Spec #2 §4.1
-# (rmcp + evtx + duckdb) + Spec #2 §4.2 (Python agent with sigstore/OTS).
+# (rmcp + evtx + duckdb) + Spec #2 §4.2 (Python agent with sigstore custody).
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -61,21 +61,24 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 # builds do not expose corepack until the shell environment is reloaded,
 # so use the explicit npm path instead of assuming PATH/corepack state.
 RUN curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir /usr/local/fnm --skip-shell \
- && bash -lc 'eval "$(/usr/local/fnm/fnm env --shell bash)" \
+ && FNM_DIR=/usr/local/fnm bash -lc 'export FNM_DIR=/usr/local/fnm \
+    && eval "$(/usr/local/fnm/fnm env --shell bash)" \
     && fnm install 20 \
     && fnm default 20 \
     && npm install -g pnpm@9.12.0 \
-    && ln -sf "$(command -v node)" /usr/local/bin/node \
-    && ln -sf "$(command -v npm)" /usr/local/bin/npm \
-    && ln -sf "$(command -v npx)" /usr/local/bin/npx \
-    && ln -sf "$(command -v pnpm)" /usr/local/bin/pnpm \
-    && ln -sf "$(command -v pnpx)" /usr/local/bin/pnpx \
+    && NODE_BIN_DIR="$(dirname "$(find "${FNM_DIR}/node-versions" -path "*/installation/bin/node" -type f -print -quit)")" \
+    && test -x "${NODE_BIN_DIR}/node" \
+    && ln -sf "${NODE_BIN_DIR}/node" /usr/local/bin/node \
+    && ln -sf "${NODE_BIN_DIR}/npm" /usr/local/bin/npm \
+    && ln -sf "${NODE_BIN_DIR}/npx" /usr/local/bin/npx \
+    && ln -sf "${NODE_BIN_DIR}/pnpm" /usr/local/bin/pnpm \
+    && ln -sf "${NODE_BIN_DIR}/pnpx" /usr/local/bin/pnpx \
     && node --version \
     && pnpm --version'
 
 # Python packaging: uv for env+lockfile (matches CLAUDE.md conventions).
 # Pinned per https://astral.sh/uv release notes around the plan date.
-RUN pip install --no-cache-dir 'uv==0.5.8' \
+RUN pip install --no-cache-dir 'uv==0.5.8' 'matplotlib>=3.8,<4.0' \
  && uv --version
 
 # Non-root build user. Anything that runs evidence-adjacent must be non-root.
@@ -85,6 +88,7 @@ RUN groupadd --gid "${DEV_GID}" dev \
  && useradd --uid "${DEV_UID}" --gid "${DEV_GID}" --create-home --shell /bin/bash dev \
  && mkdir -p \
     /workspace \
+    /home/dev/l1-node-workspace/apps/web \
     /home/dev/.cargo/git \
     /home/dev/.cargo/registry \
     /home/dev/.cargo-target \
@@ -99,6 +103,15 @@ RUN groupadd --gid "${DEV_GID}" dev \
     /usr/local/cargo \
     /usr/local/rustup \
     /usr/local/fnm || true
+
+# Seed the pnpm store into the same directory that L1 mounts as a named volume.
+# Docker initializes fresh volumes from image contents, so first-run Node tests
+# avoid redownloading hundreds of packages after Rust/Python have already run.
+COPY --chown=dev:dev pnpm-lock.yaml pnpm-workspace.yaml /home/dev/l1-node-workspace/
+COPY --chown=dev:dev apps/web/package.json /home/dev/l1-node-workspace/apps/web/package.json
+RUN cd /home/dev/l1-node-workspace \
+ && pnpm fetch --frozen-lockfile --store-dir /home/dev/l1-node-workspace/.pnpm-store \
+ && chown -R dev:dev /home/dev/l1-node-workspace
 
 WORKDIR /workspace
 

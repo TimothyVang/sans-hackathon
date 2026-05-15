@@ -48,6 +48,48 @@ once the first `v0.x` is cut on the `v-submit` tag.
 
 ### Added — automation surface
 
+- **Tiny regression fixture matrix.** `scripts/verdict-policy-smoke.py` now
+  prints and asserts a named laptop-runnable matrix for benign, EVTX-only,
+  memory DKOM, memory injection, custody-only disk, extracted-disk persistence,
+  network-only, Velociraptor zip, and mixed full-case scenarios; `docs/DATASET.md`
+  documents the smoke inputs without committing large evidence.
+- **Deterministic scheduled-task EVTX triage.** `find-evil-auto` now turns
+  Security EID 4698 scheduled-task creation rows with suspicious action content
+  into cited HYPOTHESIS Findings mapped to T1053.005, preserving the rule that
+  task creation alone does not prove execution or make a case suspicious.
+- **Report QA false-positive overclaim locks.** Verdict-policy smoke now covers
+  YARA-only, Hayabusa-only, malfind-only, memory-only, EVTX-only, and
+  network-only overclaim wording, plus customer-ready language before release
+  gates; these cases must stay blocked by report QA.
+- **Expert miss feedback items in signoff metadata.** Captured
+  `expert_miss_capture` entries now become structured signoff `feedback_items`
+  with conversion targets for connector, playbook, rule, QA, escalation, or
+  report-copy follow-up, and verdict metadata exposes the expert miss summary.
+- **Velociraptor zip dispatch in `find-evil-auto`.** Single `.zip`
+  evidence now routes to a Velociraptor collection lane instead of
+  `unknown`; mixed case directories extract supported contained EVTX,
+  Prefetch, Registry, MFT, USN, PCAP, Zeek, and Sysmon artifacts into
+  the case work dir read-only, then dispatch them through the existing
+  typed parsers. Unsafe zip-slip members, oversized members, and
+  unsupported collection rows are recorded as limitations rather than
+  silently treated as clean coverage.
+- **Bounded disk artifact extraction.** `disk_extract_artifacts` now
+  accepts `max_artifact_bytes` (default 512 MiB), skips oversized
+  artifacts before copying them out of the mounted read-only view, and
+  reports `artifacts_skipped_oversize` so broad YARA-target extraction
+  cannot silently balloon a case workspace.
+- **`scripts/autonomous-loop.py --min-hours` continuous-run floor.** The
+  queue driver can now be launched as
+  `python scripts/autonomous-loop.py --min-hours 8 --max-hours 10` so an
+  overnight coding pass does not exit early just because the queue is briefly
+  empty. If no unblocked item exists before the minimum wall-clock floor, the
+  harness waits in `--empty-sleep-seconds` intervals for newly added queue
+  work; rate limits and failed task exits still halt cleanly. The queue-parser
+  self-test now covers the min-hours wait and sleep-cap helpers.
+- **Autonomous-loop CLI smoke.** `python scripts/autonomous-loop-smoke.py` now
+  validates `--min-hours 8 --max-hours 8 --dry-run` against a synthetic queue
+  and a tiny empty-queue wait/stop path without requiring `claude` on PATH or
+  consuming Claude usage; `scripts/run-all-smokes.sh` runs it by default.
 - **Case completeness + unified timeline output.** `find-evil-auto`
   now writes a `case_completeness` matrix and `timeline_summary` into
   `verdict.json`, persists normalized timeline events to

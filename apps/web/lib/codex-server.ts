@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   buildCodexInvestigationPrompt,
@@ -33,6 +34,28 @@ export interface CodexCommandSpec {
   prompt: string;
 }
 
+export interface CodexReadinessReportLink {
+  label: string;
+  path: string;
+  href: string;
+}
+
+export interface CodexReadinessSummaryStatus {
+  summaryPath: string;
+  generatedAt?: string;
+  runId?: string;
+  mode?: string;
+  readinessState?: string;
+  packetZip?: string | null;
+  packetDir?: string | null;
+  packetManifest?: string | null;
+  evidenceRunDir?: string | null;
+  customerReleasable?: boolean;
+  blockers: string[];
+  warnings: string[];
+  reportLinks: CodexReadinessReportLink[];
+}
+
 export function isCodexUiEnabled(): boolean {
   return process.env.FINDEVIL_CODEX_UI_ENABLE === "1";
 }
@@ -57,6 +80,74 @@ export function getFindevilMcpBinary(repoRoot = getRepoRoot()): string {
 
 export function isFindevilMcpBinaryBuilt(repoRoot = getRepoRoot()): boolean {
   return existsSync(getFindevilMcpBinary(repoRoot));
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+function findReadinessSummaryFiles(root: string): string[] {
+  if (!existsSync(root)) return [];
+  return readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(root, entry.name, "readiness-summary.json"))
+    .filter((summaryPath) => existsSync(summaryPath));
+}
+
+function buildReportLinks(evidenceRunDir: string | undefined): CodexReadinessReportLink[] {
+  if (!evidenceRunDir) return [];
+  return ["REPORT.html", "REPORT.pdf", "REPORT.md"]
+    .map((fileName) => path.join(evidenceRunDir, fileName))
+    .filter((reportPath) => existsSync(reportPath))
+    .map((reportPath) => ({
+      label: path.basename(reportPath),
+      path: reportPath,
+      href: pathToFileURL(reportPath).toString(),
+    }));
+}
+
+export function getLatestCodexReadinessSummary(
+  repoRoot = getRepoRoot(),
+): CodexReadinessSummaryStatus | null {
+  const summaries = findReadinessSummaryFiles(path.join(repoRoot, "tmp", "readiness-gates"));
+  if (summaries.length === 0) return null;
+
+  const latestSummaries = summaries
+    .map((summaryPath) => ({ summaryPath, mtimeMs: statSync(summaryPath).mtimeMs }))
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  for (const latest of latestSummaries) {
+    try {
+      const raw = JSON.parse(readFileSync(latest.summaryPath, "utf8")) as Record<string, unknown>;
+      const evidenceRunDir = asString(raw.evidence_run_dir);
+
+      return {
+        summaryPath: latest.summaryPath,
+        generatedAt: asString(raw.generated_at),
+        runId: asString(raw.run_id),
+        mode: asString(raw.mode),
+        readinessState: asString(raw.readiness_state),
+        packetZip: asString(raw.packet_zip) ?? null,
+        packetDir: asString(raw.packet_dir) ?? null,
+        packetManifest: asString(raw.packet_manifest) ?? null,
+        evidenceRunDir: evidenceRunDir ?? null,
+        customerReleasable:
+          typeof raw.customer_releasable === "boolean" ? raw.customer_releasable : undefined,
+        blockers: asStringArray(raw.blockers),
+        warnings: asStringArray(raw.warnings),
+        reportLinks: buildReportLinks(evidenceRunDir),
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
 
 export function isAllowedCodexEvidencePath(

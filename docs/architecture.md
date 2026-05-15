@@ -12,8 +12,8 @@ Per SANS Find Evil! rules, submissions declare which of four supported patterns 
 
 1. **Direct Agent Extension** (rules §1) — Claude Code IS the agent. The judge runs `scripts/find-evil` (or `claude`) at the repo root; `.mcp.json` auto-spawns both MCP servers; Claude Code drives the investigation as supervisor + Pool A/B subagents (`CLAUDE_CODE_FORK_SUBAGENT=1`). The SANS rules call this "the fastest path to a working submission."
 2. **Custom MCP Server** (rules §2) — two purpose-built MCP servers expose the typed tool surface:
-   - `findevil-mcp` (Rust) — 13 DFIR primitives (case_open, evtx_query, mft_timeline, hayabusa_scan, vol_pslist, vol_psscan, vol_psxview, vol_malfind, yara_scan, usnjrnl_query, registry_query, prefetch_parse, vel_collect). Read-only on evidence; SHA-256 every output. **NO `execute_shell`.**
-   - `findevil-agent-mcp` (Python) — 11 crypto + ACH + memory + ACP tools (audit_append/verify, manifest_finalize/verify, verify_finding, detect_contradictions, judge_findings, correlate_findings, memory_remember/recall, pool_handoff). The pre-A5 `ots_stamp`/`ots_verify` pair was removed.
+   - `findevil-mcp` (Rust) — 19 DFIR primitives (case_open, disk_mount/extract/unmount, evtx_query, mft_timeline, hayabusa_scan, vol_pslist, vol_psscan, vol_psxview, vol_malfind, yara_scan, usnjrnl_query, registry_query, prefetch_parse, vel_collect, sysmon_network_query, zeek_summary, pcap_triage). Read-only on evidence; SHA-256 every output. **NO `execute_shell`.**
+   - `findevil-agent-mcp` (Python) — 12 crypto + ACH + memory + ACP + expert-feedback tools (audit_append/verify, manifest_finalize/verify, verify_finding, detect_contradictions, judge_findings, correlate_findings, memory_remember/recall, pool_handoff, expert_miss_capture). The pre-A5 `ots_stamp`/`ots_verify` pair was removed.
 
 The combination is the architectural claim: Claude Code's agent loop never touches a raw shell because the only verbs it has are MCP-typed function calls into one of the two servers.
 
@@ -36,8 +36,8 @@ flowchart TB
     end
 
     subgraph Trust2["**TRUST BOUNDARY 2** — Two MCP Servers (typed tool surface)"]
-        RustMcp["**findevil-mcp** (Rust, hand-rolled MCP 2024-11-05)<br/>13 typed DFIR tools<br/>NO execute_shell<br/>---<br/>case_open, mft_timeline,<br/>evtx_query, hayabusa_scan,<br/>vol_pslist, vol_psscan, vol_psxview,<br/>vol_malfind, yara_scan, usnjrnl_query,<br/>registry_query, prefetch_parse,<br/>vel_collect"]
-        AgentMcp["**findevil-agent-mcp** (Python, mcp SDK 1.x)<br/>11 typed crypto/ACH/memory/ACP tools<br/>---<br/>audit_append/verify,<br/>manifest_finalize/verify,<br/>verify_finding,<br/>detect_contradictions,<br/>judge_findings,<br/>correlate_findings,<br/>memory_remember/recall,<br/>pool_handoff"]
+        RustMcp["**findevil-mcp** (Rust, hand-rolled MCP 2024-11-05)<br/>19 typed DFIR tools<br/>NO execute_shell<br/>---<br/>case_open, disk_mount/extract/unmount,<br/>mft_timeline, evtx_query, hayabusa_scan,<br/>vol_pslist, vol_psscan, vol_psxview,<br/>vol_malfind, yara_scan, usnjrnl_query,<br/>registry_query, prefetch_parse, vel_collect,<br/>sysmon_network_query, zeek_summary, pcap_triage"]
+        AgentMcp["**findevil-agent-mcp** (Python, mcp SDK 1.x)<br/>12 typed crypto/ACH/memory/ACP/expert-feedback tools<br/>---<br/>audit_append/verify,<br/>manifest_finalize/verify,<br/>verify_finding,<br/>detect_contradictions,<br/>judge_findings,<br/>correlate_findings,<br/>memory_remember/recall,<br/>pool_handoff,<br/>expert_miss_capture"]
         EvtxCrate["evtx crate<br/>MIT, in-process<br/>1600× python-evtx"]
         Merkle["rs_merkle 1.4.0<br/>append-only tree"]
         DuckDB["DuckDB 0.10<br/>L1 case store"]
@@ -59,10 +59,10 @@ flowchart TB
         Manifest["run.manifest.json<br/>signs Merkle root +<br/>audit-log final hash"]
     end
 
-    subgraph Trust5["**TRUST BOUNDARY 5** — Presentation (DEFERRED to bonus per A2)"]
+    subgraph Trust5["**TRUST BOUNDARY 5** — Presentation"]
         Terminal["Claude Code terminal<br/>findings / contradictions /<br/>plans rendered as text<br/>(primary UX under A2)"]
         FindEvilSh["scripts/find-evil<br/>thin bash wrapper<br/>= claude (in cwd)"]
-        NextJS["Next.js 15 SPA<br/>(deferred — week-7 bonus)"]
+        NextJS["Next.js 15 SPA<br/>SSE audit-tail route + debug viewer<br/>local operator aid"]
         MCPWidgets["MCP App widgets SEP-1865<br/>(deferred — week-7 bonus)"]
     end
 
@@ -258,7 +258,7 @@ All three modes are **judge-valid**. Judges pick whichever they already have —
 
 | Dimension | Valhuntir (reference) | Us |
 |---|---|---|
-| MCP server | Python, 8 servers via sift-gateway, 100+ tools | **Two** typed MCP servers — Rust `findevil-mcp` (13 DFIR tools, including the deliberately-redundant `vol_pslist` + `vol_psscan` pair plus `vol_psxview` for DKOM cross-validation) + Python `findevil-agent-mcp` (11 crypto/ACH/memory/ACP tools); no execute_shell |
+| MCP server | Python, 8 servers via sift-gateway, 100+ tools | **Two** typed MCP servers — Rust `findevil-mcp` (19 DFIR tools, including the deliberately-redundant `vol_pslist` + `vol_psscan` pair plus `vol_psxview` for DKOM cross-validation, disk mount/extract helpers, and network/log triage) + Python `findevil-agent-mcp` (12 crypto/ACH/memory/ACP/expert-feedback tools); no execute_shell |
 | Agent runtime | Custom Python harness | **Claude Code** itself (SANS rules §1 "Direct Agent Extension") — no custom orchestrator to maintain |
 | Chain-of-custody | Password-gated HMAC (PBKDF2 2M iter) | sigstore/Rekor + Merkle + audit hash chain (FRE 902(14) self-authenticating, with the A5 timestamp trade-off documented) |
 | Agent pattern | Single agent + human approval | ACH dual-agent (persistence vs exfil) via Claude Code forked subagents + judge + contradiction surface |

@@ -68,6 +68,9 @@ class TestVerifyFinding:
         assert result.action == "approved"
         assert result.replay_matched is True
         assert result.replay_actual_sha256 == expected_sha
+        assert result.replay_artifact is not None
+        assert result.replay_artifact.drift_class == "exact_match"
+        assert result.replay_artifact.expected_sha256 == result.replay_expected_sha256
 
     async def test_replay_drift_downgrades(self, monkeypatch: Any) -> None:
         client = MockMcpClient()
@@ -90,6 +93,8 @@ class TestVerifyFinding:
         assert isinstance(result, VerifyFindingOutput)
         assert result.action == "downgraded"
         assert result.replay_matched is False
+        assert result.replay_artifact is not None
+        assert result.replay_artifact.drift_class == "material_drift"
 
     async def test_missing_tool_call_id_rejected(self, monkeypatch: Any) -> None:
         client = MockMcpClient()

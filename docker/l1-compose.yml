@@ -28,7 +28,7 @@ services:
       - l1-cargo-git:/home/dev/.cargo/git
       - l1-cargo-target:/home/dev/.cargo-target
       - l1-uv-cache:/home/dev/.cache/uv
-      - l1-pnpm-store:/home/dev/.local/share/pnpm/store
+      - l1-node-workspace:/home/dev/l1-node-workspace
     environment:
       CARGO_HOME: /home/dev/.cargo
       CARGO_TARGET_DIR: /home/dev/.cargo-target
@@ -36,16 +36,18 @@ services:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
-      # The product release profile keeps thin-LTO/codegen-units=1 in
-      # Cargo.toml. L1 is a constrained correctness gate, so override only
-      # the container release link to stay inside Docker Desktop memory caps.
-      CARGO_PROFILE_RELEASE_LTO: "false"
-      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
-      # lld uses substantially less memory than GNU ld for the Rust MCP
-      # test/release links, which keeps local Docker Desktop L1 viable.
+      # lld uses substantially less memory than GNU ld for Rust MCP links,
+      # which keeps local Docker Desktop L1 viable.
       RUSTFLAGS: "-D warnings -C link-arg=-fuse-ld=lld -C link-arg=-Wl,-z,nostart-stop-gc"
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
+      CI: "1"
+      FINDEVIL_L1_DOCKER: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+      NODE_OPTIONS: "--max-old-space-size=1024"
+      PNPM_CONFIG_CHILD_CONCURRENCY: "1"
+      PNPM_CONFIG_NETWORK_CONCURRENCY: "1"
+      PNPM_CONFIG_WORKSPACE_CONCURRENCY: "1"
       UV_CACHE_DIR: /home/dev/.cache/uv
       UV_SYSTEM_PYTHON: "true"
     # Self-skipping test sequence — matches the command exact-match in
@@ -59,8 +61,8 @@ services:
         if [ -f Cargo.toml ]; then
           echo "== cargo test --workspace --locked =="
           cargo test --workspace --locked
-          echo "== cargo build --release --locked =="
-          cargo build --workspace --release --locked
+          echo "== cargo build --workspace --locked =="
+          cargo build --workspace --locked
         else
           echo "-- no Cargo.toml yet, skipping Rust --"
         fi
@@ -72,10 +74,11 @@ services:
         for proj in services/agent services/agent_mcp services/swarm; do
           if [ -f "$$proj/pyproject.toml" ]; then
             python_any=true
+            venv_dir="/home/dev/.cache/uv/venvs/$${proj//\//-}"
             echo "== ($$proj) uv sync --extra dev =="
-            (cd "$$proj" && (uv sync --extra dev --frozen 2>/dev/null || uv sync --extra dev))
+            (cd "$$proj" && (UV_PROJECT_ENVIRONMENT="$$venv_dir" uv sync --extra dev --frozen 2>/dev/null || UV_PROJECT_ENVIRONMENT="$$venv_dir" uv sync --extra dev))
             echo "== ($$proj) uv run pytest -xvs --cov =="
-            (cd "$$proj" && uv run pytest -xvs --cov)
+            (cd "$$proj" && UV_PROJECT_ENVIRONMENT="$$venv_dir" uv run pytest -xvs --cov)
           fi
         done
         if [ "$$python_any" = "false" ]; then
@@ -83,35 +86,75 @@ services:
         fi
 
         if [ -f pnpm-workspace.yaml ] || [ -f package.json ]; then
-          echo "== pnpm install --frozen-lockfile =="
-          pnpm install --frozen-lockfile
-          echo "== pnpm -r build =="
-          pnpm -r build
-          echo "== pnpm -r test =="
-          pnpm -r test
+          node_packages="$$(find apps -mindepth 2 -maxdepth 2 -name package.json -print | sort)"
+          if [ "$$node_packages" != "apps/web/package.json" ]; then
+            echo "L1 Node isolation only supports the current apps/web workspace package." >&2
+            echo "Update docker/l1-compose.yml before adding more apps/* packages:" >&2
+            printf '%s\n' "$$node_packages" >&2
+            exit 1
+          fi
+
+          node_workspace="/home/dev/l1-node-workspace"
+          mkdir -p "$$node_workspace/apps"
+          rm -rf \
+            "$$node_workspace/apps/web" \
+            "$$node_workspace/pnpm-lock.yaml" \
+            "$$node_workspace/pnpm-workspace.yaml"
+          cp pnpm-lock.yaml pnpm-workspace.yaml "$$node_workspace/"
+          tar -C apps \
+            --exclude='web/node_modules' \
+            --exclude='web/.next' \
+            --exclude='web/dist' \
+            --exclude='web/coverage' \
+            -cf - web | tar -C "$$node_workspace/apps" -xf -
+          (
+            cd "$$node_workspace"
+            export PNPM_STORE_DIR="$$node_workspace/.pnpm-store"
+            echo "== pnpm fetch --frozen-lockfile =="
+            pnpm fetch \
+              --frozen-lockfile \
+              --prefer-offline \
+              --store-dir "$$PNPM_STORE_DIR"
+            echo "== pnpm install --frozen-lockfile =="
+            pnpm install \
+              --frozen-lockfile \
+              --ignore-scripts \
+              --offline \
+              --store-dir "$$PNPM_STORE_DIR" \
+              --package-import-method=hardlink
+            echo "== pnpm -r lint =="
+            pnpm -r lint
+            echo "== pnpm -r typecheck =="
+            pnpm -r typecheck
+            echo "== pnpm -r build =="
+            pnpm -r build
+            echo "== pnpm -r test =="
+            pnpm -r test
+          )
         else
           echo "-- no pnpm workspace yet, skipping Node --"
         fi
 
-        # End-to-end MCP smoke. cargo build --release above already
-        # produced the release findevil-mcp in Cargo's target dir; agent_mcp's uv venv
+        # End-to-end MCP smoke. cargo build above already produced
+        # findevil-mcp in Cargo's debug target dir; agent_mcp's uv venv
         # was synced. Both smokes spawn the server as a subprocess
         # over stdio JSON-RPC and assert tool registration + error
         # paths. Failure here is more informative than a unit-test
         # failure because it catches integration drift between the
         # tool registration table, the dispatcher, and the
         # ToolAnnotations schema all at once.
-        if [ -x "$${CARGO_TARGET_DIR:-target}/release/findevil-mcp" ] && [ -f scripts/rust-mcp-smoke.py ]; then
+        if [ -x "$${CARGO_TARGET_DIR:-target}/debug/findevil-mcp" ] && [ -f scripts/rust-mcp-smoke.py ]; then
           echo "== scripts/rust-mcp-smoke.py (Rust MCP end-to-end) =="
           # rust-mcp-smoke honors CARGO_TARGET_DIR when present.
-          python3 scripts/rust-mcp-smoke.py --release
+          python3 scripts/rust-mcp-smoke.py
         else
           echo "-- skipping rust-mcp-smoke (binary or script absent) --"
         fi
 
         if [ -d services/agent_mcp ] && [ -f scripts/agent-mcp-smoke.py ]; then
           echo "== scripts/agent-mcp-smoke.py (Python agent_mcp end-to-end) =="
-          uv run --directory services/agent_mcp python ../../scripts/agent-mcp-smoke.py
+          UV_PROJECT_ENVIRONMENT="/home/dev/.cache/uv/venvs/services-agent_mcp" \
+            uv run --directory services/agent_mcp python ../../scripts/agent-mcp-smoke.py
         else
           echo "-- skipping agent-mcp-smoke (services/agent_mcp or script absent) --"
         fi
@@ -133,6 +176,13 @@ services:
         if [ -f scripts/fleet-policy-smoke.py ]; then
           echo "== scripts/fleet-policy-smoke.py (FP filter + selfscore_aggregate lock) =="
           python3 scripts/fleet-policy-smoke.py
+        fi
+
+        # Customer-facing report QA, expert signoff, visual evidence, and
+        # overclaim-prevention policy are part of the readiness gate.
+        if [ -f scripts/report-policy-smoke.py ]; then
+          echo "== scripts/report-policy-smoke.py (report QA + expert signoff lock) =="
+          python3 scripts/report-policy-smoke.py
         fi
 
         # docs/demo-script-a2.md has a hard 5:00 cap (Devpost rule)
@@ -192,6 +242,7 @@ services:
           python3 scripts/smoke-regex-tests.py
         fi
 
+        echo "READINESS_L1_PASS"
         echo "L1 complete."
 
 volumes:
@@ -199,4 +250,4 @@ volumes:
   l1-cargo-git:
   l1-cargo-target:
   l1-uv-cache:
-  l1-pnpm-store:
+  l1-node-workspace:

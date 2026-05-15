@@ -9,8 +9,9 @@ Replaces the `/loop` pattern with a real harness:
   - Spawns `claude -p --permission-mode acceptEdits` headless to do
     the work end-to-end (read context, implement, test, commit, update
     the queue marking the item done).
-  - Loops until: queue is exhausted, --max-hours wall-clock cap is
-    hit, or a 429 rate-limit is detected (clean halt with checkpoint).
+  - Loops until: queue is exhausted after the optional --min-hours
+    floor is satisfied, --max-hours wall-clock cap is hit, or a 429
+    rate-limit is detected (clean halt with checkpoint).
 
 Why not `/loop`?  /loop fires the same prompt every N seconds; each
 firing is a fresh prompt that re-reads the queue and rediscovers
@@ -27,11 +28,13 @@ inherits whatever auth `claude` already has - subscription via
 needed.
 
 Usage:
-    python scripts/autonomous-loop.py [--max-hours N] [--dry-run]
+    python scripts/autonomous-loop.py [--max-hours N] [--min-hours N] [--dry-run]
 
-    --max-hours N    wall-clock cap (default: 24)
-    --dry-run        print what would be sent to claude, don't spawn
-    --queue PATH     override the default queue file path
+    --max-hours N            wall-clock cap (default: 24)
+    --min-hours N            keep running/waiting for queue work until this floor
+    --empty-sleep-seconds N  wait interval when the queue is empty before min-hours
+    --dry-run                print what would be sent to claude, don't spawn
+    --queue PATH             override the default queue file path
 """
 
 from __future__ import annotations
@@ -89,6 +92,20 @@ def _is_rate_limited(stderr: str) -> bool:
     return any(p.search(stderr) for p in RATE_LIMIT_PATTERNS)
 
 
+def _should_wait_for_queue_item(
+    now: float, min_deadline: float, deadline: float
+) -> bool:
+    """True when queue exhaustion should wait instead of ending the loop."""
+    return now < min_deadline and now < deadline
+
+
+def _queue_empty_sleep_seconds(
+    now: float, min_deadline: float, deadline: float, requested: float
+) -> float:
+    """Cap empty-queue sleep so min/max deadlines are not overshot by waiting."""
+    return max(0.0, min(requested, min_deadline - now, deadline - now))
+
+
 def _build_prompt(title: str, description: str, queue_path: Path) -> str:
     """Construct the per-iteration prompt for claude."""
     return f"""You are the SANS Find Evil autonomous build loop.
@@ -124,6 +141,18 @@ the full L1 + lint+fmt gate set passes."""
 def main() -> int:
     p = argparse.ArgumentParser(prog="autonomous-loop")
     p.add_argument("--max-hours", type=float, default=24.0)
+    p.add_argument(
+        "--min-hours",
+        type=float,
+        default=0.0,
+        help="Minimum wall-clock floor. If the queue is empty before this, wait for more work instead of stopping.",
+    )
+    p.add_argument(
+        "--empty-sleep-seconds",
+        type=float,
+        default=300.0,
+        help="Sleep interval when the queue is empty before --min-hours is satisfied (default: 300).",
+    )
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--queue", type=Path, default=DEFAULT_QUEUE)
     p.add_argument(
@@ -134,35 +163,58 @@ def main() -> int:
     )
     args = p.parse_args()
 
-    if not shutil.which("claude"):
-        print(
-            "error: `claude` not on PATH.\n"
-            "Install: https://docs.anthropic.com/en/docs/claude-code/install",
-            file=sys.stderr,
-        )
-        return 127
+    if args.max_hours <= 0:
+        p.error("--max-hours must be greater than 0")
+    if args.min_hours < 0:
+        p.error("--min-hours must be >= 0")
+    if args.min_hours > args.max_hours:
+        p.error("--min-hours cannot exceed --max-hours")
+    if args.empty_sleep_seconds <= 0:
+        p.error("--empty-sleep-seconds must be greater than 0")
 
     if not args.queue.exists():
         print(f"error: queue file missing: {args.queue}", file=sys.stderr)
         return 1
 
-    deadline = time.time() + args.max_hours * 3600
+    start = time.time()
+    deadline = start + args.max_hours * 3600
+    min_deadline = start + args.min_hours * 3600
     iteration = 0
     while time.time() < deadline:
         iteration += 1
         queue_text = args.queue.read_text(encoding="utf-8")
         item = _next_unblocked(queue_text)
         if item is None:
+            now = time.time()
+            if _should_wait_for_queue_item(now, min_deadline, deadline):
+                sleep_for = _queue_empty_sleep_seconds(
+                    now, min_deadline, deadline, args.empty_sleep_seconds
+                )
+                if args.dry_run:
+                    print(
+                        f"\n[autonomous-loop] DRY-RUN: queue exhausted before "
+                        f"--min-hours={args.min_hours}; would wait "
+                        f"{sleep_for:.0f}s for new queue items."
+                    )
+                    return 0
+                print(
+                    f"\n[autonomous-loop] iteration {iteration}: queue exhausted "
+                    f"before --min-hours={args.min_hours}. Waiting "
+                    f"{sleep_for:.0f}s for new queue items."
+                )
+                time.sleep(sleep_for)
+                continue
             print(
                 f"\n[autonomous-loop] iteration {iteration}: queue exhausted "
-                "(only Hard blockers remain). Stopping cleanly."
+                "(only Hard blockers remain, or no unblocked work before the "
+                "hard-blocker section). Stopping cleanly."
             )
             return 0
 
         title, description = item
         print(f"\n[autonomous-loop] iteration {iteration}: {title}")
         print(
-            f"[autonomous-loop] elapsed: {(time.time() - (deadline - args.max_hours * 3600)):.0f}s "
+            f"[autonomous-loop] elapsed: {(time.time() - start):.0f}s "
             f"of {args.max_hours * 3600:.0f}s budget"
         )
         prompt = _build_prompt(title, description, args.queue)
@@ -172,6 +224,14 @@ def main() -> int:
             print(prompt)
             print("--- end prompt ---")
             return 0
+
+        if not shutil.which("claude"):
+            print(
+                "error: `claude` not on PATH.\n"
+                "Install: https://docs.anthropic.com/en/docs/claude-code/install",
+                file=sys.stderr,
+            )
+            return 127
 
         # Spawn claude headless. cwd=REPO so the agent has the right
         # working directory; permission-mode=acceptEdits so it can

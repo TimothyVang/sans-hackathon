@@ -283,6 +283,7 @@ mod tests {
 
     #[test]
     fn resolve_home_respects_findevil_override() {
+        let _env_guard = crate::ENV_LOCK.lock().unwrap();
         let tmp = tempfile::tempdir().unwrap();
         // SAFETY: env mutation is restricted to this test; tests run
         // single-threaded under `cargo test -- --test-threads=1` by
@@ -300,6 +301,7 @@ mod tests {
 
     #[test]
     fn resolve_home_errors_when_no_env() {
+        let _env_guard = crate::ENV_LOCK.lock().unwrap();
         let prev_findevil = std::env::var("FINDEVIL_HOME").ok();
         let prev_home = std::env::var("HOME").ok();
         let prev_userprofile = std::env::var("USERPROFILE").ok();

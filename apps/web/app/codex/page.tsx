@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 import {
   buildCodexAppDeeplink,
@@ -23,7 +24,28 @@ interface CodexStatus {
   enabled: boolean;
   repoRoot: string;
   rustMcpBinaryBuilt: boolean;
+  readinessSummary: CodexReadinessSummary | null;
   note: string;
+}
+
+interface CodexReadinessSummary {
+  summaryPath: string;
+  generatedAt?: string;
+  runId?: string;
+  mode?: string;
+  readinessState?: string;
+  packetZip?: string | null;
+  packetDir?: string | null;
+  packetManifest?: string | null;
+  evidenceRunDir?: string | null;
+  customerReleasable?: boolean;
+  blockers: string[];
+  warnings: string[];
+  reportLinks: Array<{
+    label: string;
+    path: string;
+    href: string;
+  }>;
 }
 
 const INITIAL_MESSAGE: ChatMessage = {
@@ -168,6 +190,70 @@ export default function CodexPage() {
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[360px_1fr]">
           <aside className="space-y-4">
+            <section className="rounded-2xl border border-emerald-300/30 bg-emerald-950/20 p-4 text-sm text-emerald-50">
+              <h2 className="font-bold text-emerald-200">Readiness summary</h2>
+              {status?.readinessSummary ? (
+                <div className="mt-3 space-y-3 text-xs leading-5">
+                  <div>
+                    <p>
+                      State: <span className="font-bold">{status.readinessSummary.readinessState ?? "unknown"}</span>
+                    </p>
+                    {status.readinessSummary.generatedAt ? (
+                      <p className="text-emerald-100/80">Generated: {status.readinessSummary.generatedAt}</p>
+                    ) : null}
+                  </div>
+                  <div className="space-y-1 text-emerald-100/80">
+                    <p className="break-words">Summary: {status.readinessSummary.summaryPath}</p>
+                    {status.readinessSummary.packetZip ? (
+                      <p className="break-words">Packet ZIP: {status.readinessSummary.packetZip}</p>
+                    ) : null}
+                  </div>
+                  {status.readinessSummary.blockers.length > 0 ? (
+                    <div>
+                      <p className="font-bold text-red-200">Blockers</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4 text-red-100/90">
+                        {status.readinessSummary.blockers.map((blocker) => (
+                          <li key={blocker}>{blocker}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <p className="text-emerald-200">No blockers recorded in the latest local summary.</p>
+                  )}
+                  {status.readinessSummary.warnings.length > 0 ? (
+                    <div>
+                      <p className="font-bold text-amber-200">Warnings</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4 text-amber-100/90">
+                        {status.readinessSummary.warnings.map((warning) => (
+                          <li key={warning}>{warning}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {status.readinessSummary.reportLinks.length > 0 ? (
+                    <div>
+                      <p className="font-bold text-emerald-200">Reports</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {status.readinessSummary.reportLinks.map((report) => (
+                          <a
+                            key={report.path}
+                            href={report.href}
+                            className="rounded-lg border border-emerald-300/40 px-2 py-1 font-bold text-emerald-100 transition hover:border-emerald-200"
+                          >
+                            {report.label}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs leading-5 text-emerald-100/80">
+                  No local readiness summary found under <code>tmp/readiness-gates</code>. Run the readiness gate to populate packet state, blockers, warnings, and report paths here.
+                </p>
+              )}
+            </section>
+
             <section className="rounded-2xl border border-slate-700 bg-slate-950/80 p-4">
               <h2 className="text-lg font-bold text-cyan-200">Suggested investigations</h2>
               <div className="mt-4 space-y-3">
@@ -285,18 +371,18 @@ export default function CodexPage() {
               >
                 Open Codex app
               </a>
-              <a
+              <Link
                 href="/"
                 className="rounded-xl border border-slate-600 px-5 py-3 font-bold text-slate-200 transition hover:border-cyan-300"
               >
                 Audit dashboard
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/debug"
                 className="rounded-xl border border-slate-600 px-5 py-3 font-bold text-slate-200 transition hover:border-cyan-300"
               >
                 Debug stream
-              </a>
+              </Link>
             </div>
 
             <details className="mt-4 rounded-2xl border border-slate-800 bg-slate-900 p-4 text-sm">

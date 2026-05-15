@@ -204,6 +204,9 @@ def main() -> int:
         expected = sorted(
             [
                 "case_open",
+                "disk_mount",
+                "disk_extract_artifacts",
+                "disk_unmount",
                 "evtx_query",
                 "prefetch_parse",
                 "mft_timeline",
@@ -211,6 +214,9 @@ def main() -> int:
                 "yara_scan",
                 "usnjrnl_query",
                 "hayabusa_scan",
+                "sysmon_network_query",
+                "zeek_summary",
+                "pcap_triage",
                 "vol_pslist",
                 "vol_malfind",
                 "vol_psscan",
@@ -294,7 +300,52 @@ def main() -> int:
             if substr not in resp["error"].get("message", ""):
                 fatal(f"error message missing {substr!r}: {resp}")
 
-        # ---- 4. evtx_query (error path) ---------------------------------
+        # ---- 4. disk_* mock path ----------------------------------------
+        log("disk_mount/extract/unmount: mock session-resource path...")
+        mount_root = workdir / "mock-mounted-disk"
+        (mount_root / "Windows" / "Prefetch").mkdir(parents=True, exist_ok=True)
+        (mount_root / "Windows" / "System32" / "config").mkdir(
+            parents=True, exist_ok=True
+        )
+        (mount_root / "$MFT").write_bytes(b"mft smoke bytes")
+        (mount_root / "Windows" / "Prefetch" / "CMD.EXE-12345678.pf").write_bytes(b"pf")
+        (mount_root / "Windows" / "System32" / "config" / "SOFTWARE").write_bytes(
+            b"hive"
+        )
+        mounted = client.call_tool(
+            "disk_mount",
+            {
+                "case_id": handle["id"],
+                "image_path": str(evidence),
+                "mount_point": str(mount_root),
+                "mode": "mock",
+            },
+        )
+        if mounted.get("status") != "mounted" or not mounted.get("mount_id"):
+            fatal(f"disk_mount mock returned malformed output: {mounted}")
+        extracted = client.call_tool(
+            "disk_extract_artifacts",
+            {
+                "case_id": handle["id"],
+                "mount_id": mounted["mount_id"],
+                "limit": 20,
+            },
+        )
+        classes = {a.get("artifact_class") for a in extracted.get("artifacts", [])}
+        if not {"mft", "prefetch", "registry"}.issubset(classes):
+            fatal(f"disk_extract_artifacts missed expected classes: {extracted}")
+        unmounted = client.call_tool(
+            "disk_unmount",
+            {"case_id": handle["id"], "mount_id": mounted["mount_id"], "mode": "mock"},
+        )
+        if unmounted.get("status") != "unmounted":
+            fatal(f"disk_unmount mock returned malformed output: {unmounted}")
+        log(
+            f"  -> extracted {len(extracted.get('artifacts', []))} artifacts; "
+            "ledger updated"
+        )
+
+        # ---- 5. evtx_query (error path) ---------------------------------
         log("evtx_query: missing-file error path (-32602)...")
         expect_error_response(
             "tools/call",
@@ -428,6 +479,51 @@ def main() -> int:
         )
         log("  -> -32602 invalid_params with 'evtx_dir not found' as expected")
 
+        log("sysmon_network_query: missing-file error path (-32602)...")
+        expect_error_response(
+            "tools/call",
+            {
+                "name": "sysmon_network_query",
+                "arguments": {
+                    "case_id": handle["id"],
+                    "evtx_path": str(workdir / "missing-sysmon.evtx"),
+                },
+            },
+            "sysmon evtx file not found",
+            expected_code=-32602,
+        )
+        log("  -> -32602 invalid_params with 'sysmon evtx file not found' as expected")
+
+        log("zeek_summary: missing-path error path (-32602)...")
+        expect_error_response(
+            "tools/call",
+            {
+                "name": "zeek_summary",
+                "arguments": {
+                    "case_id": handle["id"],
+                    "zeek_path": str(workdir / "missing-zeek"),
+                },
+            },
+            "zeek path not found",
+            expected_code=-32602,
+        )
+        log("  -> -32602 invalid_params with 'zeek path not found' as expected")
+
+        log("pcap_triage: missing-file error path (-32602)...")
+        expect_error_response(
+            "tools/call",
+            {
+                "name": "pcap_triage",
+                "arguments": {
+                    "case_id": handle["id"],
+                    "pcap_path": str(workdir / "missing.pcap"),
+                },
+            },
+            "pcap file not found",
+            expected_code=-32602,
+        )
+        log("  -> -32602 invalid_params with 'pcap file not found' as expected")
+
         # ---- 12. vol_pslist (error path) --------------------------------
         log("vol_pslist: missing-image error path (-32602)...")
         expect_error_response(
@@ -560,7 +656,7 @@ def main() -> int:
         print()
         print("=" * 60)
         print("OK — Rust MCP server speaks 2024-11-05 over stdio.")
-        print("  All 13 tools dispatchable, error paths well-formed.")
+        print(f"  All {len(expected)} tools dispatchable, error paths well-formed.")
         print("=" * 60)
         return 0
     finally:

@@ -1,5 +1,6 @@
 import {
   buildCodexCommandSpec,
+  getLatestCodexReadinessSummary,
   getRepoRoot,
   isCodexUiEnabled,
   isFindevilMcpBinaryBuilt,
@@ -16,6 +17,7 @@ export async function GET(): Promise<Response> {
     enabled: isCodexUiEnabled(),
     repoRoot,
     rustMcpBinaryBuilt: isFindevilMcpBinaryBuilt(repoRoot),
+    readinessSummary: getLatestCodexReadinessSummary(repoRoot),
     note:
       "Set FINDEVIL_CODEX_UI_ENABLE=1 to allow this local dashboard to launch constrained Codex exec runs.",
   });

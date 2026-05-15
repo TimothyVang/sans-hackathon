@@ -52,14 +52,16 @@ class TestRequiredCitation:
         action, replay = reverify_finding(f, mcp=MockMcpClient(), tool_call_index={})
         assert action.action == "rejected"
         assert "tool_call_id" in action.reason
-        assert replay is None
+        assert replay is not None
+        assert replay.artifact.drift_class == "missing_citation"
 
     def test_missing_audit_record_rejects(self) -> None:
         f = _make_finding(tool_call_id="tc-not-in-index")
         action, replay = reverify_finding(f, mcp=MockMcpClient(), tool_call_index={})
         assert action.action == "rejected"
         assert "not found" in action.reason
-        assert replay is None
+        assert replay is not None
+        assert replay.artifact.drift_class == "missing_audit_record"
 
 
 class TestSuccessPath:
@@ -82,6 +84,7 @@ class TestSuccessPath:
         assert replay is not None
         assert replay.matched is True
         assert replay.actual_sha256 == expected_sha
+        assert replay.artifact.drift_class == "exact_match"
 
 
 class TestDriftPath:
@@ -98,6 +101,7 @@ class TestDriftPath:
         assert replay is not None
         assert replay.matched is False
         assert replay.expected_sha256 == "a" * 64
+        assert replay.artifact.drift_class == "material_drift"
 
 
 class TestRpcErrorPath:

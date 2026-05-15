@@ -49,7 +49,7 @@ Cut a throwaway tag to exercise the release path end-to-end:
 - [ ] `release.yml` starts; `l3-gate` job either confirms green L3 or emits pre-Week-2 `::warning`.
 - [ ] Confirm the release log notes the A2 removal of the `build-deb` job; no `.deb` artifact is expected.
 - [ ] `build-docker` job pushes `ghcr.io/${OWNER,,}/find-evil:v-smoke` and `:latest`.
-- [ ] `build-report` job uploads `report.html` (stub acceptable pre-Week-5).
+- [ ] `build-report` job uploads `report.html` from the current report-rendering path.
 - [ ] `publish` job creates or updates the GH Release and runs `scripts/push-leaderboard-score.sh`.
   - Leaderboard push is non-fatal — acceptable if `LEADERBOARD_API_KEY` is unset.
 - [ ] Slack `#releases` posts the "shipped" message.
@@ -90,6 +90,25 @@ gh variable set DEMO_VIDEO_URL --body "https://youtu.be/<id>"
 - [ ] Slack `#releases` posts the "Devpost package ready" message.
 
 Clean up any test tags: `gh release delete v-submit-smoke -y && git push origin :refs/tags/v-submit-smoke`.
+
+## 7b. Local readiness packet
+
+Run this on native Windows when preparing a human expert review packet:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/readiness-gate.ps1 -Mode Full -EvidencePath <path-inside-sift-vm> -RunL1Docker
+```
+
+Green condition:
+
+- [ ] Command exits 0 and prints `READY_FOR_EXPERT_REVIEW`.
+- [ ] `tmp/readiness-gates/<run-id>/readiness-summary.json` exists with `readiness_state` set to `READY_FOR_EXPERT_REVIEW` and `customer_releasable` set to `false`.
+- [ ] `tmp/readiness-gates/<run-id>/packet/readiness-packet-manifest.json` lists the copied artifacts.
+- [ ] `tmp/readiness-gates/<run-id>/readiness-packet.zip` exists.
+
+If the gate prints `READINESS_BLOCKED`, inspect `blockers` in `readiness-summary.json`. A passing packet is ready for human expert review, not direct customer release.
+
+Fixed `-RunId` reruns refresh generated packet contents. If the original `<run-id>-build` local-build child run already exists, the gate may create a fresh `<run-id>-build-<timestamp>` child run while keeping the readiness packet under the requested `<run-id>`.
 
 ## 8. Amendment A1 compliance (Option B)
 

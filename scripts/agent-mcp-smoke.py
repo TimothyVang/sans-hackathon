@@ -5,13 +5,13 @@ Two modes:
 
 **Synthetic** (default): spawns the server as a subprocess (matching
 the ``.mcp.json`` boot recipe) and drives a full investigation
-through 10 of 11 MCP tools with hand-crafted Findings. This is the
+through 11 of 12 MCP tools with hand-crafted Findings. This is the
 demo flow under Amendment A2/A3 minus the actual SCHARDT.001 disk
 image — exercises the same crypto/ACH/memory/ACP paths the live demo
 will. Skipped: ``verify_finding`` (needs the Rust DFIR MCP server).
 The A3 additions (``memory_remember`` + ``memory_recall`` cold→warm
-transition, ``pool_handoff`` IBM-ACP envelope) are exercised in
-steps 4a-4f.
+transition, ``pool_handoff`` IBM-ACP envelope) and the expert-miss
+ledger capture are exercised in steps 4a-4g.
 
 **Real-evidence** (``--real-evidence [<auto-run-dir>]``): replays a
 real ``find-evil-auto`` case directory through the agent_mcp surface.
@@ -510,6 +510,27 @@ def synthetic_flow(client: StdioClient) -> int:
             fatal(f"kind-filtered recall expected 0 hits, got {len(rc_kf['hits'])}")
         log("  -> 0 hits (kind filter correctly excluded the ioc seed)")
 
+        # ---- 4g. expert_miss_capture: expert correction ledger -------
+        miss_ledger = workdir / "expert_misses.jsonl"
+        log("expert_miss_capture: record one expert correction...")
+        miss = client.call_tool(
+            "expert_miss_capture",
+            {
+                "case_id": case_id,
+                "finding_id": "f-A-1",
+                "edit_type": "qa",
+                "edit_text": "Expert requested a stronger replay caveat before release.",
+                "expert_name": "smoke-test",
+                "ledger_path": str(miss_ledger),
+            },
+        )
+        if miss["seq"] != 0 or not miss["line_hash"] or miss["github_issue_url"]:
+            fatal(f"expert_miss_capture returned unexpected payload: {miss}")
+        miss_verify = client.call_tool("audit_verify", {"path": str(miss_ledger)})
+        if not (miss_verify["ok"] and miss_verify["record_count"] == 1):
+            fatal(f"expert miss ledger failed audit_verify: {miss_verify}")
+        log(f"  -> ledger verifies, line_hash={miss['line_hash'][:12]}...")
+
         # ---- 5. detect_contradictions ----------------------------------
         log("detect_contradictions: Pool A persistence vs Pool B exfil...")
         a_findings = [
@@ -720,6 +741,7 @@ def main() -> int:
                 "memory_remember",
                 "memory_recall",
                 "pool_handoff",
+                "expert_miss_capture",
             ]
         )
         if names != expected:

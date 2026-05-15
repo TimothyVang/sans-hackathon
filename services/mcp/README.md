@@ -10,9 +10,9 @@ Typed Rust MCP server for Find Evil! per Spec #2 §3 and §6.
 | Component | Status |
 |---|---|
 | Workspace + crate scaffold | ✅ |
-| All 13 typed DFIR tools | ✅ shipped |
+| All 19 typed DFIR tools | ✅ shipped |
 | Hand-rolled JSON-RPC 2.0 stdio server (MCP 2024-11-05) | ✅ in `src/server.rs` |
-| End-to-end stdio smoke (`scripts/rust-mcp-smoke.py`) | ✅ all 13 tools dispatch over the wire |
+| End-to-end stdio smoke (`scripts/rust-mcp-smoke.py`) | ✅ all 19 tools dispatch over the wire |
 | M2 sigstore + rs_merkle integration | partial (rs_merkle live; sigstore lives in `services/agent_mcp/`) |
 
 ## Quick start
@@ -24,13 +24,16 @@ cargo test --workspace --locked
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-## Tool surface (13/13 shipped)
+## Tool surface (19/19 shipped)
 
-Per Spec #2 §6 (which enumerates 11) plus `vol_psscan` shipped in commit `0de2e53` and `vol_psxview` for DKOM cross-validation against `vol_pslist` — see CLAUDE.md "Spec/code divergences" for the rationale. All tools are registered in `src/tools/mod.rs`, advertised in `tools/list`, and dispatchable via `tools/call`. Each successful response carries `_meta.output_sha256`.
+Per Spec #2 §6 (which enumerates 11) plus memory cross-validation, disk mount/extract session-resource tools, and network/log triage additions — see CLAUDE.md "Spec/code divergences" for the rationale. All tools are registered in `src/tools/mod.rs`, advertised in `tools/list`, and dispatchable via `tools/call`. Each successful response carries `_meta.output_sha256`.
 
 | Tool | Module | Backing | Pool |
 |---|---|---|---|
 | `case_open` | `tools/case_open.rs` | in-process: `sha2`, `uuid` | n/a |
+| `disk_mount` | `tools/disk.rs` | fixed subprocess wrappers / mock mode | A/B (disk setup) |
+| `disk_extract_artifacts` | `tools/disk.rs` | in-process copy from mounted read-only view | A/B (disk setup) |
+| `disk_unmount` | `tools/disk.rs` | fixed subprocess wrappers / mock mode | A/B (disk cleanup) |
 | `evtx_query` | `tools/evtx_query.rs` | in-process: `evtx = 0.11.2` | A |
 | `prefetch_parse` | `tools/prefetch_parse.rs` | in-process: `frnsc-prefetch + forensic-rs` | A (execution) |
 | `mft_timeline` | `tools/mft_timeline.rs` | in-process: `mft = 0.6.1` | A (timeline) |
@@ -43,6 +46,9 @@ Per Spec #2 §6 (which enumerates 11) plus `vol_psscan` shipped in commit `0de2e
 | `vol_psxview` | `tools/vol_psxview.rs` | subprocess: `volatility3` (BSD-2) | A (process-view cross-check) |
 | `vol_malfind` | `tools/vol_malfind.rs` | subprocess: `volatility3` (BSD-2) | A/B (code injection) |
 | `vel_collect` | `tools/vel_collect.rs` | subprocess: `velociraptor` (Apache-2.0) | A/B (live response) |
+| `sysmon_network_query` | `tools/sysmon_network_query.rs` | in-process: `evtx = 0.11.2` | B (network) |
+| `zeek_summary` | `tools/zeek_summary.rs` | in-process TSV parser | B (network) |
+| `pcap_triage` | `tools/pcap_triage.rs` | fixed subprocess: `tshark` or `zeek` | B (network) |
 
 The `vol_pslist` + `vol_psscan` pair is deliberately redundant — pslist walks the kernel's `PsActiveProcessHead` linked list, psscan signature-scans EPROCESS pool memory. Divergence between the two outputs IS the forensic finding (T1014/Rootkit, DKOM unlink). `vol_psxview` is the follow-up cross-view corroborator; do not fold these tools together.
 

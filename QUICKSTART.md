@@ -46,7 +46,7 @@ claude
 bash scripts/find-evil-sift
 ```
 
-`.mcp.json` (or `.mcp.json.sift`, swapped automatically) tells Claude Code to spawn both MCP servers — `findevil-mcp` (Rust, 13 typed DFIR tools) and `findevil-agent-mcp` (Python, 11 typed crypto/ACH/memory/ACP tools).
+`.mcp.json` (or `.mcp.json.sift`, swapped automatically) tells Claude Code to spawn both MCP servers — `findevil-mcp` (Rust, 19 typed DFIR tools) and `findevil-agent-mcp` (Python, 12 typed crypto/ACH/memory/ACP/expert-feedback tools).
 
 In the session, prompt:
 
@@ -69,30 +69,45 @@ bash scripts/find-evil-auto /mnt/hgfs/evidence/extracted/base-dc/base-dc-memory.
 # Single EVTX:
 bash scripts/find-evil-auto /home/sansforensics/find-evil/fixtures/single-evtx/Security.evtx --unattended
 
-# Disk image (case_open + chain-of-custody only; deeper analysis requires interactive mode):
+# Disk image (read-only mount/extract where SIFT supports it; otherwise custody-only):
 bash scripts/find-evil-auto /mnt/hgfs/evidence/disk-images/base-dc-cdrive.E01 --unattended
+
+# Mixed case directory (memory, EVTX, disk artifacts, network logs, Velociraptor zips):
+bash scripts/find-evil-auto /mnt/hgfs/evidence/cases/base-dc/ --unattended
+
+# Same run, plus a machine-readable automation summary:
+bash scripts/find-evil-auto /mnt/hgfs/evidence/cases/base-dc/ --unattended --run-summary tmp/run-summary.json
+
+# Velociraptor collection zip:
+bash scripts/find-evil-auto /mnt/hgfs/evidence/velociraptor/base-dc.zip --unattended
 ```
 
 What it does in one command (no interactive prompts):
 
-1. Detects evidence type from the file extension
+1. Detects evidence type from the file extension or inventories a mixed case directory
 2. Opens both MCP servers inside the SIFT VM via SSH stdio
-3. case_open → tool sequence per type → audit chain → judge → correlator → manifest_finalize. Disk auto mode is the current exception: it performs custody-only registration unless mounted artifacts are supplied interactively.
+3. case_open or case inventory → tool sequence per type → audit chain → judge → correlator → manifest_finalize. Raw disk image support is bounded: auto mode attempts read-only mount/extract where SIFT supports it, otherwise it records custody-only limitations and next actions.
 4. Synthesizes Pool A (persistence-biased) and Pool B (exfil-biased) findings deterministically from tool outputs
 5. Writes `verdict.json` with the verdict (`SUSPICIOUS` / `NO_EVIL` / `INDETERMINATE` — see [`docs/verdict-semantics.md`](docs/verdict-semantics.md)), case completeness, ATT&CK/practitioner coverage, normalized timeline data, evidence-card data, source bibliography, and next analyst actions
 6. Generates a fully-templated PDF investigation report (figures + findings + ATT&CK/practitioner coverage + timeline + visual evidence cards + source bibliography + chain-of-custody attestation)
+7. If `--run-summary <path>` is set, writes a JSON pointer/QA file containing `run_id`, `case_id`, evidence path, local run directory, output artifact paths, report QA, release-gate/expert-signoff state, signer, readiness state, blockers, warnings, and final result
 
 Output (on host):
 ```
 tmp/auto-runs/auto-<uuid>/
 ├── audit.jsonl
 ├── run.manifest.json
+├── manifest_verify.json
 ├── verdict.json
+├── expert_signoff.json
+├── customer_release_gate.final.json
 ├── timeline.json
 ├── timeline.csv
 ├── REPORT.md / .html / .pdf
 └── figures/
 ```
+
+`run-summary.json` is written wherever you pass `--run-summary`; it is not copied into the case directory unless you choose a path there.
 
 Run with `--no-report` to skip PDF rendering (saves ~5 seconds).
 
@@ -119,7 +134,7 @@ You'll see:
 3. Findings emerge tagged with `tool_call_id`, MITRE ATT&CK technique, and confidence (CONFIRMED / INFERRED / HYPOTHESIS)
 4. `detect_contradictions` surfaces Pool A vs Pool B disagreements **before** the judge merges
 5. `judge_findings` + `correlate_findings` apply credibility weighting + the SOUL.md ≥2 artifact-class rule
-6. `manifest_finalize` builds the Merkle tree, signs with sigstore (Rekor inclusion proof), writes `run.manifest.json` — terminal step under Amendment A5
+6. `manifest_finalize` builds the Merkle tree, records signature metadata, and writes `run.manifest.json` — terminal step under Amendment A5. Local/offline automation can use a clearly identified stub signer; customer-release candidates require non-stub signing plus separate transparency-log validation.
 
 Output lands at `~/.findevil/cases/<case_id>/` (or inside the VM at `/home/sansforensics/find-evil/tmp/<case_id>/` in SIFT-VM mode).
 
@@ -135,7 +150,8 @@ For the full doc map (every file with status badge + one-line purpose), see [`do
 - "What does the agent actually do?" → [`agent-config/PLAYBOOK.md`](agent-config/PLAYBOOK.md)
 - "What evidence is available?" → [`docs/DATASET.md`](docs/DATASET.md)
 - "What if a tool is missing?" → The agent returns `BinaryNotFound -32602`. Install the binary OR set the env var pointing at it (e.g. `VOLATILITY_BIN=/path/to/vol`).
-- "I changed something — how do I confirm L1 will be happy?" → `bash scripts/run-all-smokes.sh` (14 smokes, ~10s incremental).
+- "I changed something — how do I confirm L1 will be happy?" → `bash scripts/run-all-smokes.sh` on POSIX/Git Bash, or `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-all-smokes.ps1` on native Windows. The scripts print the current smoke tally; runtime depends on Rust cache and shell startup.
+- "How do I produce a review packet?" → `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/readiness-gate.ps1 -Mode Full -EvidencePath <path-inside-sift-vm> -RunL1Docker`. The gate writes `readiness-summary.json`, `readiness-packet-manifest.json`, and `readiness-packet.zip` under `tmp/readiness-gates/<run-id>/`. Fixed `-RunId` reruns refresh generated packet contents and may create a fresh timestamped build child run. A passing gate prints `READY_FOR_EXPERT_REVIEW`, not customer-ready; a failing gate prints `READINESS_BLOCKED` and lists blockers in `readiness-summary.json`.
 
 ---
 
@@ -150,11 +166,12 @@ For the full doc map (every file with status badge + one-line purpose), see [`do
 
 ## End-of-investigation checklist
 
-1. [ ] `manifest_verify` returns `overall=True`, all four sub-checks green
+1. [ ] `manifest_verify.json` or the `manifest_verify` MCP/library result returns `overall=True`
 2. [ ] Findings table reviewed; CONFIRMED-tier findings traced back to their `tool_call_id` in `audit.jsonl`
 3. [ ] Contradictions resolved or explicitly flagged in the report
 4. [ ] Cross-host corroboration done (if multi-host case)
 5. [ ] Synthetic-benign baseline run produced zero findings
-6. [ ] Report rendered to PDF (see [`docs/reports/2026-04-26-srl2018-dc-investigation.pdf`](docs/reports/2026-04-26-srl2018-dc-investigation.pdf) for an example)
+6. [ ] Report rendered to PDF or HTML (see [`docs/reports/2026-04-26-srl2018-dc-investigation.pdf`](docs/reports/2026-04-26-srl2018-dc-investigation.pdf) for an example)
+7. [ ] Readiness packet created and reviewed if this is a submission/customer-review candidate
 
-If all 6 are checked, you're done. If any are skipped, document the reason in the report's §8 (Limitations).
+If all relevant checks are complete, you're done. If any are skipped, document the reason in the report's §8 (Limitations).

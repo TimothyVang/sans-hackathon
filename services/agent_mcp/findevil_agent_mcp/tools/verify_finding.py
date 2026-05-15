@@ -22,6 +22,7 @@ from typing import Any
 
 from findevil_agent.events import Finding
 from findevil_agent.mcp_client import McpClient, StdioMcpClient
+from findevil_agent.replay import ReplayArtifact
 from findevil_agent.verifier import reverify_finding
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -56,6 +57,10 @@ class VerifyFindingInput(BaseModel):
         ),
         min_length=1,
     )
+    force_fresh_replay: bool = Field(
+        default=False,
+        description="Bypass replay cache when a caller supplies pooled verifier execution.",
+    )
 
 
 class VerifyFindingOutput(BaseModel):
@@ -69,6 +74,10 @@ class VerifyFindingOutput(BaseModel):
     replay_actual_sha256: str | None
     replay_matched: bool | None
     replay_error: str | None
+    replay_artifact: ReplayArtifact | None = Field(
+        default=None,
+        description="Structured replay artifact. Legacy top-level replay_* fields are preserved.",
+    )
 
 
 # Indirection to let tests monkeypatch the client factory.
@@ -85,6 +94,7 @@ async def _handle(inp: BaseModel) -> VerifyFindingOutput:
             finding,
             mcp=client,
             tool_call_index=inp.tool_call_index,
+            force_fresh=inp.force_fresh_replay,
         )
     finally:
         client.close()
@@ -98,6 +108,7 @@ async def _handle(inp: BaseModel) -> VerifyFindingOutput:
         replay_actual_sha256=replay.actual_sha256 if replay else None,
         replay_matched=replay.matched if replay else None,
         replay_error=replay.error if replay else None,
+        replay_artifact=replay.artifact if replay else None,
     )
 
 

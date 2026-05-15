@@ -28,9 +28,17 @@ pub mod tools;
 /// server's capability handshake and in audit logs.
 pub const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[cfg(test)]
+pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Re-exports for test + binary convenience.
 pub use crate::crypto::merkle::{verify_inclusion_proof, InclusionProof, MerkleError, MerkleTree};
 pub use crate::tools::case_open::{case_open, CaseHandle, CaseOpenError, CaseOpenInput};
+pub use crate::tools::disk::{
+    disk_extract_artifacts, disk_mount, disk_unmount, DiskError, DiskExtractArtifactsInput,
+    DiskExtractArtifactsOutput, DiskMode, DiskMountInput, DiskMountOutput, DiskUnmountInput,
+    DiskUnmountOutput, ExtractedDiskArtifact, SessionResource,
+};
 pub use crate::tools::evtx_query::{
     evtx_query, path_looks_like_evtx, EvtxError, EvtxQueryInput, EvtxQueryOutput, EvtxRow,
 };
@@ -40,12 +48,19 @@ pub use crate::tools::hayabusa_scan::{
 pub use crate::tools::mft_timeline::{
     mft_timeline, path_looks_like_mft, MftEntryRow, MftError, MftInput, MftOutput,
 };
+pub use crate::tools::pcap_triage::{
+    path_looks_like_pcap, pcap_triage, PcapTriageError, PcapTriageInput, PcapTriageOutput,
+};
 pub use crate::tools::prefetch_parse::{
     path_looks_like_prefetch, prefetch_parse, PrefetchError, PrefetchInput, PrefetchOutput,
 };
 pub use crate::tools::registry_query::{
     path_looks_like_hive, registry_query, RegistryEntry, RegistryError, RegistryInput,
     RegistryOutput, RegistryValue,
+};
+pub use crate::tools::sysmon_network_query::{
+    path_looks_like_sysmon_evtx, sysmon_network_query, SysmonNetworkError, SysmonNetworkInput,
+    SysmonNetworkOutput, SysmonNetworkRow,
 };
 pub use crate::tools::usnjrnl_query::{
     path_looks_like_usnjrnl, usnjrnl_query, UsnJrnlEntry, UsnJrnlError, UsnJrnlInput, UsnJrnlOutput,
@@ -68,4 +83,8 @@ pub use crate::tools::vol_psxview::{
 pub use crate::tools::yara_scan::{
     path_looks_like_yara_rules, yara_scan, YaraError, YaraInput, YaraMatch, YaraOutput,
     YaraPatternMatch,
+};
+pub use crate::tools::zeek_summary::{
+    path_looks_like_zeek_log, zeek_summary, ZeekCount, ZeekSummaryError, ZeekSummaryInput,
+    ZeekSummaryOutput,
 };

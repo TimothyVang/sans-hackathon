@@ -24,6 +24,7 @@ docker/l1-compose.yml after demo-script-smoke as the 6th L1 smoke.
 from __future__ import annotations
 
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -102,15 +103,45 @@ def _list_launchers() -> list[Path]:
 
 def _bash_syntax_check(p: Path) -> tuple[bool, str]:
     """Run ``bash -n <p>``; True on exit 0."""
-    r = subprocess.run(
-        ["bash", "-n", str(p)],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if r.returncode == 0:
-        return True, ""
-    return False, (r.stderr or r.stdout).strip()
+    attempts = 2
+    for attempt in range(1, attempts + 1):
+        try:
+            r = subprocess.run(
+                ["bash", "-n", _path_for_bash(p)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=REPO,
+            )
+        except subprocess.TimeoutExpired:
+            if attempt == attempts:
+                return False, f"bash -n timed out after 30s x {attempts} attempts"
+            continue
+        if r.returncode == 0:
+            return True, ""
+        return False, (r.stderr or r.stdout).strip()
+    return False, "bash -n did not complete"
+
+
+def _path_for_bash(p: Path) -> str:
+    try:
+        return p.relative_to(REPO).as_posix()
+    except ValueError:
+        pass
+    if sys.platform != "win32" or not p.drive:
+        return str(p)
+    drive = p.drive.rstrip(":").lower()
+    rest = p.as_posix()[2:]
+    candidates = [f"/mnt/{drive}{rest}", f"/{drive}{rest}"]
+    for candidate in candidates:
+        probe = subprocess.run(
+            ["bash", "-lc", f"test -e {shlex.quote(candidate)}"],
+            capture_output=True,
+            timeout=5,
+        )
+        if probe.returncode == 0:
+            return candidate
+    return candidates[0]
 
 
 def _scan_for_bad_binary(p: Path) -> list[str]:

@@ -11,7 +11,7 @@ When the analyst says **"investigate &lt;path&gt;"**, **"find evil in &lt;path&g
 1. Call `case_open` with the path. Read the returned `image_hash`, `image_size_bytes`, and `id` (the case_id you'll use everywhere).
 2. Inspect the path's extension and the case-open size to pick a playbook below.
 3. Fork **two subagents** with `CLAUDE_CODE_FORK_SUBAGENT=1` — one with the Pool A persistence prompt, one with Pool B exfil prompt (see `AGENTS.md`). Each pool reads this file and runs its biased-but-still-overlapping tool sequence.
-4. After both pools return Findings, run `detect_contradictions` → resolve (or auto-pass under `--unattended`) → `judge_findings` → `verify_finding` per Finding → `correlate_findings` → **emit 6 `kind=judge_selfscore` audit records** (one per SANS rubric criterion per `agent-config/JUDGING.md`) → `manifest_finalize` (terminal step under Amendment A5; the prior `ots_stamp` Bitcoin anchor was removed). The selfscore lands in the audit chain BEFORE finalize so it's part of the cryptographic attestation — the agent doesn't get to revise it after seeing the score it actually got.
+4. After both pools return Findings, run `detect_contradictions` → resolve (or auto-pass under `--unattended`) → `verify_finding` per Finding → `judge_findings` → `correlate_findings` → **emit 6 `kind=judge_selfscore` audit records** (one per SANS rubric criterion per `agent-config/JUDGING.md`) → `report_qa` → `manifest_finalize` (terminal step under Amendment A5; the prior `ots_stamp` Bitcoin anchor was removed). The selfscore and report QA land in the audit chain BEFORE finalize so they are part of the cryptographic attestation — the agent doesn't get to revise them after seeing the score it actually got.
 5. Render the verdict + manifest path. The verdict/report may include `attck_practitioner_coverage`, `normalized_timeline`, `report_evidence_cards`, and `source_bibliography`; treat those as coverage/reporting aids, not new evidence classes.
 
 Report fields to interpret consistently:
@@ -22,6 +22,7 @@ Report fields to interpret consistently:
 - `source_bibliography` resolves external source citation IDs used for ATT&CK/data-source/report interpretation.
 - `malware_triage` records memory-region, string, IOC, and YARA/malfind leads as triage-only context; it does not identify who operated code or prove execution.
 - `analysis_limitations` records scope gaps. Auto disk mode currently records custody only unless mounted artifacts are supplied, so do not emit disk-content Findings from `case_open` alone.
+- `attack_story`, `report_qa`, and `expert_signoff` are signoff/reporting aids derived from the same Findings, timeline, coverage, and limitations. They do not create Findings or raise confidence; they tell the 1% human expert whether the PDF is ready to review or blocked.
 
 ---
 
@@ -30,7 +31,7 @@ Report fields to interpret consistently:
 Two MCP tools (`memory_recall`, `memory_remember`) and one structured-handoff tool (`pool_handoff`) wire into the standard sequence above. The supervisor's job is to make sure they fire at the right beats:
 
 - **Session start (supervisor):** resolve `MEMORY_STORE_PATH` once via the `Bash` tool, per the recipe in `AGENTS.md` § supervisor. Pass it to forked Pool A / Pool B / verifier subagents in their prompts so they don't re-derive it.
-- **Pre-Finding (each pool):** before each pool emits a Finding, it calls `memory_recall(store_path=MEMORY_STORE_PATH, query=<the IOC|hash|TTP|hostname>)`. A non-empty hit becomes a `prior_observations` field on the Finding and counts as a corroborating artifact class for the SOUL.md ≥2 rule. An empty hit is also informative — note "no prior observations" so the analyst sees recall happened.
+- **Pre-Finding (each pool):** before each pool emits a Finding, it calls `memory_recall(store_path=MEMORY_STORE_PATH, query=<the IOC|hash|TTP|hostname>)`. A non-empty hit becomes a `prior_observations` field on the Finding for prioritization and context only. Prior-case memory is not current-case evidence and must not count toward the SOUL.md >=2 current-case artifact-class rule. An empty hit is also informative — note "no prior observations" so the analyst sees recall happened.
 - **Post-judge (each pool, only for CONFIRMED Findings):** the originating pool calls `memory_remember(...)` with the IOC / hash / TTP that it would want a future investigation to recall. HYPOTHESIS-tier doesn't get remembered (the chain only keeps things the army stands behind).
 - **Verifier → judge (always):** after each verdict, the verifier calls `pool_handoff(from_role="verifier", to_role="judge", payload={finding_id, action, replay_record_sha256})` so the judge receives structured input rather than parsing natural-language supervisor messages.
 - **Pool A → Pool B (when relevant):** if Pool A surfaces evidence that the persistence is staging for exfil (e.g. a Run-key dropper that drops to `\Users\Public\`), it should `pool_handoff(from_role="pool_a", to_role="pool_b", payload={persistence_path, dropped_artifacts, ttps})` so Pool B can pick up the thread. Use the same `correlation_id` for every handoff about that finding.
@@ -95,8 +96,8 @@ Triage zips produced by `velociraptor` collection.
 | Order | Tool | Purpose | Pool |
 |---|---|---|---|
 | 1 | `case_open` | SHA-256 + case_id | both |
-| 2 | `vel_collect` | Re-read the artifacts inside the zip via Velociraptor's own CLI | both |
-| 3 | Per-artifact tools | E.g. if the zip contains a Prefetch artifact, run `prefetch_parse` against the extracted file | both |
+| 2 | Velociraptor zip extraction | Safely extract supported contained artifacts to the case work dir; reject zip-slip and oversized members | both |
+| 3 | Per-artifact tools | E.g. if the zip contains a Prefetch artifact, run `prefetch_parse` against the extracted file; if it contains EVTX, run `evtx_query` / `hayabusa_scan` | both |
 
 ### Mixed case directory (most realistic)
 
@@ -147,5 +148,5 @@ Even in unattended mode, halt and surface to the analyst when:
 ## What this playbook is NOT
 
 - **Not a script.** The supervisor is the agent; this file is its prior. If a case looks weird, deviate.
-- **Not exhaustive of DFIR.** It covers what the 13 typed Rust MCP tools can reach. If the case needs Plaso/log2timeline, Sleuthkit's `fls`/`icat`, Bulk Extractor, network-capture analysis, or browser-history extraction, those are out of our automation scope today; surface that as a gap to the analyst.
+- **Not exhaustive of DFIR.** It covers what the 19 typed Rust MCP tools can reach. If the case needs Plaso/log2timeline, Sleuthkit's `fls`/`icat`, Bulk Extractor, broad interactive packet carving, or browser-history extraction, those are out of our automation scope today; surface that as a gap to the analyst.
 - **Not a substitute for SOUL.md or AGENTS.md.** Read those first; this file is the operational layer that sits below the epistemic and role-definition layers.
