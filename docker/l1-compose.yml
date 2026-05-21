@@ -75,10 +75,16 @@ services:
           if [ -f "$$proj/pyproject.toml" ]; then
             python_any=true
             venv_dir="/home/dev/.cache/uv/venvs/$${proj//\//-}"
+            coverage_dir="/home/dev/.cache/coverage/$${proj//\//-}"
+            pytest_cache_dir="/home/dev/.cache/pytest/$${proj//\//-}"
+            mkdir -p "$$coverage_dir" "$$pytest_cache_dir"
             echo "== ($$proj) uv sync --extra dev =="
             (cd "$$proj" && (UV_PROJECT_ENVIRONMENT="$$venv_dir" uv sync --extra dev --frozen 2>/dev/null || UV_PROJECT_ENVIRONMENT="$$venv_dir" uv sync --extra dev))
             echo "== ($$proj) uv run pytest -xvs --cov =="
-            (cd "$$proj" && UV_PROJECT_ENVIRONMENT="$$venv_dir" uv run pytest -xvs --cov)
+            (cd "$$proj" && \
+              COVERAGE_FILE="$$coverage_dir/.coverage" \
+              UV_PROJECT_ENVIRONMENT="$$venv_dir" \
+              uv run pytest -xvs --cov -o cache_dir="$$pytest_cache_dir")
           fi
         done
         if [ "$$python_any" = "false" ]; then

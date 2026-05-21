@@ -47,21 +47,31 @@ jobs:
           key: l2-siftlite-${{ hashFiles('docker/l2-siftlite.Dockerfile', 'scripts/l2-dfir-smoke.sh') }}
 
       - name: Build or load L2 image
+        id: build-image
         run: |
           set -euo pipefail
           if [[ -f /tmp/l2-siftlite.tar ]]; then
             echo "Loading cached L2 image..."
-            docker load --input /tmp/l2-siftlite.tar
+            if ! docker load --input /tmp/l2-siftlite.tar; then
+              echo "image_ready=false" >> "$GITHUB_OUTPUT"
+              echo "Cached L2 image could not be loaded; advisory-only workflow will skip smoke." > l2-smoke.log
+              exit 0
+            fi
           else
             echo "Building L2 image..."
-            docker build \
+            if ! docker build \
               --file docker/l2-siftlite.Dockerfile \
               --tag findevil/l2-siftlite:local \
               --build-arg DEV_UID=1000 \
               --build-arg DEV_GID=1000 \
-              .
+              .; then
+              echo "image_ready=false" >> "$GITHUB_OUTPUT"
+              echo "L2 image build failed; advisory-only workflow will skip smoke." > l2-smoke.log
+              exit 0
+            fi
             docker save --output /tmp/l2-siftlite.tar findevil/l2-siftlite:local
           fi
+          echo "image_ready=true" >> "$GITHUB_OUTPUT"
           docker image ls findevil/l2-siftlite:local
 
       - name: Check for Sysbox availability
@@ -92,6 +102,7 @@ jobs:
 
       - name: Run L2 smoke (advisory)
         id: smoke
+        if: steps.build-image.outputs.image_ready == 'true'
         continue-on-error: true
         run: |
           # docker-in-docker path. Sysbox path would be:
@@ -114,6 +125,14 @@ jobs:
 
           echo "=== L2 smoke tail ==="
           tail -60 l2-smoke.log
+
+      - name: Record skipped L2 smoke
+        if: steps.build-image.outputs.image_ready != 'true'
+        run: |
+          {
+            echo "L2 smoke skipped."
+            echo "Reason: L2 image was not available; advisory-only workflow does not block on external Sysbox base image availability."
+          } >> l2-smoke.log
 
       - name: Upload smoke artifacts
         uses: actions/upload-artifact@v4
