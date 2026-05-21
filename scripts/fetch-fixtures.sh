@@ -45,8 +45,12 @@ fetch_fixture() {
   fi
 
   log "downloading ${url} → ${abs}"
-  curl -fsSL --retry 3 --retry-delay 2 --max-time 600 \
-    "${url}" -o "${abs}.tmp"
+  if ! curl -fsSL --retry 3 --retry-delay 2 --max-time 600 \
+    "${url}" -o "${abs}.tmp"; then
+    rm -f "${abs}.tmp"
+    log "ERROR: failed to download ${url}"
+    exit 1
+  fi
   mv "${abs}.tmp" "${abs}"
 
   local got_sha
@@ -87,7 +91,7 @@ fi
 #    The canonical distribution URL is long-lived.
 # ---------------------------------------------------------------------
 fetch_fixture \
-  "https://cfreds-archive.nist.gov/Hacking_Case/SCHARDT.001" \
+  "https://cfreds-archive.nist.gov/images/hacking-dd/SCHARDT.001" \
   "nist-hacking-case/SCHARDT.001" \
   ""  # sha recorded on first pull
 
@@ -113,10 +117,14 @@ fi
 # 4. Volatility Foundation memory samples — pick the smallest one.
 #    CC-BY; requires attribution (done in DATASET.md).
 # ---------------------------------------------------------------------
-fetch_fixture \
-  "https://downloads.volatilityfoundation.org/volatility3/images/cridex.vmem" \
-  "volatility/cridex.vmem" \
-  ""
+if ! (
+  fetch_fixture \
+    "https://downloads.volatilityfoundation.org/volatility3/images/cridex.vmem" \
+    "volatility/cridex.vmem" \
+    ""
+); then
+  log "WARN: volatility cridex.vmem mirror unavailable; continuing without optional memory fixture"
+fi
 
 # ---------------------------------------------------------------------
 # 5. Synthetic benign baseline — generated in-repo on first run.
