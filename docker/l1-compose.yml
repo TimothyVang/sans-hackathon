@@ -224,7 +224,7 @@ services:
         # references in operator-facing docs (commits 5e01954,
         # 385c867).  Asserts every backtick-quoted path resolves
         # to a real file or dir.  Allow-list covers URLs, MCP wire
-        # identifiers, runtime/install paths, deferred-per-A2
+        # identifiers, runtime/install paths, deferred widget/future
         # surfaces, and documented-removed-but-quoted paths.
         if [ -f scripts/path-existence-smoke.py ]; then
           echo "== scripts/path-existence-smoke.py (every backtick-path resolves) =="
@@ -238,8 +238,13 @@ services:
         # so a regex over-broadening or over-narrowing fails CI
         # rather than silently letting bugs through.
         if [ -f scripts/smoke-regex-tests.py ]; then
-          echo "== scripts/smoke-regex-tests.py (audit-smoke regex self-tests) =="
+          echo "== scripts/smoke-regex-tests.py (audit-smoke regex/helper policy self-tests) =="
           python3 scripts/smoke-regex-tests.py
+        fi
+
+        if [ -f scripts/autonomous-loop-smoke.py ]; then
+          echo "== scripts/autonomous-loop-smoke.py (8h dry-run + empty-queue timing) =="
+          python3 scripts/autonomous-loop-smoke.py
         fi
 
         echo "READINESS_L1_PASS"

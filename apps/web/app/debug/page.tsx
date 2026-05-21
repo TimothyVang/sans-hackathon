@@ -1,7 +1,7 @@
 // Dev/QA debug page: subscribe to /api/audit?case=<path> SSE stream
 // from the browser and dump each `audit_line` event as a small NES.css
-// card. This is a back-end smoke tool — Phase 5's sprite components
-// will render the same data prettier (per A3 plan §5).
+// card. This remains the raw-events QA view; the main dashboard renders
+// role-state cards from the same stream.
 //
 // Importing the AuditLine type from `@/lib/audit-tail` would drag the
 // server-only `node:fs` + chokidar imports into the client bundle, so
@@ -130,9 +130,9 @@ export default function DebugPage() {
         <p className="title">/debug — audit.jsonl SSE stream viewer</p>
         <p className="text-sm">
           Dev/QA tool. Subscribe to <code>/api/audit?case=&lt;path&gt;</code>{" "}
-          and dump each <code>audit_line</code> event raw. Phase 5 sprite
-          components will render the same data prettier; this page just proves
-          the stream is alive without <code>curl</code>.
+          and dump each <code>audit_line</code> event raw. The main dashboard
+          renders role-state cards from the same stream; this page keeps a
+          low-level stream check available without <code>curl</code>.
         </p>
 
         <div className="nes-field mt-6">

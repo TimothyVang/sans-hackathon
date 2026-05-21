@@ -164,7 +164,7 @@ flowchart LR
     subgraph GitHub["GitHub"]
         DraftPR[gh pr create --draft<br/>label: swarm-generated]
         Human((Human reviewer<br/>morning triage))
-        Main[main branch<br/>merge after human review]
+        Main[master branch<br/>merge after human review]
     end
 
     Cron --> Supervisor

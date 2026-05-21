@@ -597,27 +597,30 @@ once the first `v0.x` is cut on the `v-submit` tag.
   similar drift surfaces in future iterations, this audit
   warrants its own smoke with the same allow-list pattern as
   divergence-smoke (deferred-per-A2 paths get exceptions).
-- **`scripts/divergence-smoke.py` locks the 6-divergence list**
+- **`scripts/divergence-smoke.py` locks executable divergence guards**
   (commit `c5bfa1b`). Three iterations of the divergence-sweep
   procedure (782f364, e6ddc2d, fb319dd) cleaned active drift; this
   smoke makes the cleanup permanent. Scans every active text file
   (~191 files) and asserts no "bad half" of a documented Spec/code
-  divergence has resurfaced. 5 active divergences checked (#1 Rust
+  divergence has resurfaced. 6 executable divergences checked (#1 Rust
   1.83-bookworm, #3 dropped CLI invocations, #4 "11 typed Rust",
-  #5 uncommented rmcp, #6 services.swarm.* imports); #2 is
-  declarative-only. Regex for #3 uses a backtick negative-lookbehind
+  #5 uncommented rmcp, #6 services.swarm.* imports, #8 dashboard
+  WebSocket dependency drift); #2 is declarative-only and #7 is
+  doc-only. Regex for #3 uses a backtick negative-lookbehind
   so prose that *quotes* the bad pattern (e.g. comments documenting
   why we replaced it) doesn't fire. Regex for #5 only matches
   uncommented lines so the deliberate-marker line in
   services/mcp/Cargo.toml passes. Negative-tested both inclusions
   and exclusions with 8 synthetic shapes — all 8 behave correctly.
-  Wired into docker/l1-compose.yml as the 7th L1 smoke and
-  run-all-smokes.sh as the 7th run-all entry. QUICKSTART smoke
-  count 6 → 7. While running the smoke caught one more genuine
-  drift the manual sweeps missed: services/mcp/src/crypto/mod.rs:7
+  Wired into docker/l1-compose.yml and run-all-smokes.sh as part of
+  the local smoke gates; QUICKSTART points operators at those scripts
+  without pinning a smoke count. While running the smoke caught one
+  more genuine drift the manual sweeps missed: services/mcp/src/crypto/mod.rs:7
   docstring referenced `find-evil verify` — fixed to point at
-  `verify_manifest` + `manifest_verify` MCP tool. **Each documented
-  divergence now has a machine-checked guardrail.**
+  `verify_manifest` + `manifest_verify` MCP tool. **Each executable
+  wrong-pattern divergence now has a machine-checked guardrail; purely
+  declarative/doc-only sections remain documented source-of-truth
+  constraints.**
 - **rmcp-related stale docs sweep — divergence §5**
   (commit `fb319dd`). Third iteration of the divergence-sweep
   procedure. CLAUDE.md "Spec/code divergences" §5 has long flagged

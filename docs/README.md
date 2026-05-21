@@ -66,7 +66,7 @@ Status-banner-prefixed within each file. Read in CLAUDE.md "Document hierarchy" 
 | `2026-04-23-find-evil-automation-master-design.md` | **SHIPPED** | Master design — 4-subsystem decomposition + 4 differentiators (M1 leaderboard, M2 crypto, M3 widgets, M4 ACH). |
 | `2026-04-23-amendment-option-b-claude-code-mode.md` (**A1**) | **SHIPPED** | Subscription-mode credentials for the swarm; LiteLLM proxy never built. |
 | `2026-04-25-amendment-a2-claude-code-primary-interface.md` (**A2**) | **SHIPPED** | Drops the custom Python orchestrator; Claude Code IS the orchestrator. |
-| `2026-04-26-amendment-a3-agent-army-and-dashboard.md` (**A3**) | **SHIPPED** (Phases 1-4) / **RESEARCH** (Phases 5-6) | Memory + ACP MCP tools + dashboard scaffold; sprite phases parked. |
+| `2026-04-26-amendment-a3-agent-army-and-dashboard.md` (**A3**) | **SHIPPED** (Phases 1-4 + role-state dashboard) / **RESEARCH** (pixel-art/chrome polish) | Memory + ACP MCP tools + SSE dashboard with role-state sprite containers; pixel-art and bead/chip chrome remain parked. |
 | `2026-04-27-amendment-a4-managed-agents-runtime.md` (**A4**) | **RESEARCH** | Future-deployment design for hosted Anthropic Managed Agents runtime. Not on the SANS critical path. |
 | `2026-04-23-layered-test-sandbox-design.md` (**Spec #3**) | **SHIPPED** | L0/L1/L2/L3 sandbox stack. L2 advisory only. |
 | `2026-04-24-autonomous-build-swarm-design.md` (**Spec #1**) | **ACTIVE** | Build swarm architecture (still authoritative reference for swarm extension). |
@@ -75,12 +75,13 @@ Status-banner-prefixed within each file. Read in CLAUDE.md "Document hierarchy" 
 
 (There is no Amendment A5 spec doc — A5 was a code-only amendment + this Phase-1 doc-amendment pass.)
 
-## `docs/plans/` (TDD task lists)
+## `docs/plans/` (plans and launch checklist)
 
-All five plans shipped. Each carries a RETIRED banner naming where the live code lives. Do not execute as TDD plans.
+The original five implementation plans shipped. Each carries a RETIRED banner naming where the live code lives. Do not execute retired plans as TDD plans. The active launch checklist below is the current path to `v-submit`.
 
 | File | Status | Where it lives now |
 |---|---|---|
+| `2026-05-20-finish-to-v-submit-plan.md` | **ACTIVE** | Launch checklist for commits, readiness refresh, GitHub visibility, L3 evidence, demo URL, `v-submit`, and Devpost upload |
 | `2026-04-23-build-swarm-plan.md` | **RETIRED** | `services/swarm/`, `scripts/swarm-*.sh` |
 | `2026-04-23-orchestration-glue-plan.md` | **RETIRED** | `.github/workflows/`, `scripts/package-devpost.sh` |
 | `2026-04-23-product-plan.md` | **RETIRED** | `services/mcp/`, `services/agent/`, `services/agent_mcp/` (with A2 + A5 carve-outs) |

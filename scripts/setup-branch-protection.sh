@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup-branch-protection.sh — apply glue Spec #4 §6 to the `main` branch.
+# setup-branch-protection.sh — apply glue Spec #4 §6 to the default `master` branch.
 #
 # Run ONCE after repo creation (or after any protection reset). The
 # critic subagent's GitHub account must be a collaborator with
@@ -31,12 +31,12 @@ if [[ -z "${REPO_SLUG}" ]]; then
   exit 2
 fi
 
-log "applying main-branch protection to ${REPO_SLUG}"
+log "applying master-branch protection to ${REPO_SLUG}"
 
 # Spec #4 §6. Required checks: l0-static + l1-unit. L2 is advisory.
 # L3 is nightly, not a per-PR gate.
 gh api \
-  "repos/${REPO_SLUG}/branches/main/protection" \
+  "repos/${REPO_SLUG}/branches/master/protection" \
   --method PUT \
   --field 'required_status_checks[strict]=true' \
   --field 'required_status_checks[contexts][]=l0-static / workflow-lint' \
@@ -55,5 +55,5 @@ gh api \
   --field 'allow_force_pushes=false' \
   --field 'allow_deletions=false'
 
-log "main-branch protection applied."
-log "Verify: gh api repos/${REPO_SLUG}/branches/main/protection --jq '.required_status_checks.contexts'"
+log "master-branch protection applied."
+log "Verify: gh api repos/${REPO_SLUG}/branches/master/protection --jq '.required_status_checks.contexts'"

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""smoke-regex-tests - regression tests for the audit-smoke regexes.
+"""smoke-regex-tests - regression tests for audit-smoke regexes and
+small helper policies.
 
 The audit smokes (divergence-smoke, launcher-smoke, path-existence-
 smoke) catch drift in the rest of the codebase, but the smokes
@@ -8,16 +9,16 @@ contributor breaks a regex (over-broad / over-narrow / typo), the
 smoke would still report "all clean" while silently letting bugs
 through.
 
-This script imports each smoke module and runs synthetic
-positive + negative cases against its key regexes.  Exits 0 if
-all cases classify correctly, 1 if any case is wrong.
+This script imports each smoke module and runs synthetic positive +
+negative cases against its key regexes and small helper policies. Exits
+0 if all cases classify correctly, 1 if any case is wrong.
 
 The test fixtures here are derived from the manual negative tests
 I ran when each smoke was first shipped (commits 0155503 +
 c5bfa1b + e90b4f9).  Each fixture documents WHY it should match
 or not match in a comment.
 
-Wall-clock: ~30ms (no subprocess spawn; just regex matching).
+Wall-clock: ~30ms (no subprocess spawn; just regex/helper checks).
 Wired into docker/l1-compose.yml after the audit smokes as their
 self-test gate.
 """
@@ -25,6 +26,8 @@ self-test gate.
 from __future__ import annotations
 
 import importlib.util
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -121,6 +124,12 @@ LAUNCHER_BAD_BINARY_CASES = [
     ("exec claude is correct", "exec claude", 0),
     ("command -v claude is correct", "command -v claude", 0),
     ("comment quoting claude-code-mode.md is OK", "# see claude-code-mode.md", 0),
+    ("commented command -v claude-code is OK", "# command -v claude-code", 0),
+    (
+        "indented commented command -v claude-code is OK",
+        "  # command -v claude-code",
+        0,
+    ),
     (
         "URL path .../claude-code/install is OK",
         "https://docs.anthropic.com/en/docs/claude-code/install",
@@ -137,6 +146,43 @@ LAUNCHER_BAD_INVOCATION_CASES = [
         'exec claude . "interactive"',
         1,
     ),
+]
+
+LAUNCHER_TIMEOUT_ENV = "FINDEVIL_LAUNCHER_SMOKE_BASH_TIMEOUT_SECONDS"
+
+LAUNCHER_TIMEOUT_CASES = [
+    # (label, env value or None for unset, expected or "platform_default")
+    ("unset uses platform default", None, "platform_default"),
+    ("integer env override is honored", "7", 7),
+    ("invalid env falls back to default", "not-int", "platform_default"),
+    ("oversized env clamps to max", "999", "max"),
+    ("zero env clamps to one", "0", 1),
+]
+
+SMOKE_RUNNER_POLICY_CASE_COUNT = 9
+
+STALE_SMOKE_LABEL_PATTERNS = [
+    # Known stale fixed-count phrases removed from active smoke/docs
+    # surfaces. This is not a blanket ban on all historical or
+    # intentional count-bearing prose.
+    ("fleet policy fixed function count", "fleet-policy-smoke (7 functions"),
+    ("divergence fixed active count", "divergence-smoke (5 active divergences"),
+    ("operator doc fixed path count", "operator docs (~23 currently"),
+    ("path smoke fixed false-positive count", "43-of-47 false-positive"),
+    ("quickstart fixed smoke-count bump", "QUICKSTART smoke count"),
+]
+
+SMOKE_LABEL_POLICY_FILES = [
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "CLAUDE.md",
+    "QUICKSTART.md",
+    "README.md",
+    "docker/l1-compose.yml",
+    "docs/README.md",
+    "scripts/path-existence-smoke.py",
+    "scripts/run-all-smokes.ps1",
+    "scripts/run-all-smokes.sh",
 ]
 
 AUTONOMOUS_LOOP_UNBLOCKED_CASES = [
@@ -217,7 +263,8 @@ PATH_EXISTENCE_ALLOW_CASES = [
     ("MCP wire identifier tools/call", "tools/call", True),
     ("Runtime user dir ~/.claude/", "~/.claude/foo", True),
     ("Install path /usr/bin/find-evil", "/usr/bin/find-evil", True),
-    ("Deferred-A2 apps/web/", "apps/web/lib/foo.ts", True),
+    ("Live apps/web/ path is NOT allow-listed", "apps/web/lib/foo.ts", False),
+    ("Deferred-A2 apps/mcp-widgets/", "apps/mcp-widgets/src/foo.ts", True),
     (
         "Dropped-A2 findevil_agent/cli.py is allow-listed",
         "services/agent/findevil_agent/cli.py",
@@ -276,6 +323,157 @@ def _run_launcher_cases(launch_smoke) -> list[tuple[str, str]]:
         if actual != expected:
             failures.append(
                 (label, f"expected {expected} bad-invocation match(es), got {actual}")
+            )
+    return failures
+
+
+def _run_launcher_timeout_cases(launch_smoke) -> list[tuple[str, str]]:
+    failures = []
+    original = os.environ.get(LAUNCHER_TIMEOUT_ENV)
+    platform_default = (
+        launch_smoke.WINDOWS_BASH_TIMEOUT_SECONDS
+        if launch_smoke.sys.platform == "win32"
+        else launch_smoke.DEFAULT_BASH_TIMEOUT_SECONDS
+    )
+    try:
+        for label, raw, expected in LAUNCHER_TIMEOUT_CASES:
+            if raw is None:
+                os.environ.pop(LAUNCHER_TIMEOUT_ENV, None)
+            else:
+                os.environ[LAUNCHER_TIMEOUT_ENV] = raw
+            if expected == "platform_default":
+                expected_value = platform_default
+            elif expected == "max":
+                expected_value = launch_smoke.MAX_BASH_TIMEOUT_SECONDS
+            else:
+                expected_value = expected
+            actual = launch_smoke._bash_timeout_seconds()
+            if actual != expected_value:
+                failures.append(
+                    (
+                        label,
+                        f"_bash_timeout_seconds: expected {expected_value}, got {actual}",
+                    )
+                )
+    finally:
+        if original is None:
+            os.environ.pop(LAUNCHER_TIMEOUT_ENV, None)
+        else:
+            os.environ[LAUNCHER_TIMEOUT_ENV] = original
+    return failures
+
+
+def _run_smoke_runner_policy_cases(launch_smoke) -> list[tuple[str, str]]:
+    failures = []
+    runner = (REPO / "scripts/run-all-smokes.ps1").read_text(encoding="utf-8")
+    posix_runner = (REPO / "scripts/run-all-smokes.sh").read_text(encoding="utf-8")
+    quickstart = (REPO / "QUICKSTART.md").read_text(encoding="utf-8")
+    readiness_smoke = (REPO / "scripts/readiness-gate-smoke.py").read_text(
+        encoding="utf-8"
+    )
+    expected_timeout = str(launch_smoke.WINDOWS_BASH_TIMEOUT_SECONDS)
+    assignment = f'$env:{LAUNCHER_TIMEOUT_ENV} = "{expected_timeout}"'
+    launcher_call = "& $python scripts/launcher-smoke.py"
+
+    guarded_assignment = re.compile(
+        rf"if\s*\(\s*-not\s+\$env:{LAUNCHER_TIMEOUT_ENV}\s*\)\s*{{\s*"
+        rf"{re.escape(assignment)}\s*}}",
+        re.MULTILINE,
+    )
+    if not guarded_assignment.search(runner):
+        failures.append(
+            (
+                "run-all-smokes.ps1 conditionally sets launcher timeout",
+                f"expected guarded {assignment!r} before launcher-smoke",
+            )
+        )
+    if runner.count(assignment) != 1:
+        failures.append(
+            (
+                "run-all-smokes.ps1 preserves caller override",
+                f"expected exactly one default assignment, got {runner.count(assignment)}",
+            )
+        )
+    assignment_pos = runner.find(assignment)
+    launcher_pos = runner.find(launcher_call)
+    if not (0 <= assignment_pos < launcher_pos):
+        failures.append(
+            (
+                "run-all-smokes.ps1 sets timeout before launcher-smoke",
+                "expected timeout default to appear before launcher-smoke invocation",
+            )
+        )
+    if LAUNCHER_TIMEOUT_ENV not in quickstart or "Git Bash startup" not in quickstart:
+        failures.append(
+            (
+                "QUICKSTART documents launcher timeout override",
+                f"expected {LAUNCHER_TIMEOUT_ENV} and Git Bash startup guidance",
+            )
+        )
+    if not re.search(
+        r"readiness-gate-smoke\.py.*Test-CommandAvailable \"uv\"",
+        runner,
+        re.DOTALL,
+    ):
+        failures.append(
+            (
+                "run-all-smokes.ps1 readiness smoke requires uv",
+                "expected readiness-gate-smoke prereq to include uv",
+            )
+        )
+    if not re.search(
+        r"readiness-gate-smoke\.py.*Test-CommandAvailable \"powershell\".*"
+        r"Test-CommandAvailable \"pwsh\"",
+        runner,
+        re.DOTALL,
+    ):
+        failures.append(
+            (
+                "run-all-smokes.ps1 readiness smoke requires PowerShell",
+                "expected readiness-gate-smoke prereq to include powershell or pwsh",
+            )
+        )
+    if (
+        "command -v uv && (command -v powershell || command -v pwsh)"
+        not in posix_runner
+    ):
+        failures.append(
+            (
+                "run-all-smokes.sh readiness smoke prereq is explicit",
+                "expected POSIX readiness smoke prereq to require uv and PowerShell/pwsh",
+            )
+        )
+    if "uv sync --directory services/agent_mcp --extra dev" not in posix_runner:
+        failures.append(
+            (
+                "run-all-smokes.sh footer uses service uv sync",
+                "expected footer to use per-service uv sync command",
+            )
+        )
+    if '"overall": manifest_overall' not in readiness_smoke:
+        failures.append(
+            (
+                "readiness-gate-smoke manifest fixture is not inverted",
+                "expected manifest_verify.json fixture to write overall=manifest_overall",
+            )
+        )
+    return failures
+
+
+def _run_smoke_label_policy_cases() -> list[tuple[str, str]]:
+    failures = []
+    source_texts = [
+        (rel, (REPO / rel).read_text(encoding="utf-8"))
+        for rel in SMOKE_LABEL_POLICY_FILES
+    ]
+    for label, needle in STALE_SMOKE_LABEL_PATTERNS:
+        matches = [rel for rel, text in source_texts if needle in text]
+        if matches:
+            failures.append(
+                (
+                    label,
+                    f"unexpected stale label {needle!r} in {', '.join(matches)}",
+                )
             )
     return failures
 
@@ -367,13 +565,33 @@ def main() -> int:
         all_failures.append(("divergence-smoke", label, err))
 
     launcher_failures = _run_launcher_cases(launch_smoke)
-    n_launcher = len(LAUNCHER_BAD_BINARY_CASES) + len(LAUNCHER_BAD_INVOCATION_CASES)
+    launcher_timeout_failures = _run_launcher_timeout_cases(launch_smoke)
+    runner_policy_failures = _run_smoke_runner_policy_cases(launch_smoke)
+    n_launcher = (
+        len(LAUNCHER_BAD_BINARY_CASES)
+        + len(LAUNCHER_BAD_INVOCATION_CASES)
+        + len(LAUNCHER_TIMEOUT_CASES)
+        + SMOKE_RUNNER_POLICY_CASE_COUNT
+    )
+    all_launcher_failures = (
+        launcher_failures + launcher_timeout_failures + runner_policy_failures
+    )
     print(
-        f"launcher-smoke regexes:   {n_launcher - len(launcher_failures)}"
+        f"launcher-smoke regexes/timeouts/runner policies: "
+        f"{n_launcher - len(all_launcher_failures)}"
         f" / {n_launcher} passed"
     )
-    for label, err in launcher_failures:
+    for label, err in all_launcher_failures:
         all_failures.append(("launcher-smoke", label, err))
+
+    smoke_label_failures = _run_smoke_label_policy_cases()
+    print(
+        f"smoke-label policies:    "
+        f"{len(STALE_SMOKE_LABEL_PATTERNS) - len(smoke_label_failures)}"
+        f" / {len(STALE_SMOKE_LABEL_PATTERNS)} passed"
+    )
+    for label, err in smoke_label_failures:
+        all_failures.append(("smoke-label policies", label, err))
 
     pes_failures = _run_path_existence_cases(pes_smoke)
     print(
@@ -413,6 +631,7 @@ def main() -> int:
     total = (
         len(DIVERGENCE_CASES)
         + n_launcher
+        + len(STALE_SMOKE_LABEL_PATTERNS)
         + len(PATH_EXISTENCE_ALLOW_CASES)
         + n_auto_loop
     )

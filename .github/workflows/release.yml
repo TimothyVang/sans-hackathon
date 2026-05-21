@@ -35,7 +35,7 @@ jobs:
           # the tag's commit OR is an ancestor within the last 24h.
           GREEN=$(gh run list \
             --workflow=l3-nightly.yml \
-            --branch=main \
+            --branch=master \
             --status=success \
             --limit=5 \
             --json headSha,databaseId \

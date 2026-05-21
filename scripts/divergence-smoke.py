@@ -2,9 +2,10 @@
 """divergence-smoke - assert CLAUDE.md "Spec/code divergences" stay
 downstream-clean.
 
-CLAUDE.md documents 6 spec/code divergences. The previous 11
-iterations of doc-vs-code audits caught 25 stale references where
-the "wrong" half of a divergence had survived in active files.
+CLAUDE.md documents 8 spec/code divergence sections; 6 currently
+have executable wrong-pattern checks. The previous 11 iterations of
+doc-vs-code audits caught 25 stale references where the "wrong" half
+of a divergence had survived in active files.
 Three iterations of the divergence-sweep procedure (commits
 782f364, e6ddc2d, fb319dd) cleaned the active surface area; this
 smoke locks the cleanup so a future contributor can't silently

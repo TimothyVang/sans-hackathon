@@ -1,8 +1,8 @@
 # run-all-smokes.ps1 - native Windows smoke/lint/test gate.
 #
-# Mirrors scripts/run-all-smokes.sh without depending on bash. This avoids the
-# Windows failure mode where `bash` resolves to WSL, cannot see Windows-native
-# uv/cargo/ruff installs, and passes /mnt/c paths to findevil-mcp.exe.
+# Mirrors scripts/run-all-smokes.sh without using bash as the runner. Most
+# checks stay Windows-native; launcher-smoke still requires a Git Bash `bash`
+# on PATH for `bash -n` syntax checks.
 
 [CmdletBinding()]
 param(
@@ -104,11 +104,17 @@ Invoke-Smoke @agentMcpSmoke
 Invoke-Smoke -Label "verdict-policy-smoke (compute_verdict + detect_evidence_type)" -Command { & $python scripts/verdict-policy-smoke.py } -Prereq { $python }
 Invoke-Smoke -Label "fleet-policy-smoke (normalize/filter/cluster/density/uniqueness/aggregate)" -Command { & $python scripts/fleet-policy-smoke.py } -Prereq { $python }
 Invoke-Smoke -Label "report-policy-smoke (report QA + expert signoff + visual evidence policy)" -Command { & $python scripts/report-policy-smoke.py } -Prereq { $python }
+Invoke-Smoke -Label "readiness-gate-smoke (PacketOnly packaging + fail-closed blockers)" -Command { & $python scripts/readiness-gate-smoke.py } -Prereq { $python -and (Test-CommandAvailable "uv") -and ((Test-CommandAvailable "powershell") -or (Test-CommandAvailable "pwsh")) }
 Invoke-Smoke -Label "demo-script-smoke (9 contiguous beats summing to 5:00)" -Command { & $python scripts/demo-script-smoke.py } -Prereq { $python -and (Test-Path -LiteralPath "docs/demo-script-a2.md" -PathType Leaf) }
-Invoke-Smoke -Label "launcher-smoke (bash -n + claude binary + no positional .)" -Command { & $python scripts/launcher-smoke.py } -Prereq { $python }
+Invoke-Smoke -Label "launcher-smoke (bash -n + claude binary + no positional .)" -Command {
+    if (-not $env:FINDEVIL_LAUNCHER_SMOKE_BASH_TIMEOUT_SECONDS) {
+        $env:FINDEVIL_LAUNCHER_SMOKE_BASH_TIMEOUT_SECONDS = "90"
+    }
+    & $python scripts/launcher-smoke.py
+} -Prereq { $python -and (Test-CommandAvailable "bash") }
 Invoke-Smoke -Label "divergence-smoke (active divergences downstream-clean)" -Command { & $python scripts/divergence-smoke.py } -Prereq { $python }
 Invoke-Smoke -Label "path-existence-smoke (backtick-quoted paths resolve)" -Command { & $python scripts/path-existence-smoke.py } -Prereq { $python }
-Invoke-Smoke -Label "smoke-regex-tests (audit-smoke regex tables)" -Command { & $python scripts/smoke-regex-tests.py } -Prereq { $python }
+Invoke-Smoke -Label "smoke-regex-tests (audit-smoke regex/helper policies)" -Command { & $python scripts/smoke-regex-tests.py } -Prereq { $python }
 Invoke-Smoke -Label "autonomous-loop-smoke (8h dry-run + empty-queue timing)" -Command { & $python scripts/autonomous-loop-smoke.py } -Prereq { $python }
 
 Invoke-Smoke -Label "ruff check . (lint clean across all Python services)" -Command { ruff check . } -Prereq { Test-CommandAvailable "ruff" }

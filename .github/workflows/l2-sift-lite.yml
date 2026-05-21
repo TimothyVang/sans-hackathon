@@ -18,7 +18,7 @@ on:
   push:
     branches: ['**']
   pull_request:
-    branches: [main]
+    branches: [master]
 
 concurrency:
   group: l2-${{ github.ref }}

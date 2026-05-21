@@ -14,13 +14,13 @@ Every step declares its "green" condition. Stop at the first red; chase the root
 
 - [ ] `gh auth status` green (authenticated to the target repo).
 - [ ] `docker` + `docker compose` + `bash` + `jq` + `git` + `curl` on `PATH`.
-- [ ] Repo cloned at the expected path; `git status` clean on `main`.
+- [ ] Repo cloned at the expected path; `git status` clean on `master`.
 - [ ] `bash scripts/verify-sandbox.sh` reports all runnable layers PASS and Swarm PASS.
 
 ## 1. Branch protection applied
 
 - [ ] `bash scripts/setup-branch-protection.sh` exits 0 (or confirms rules already in place).
-- [ ] `gh api repos/${OWNER}/${REPO}/branches/main/protection --jq '.required_status_checks.contexts'` returns the full list: `l0-static / workflow-lint`, `shell-lint`, `python-lint`, `rust-lint`, `typescript-lint`, `docs-consistency`, `amendment-option-b-guard`, and `l1-unit / unit-build`.
+- [ ] `gh api repos/${OWNER}/${REPO}/branches/master/protection --jq '.required_status_checks.contexts'` returns the full list: `l0-static / workflow-lint`, `shell-lint`, `python-lint`, `rust-lint`, `typescript-lint`, `docs-consistency`, `amendment-option-b-guard`, and `l1-unit / unit-build`.
 
 ## 2. Swarm → L0 → L1 happy path
 
@@ -34,7 +34,7 @@ Every step declares its "green" condition. Stop at the first red; chase the root
 
 ## 3. L3 nightly on merge
 
-- [ ] Merging to `main` triggers `l3-nightly.yml` automatically.
+- [ ] Merging to `master` triggers `l3-nightly.yml` automatically.
 - [ ] Job either:
       - Completes green on a KVM-enabled runner, OR
       - Exits with `::warning::KVM not available` on a runner without `/dev/kvm`.

@@ -92,7 +92,7 @@ run_smoke \
 
 # 4. fleet_correlate pure-function lock.
 run_smoke \
-    "fleet-policy-smoke (7 functions across normalize/filter/cluster/density/uniqueness/aggregate)" \
+    "fleet-policy-smoke (normalize/filter/cluster/density/uniqueness/aggregate)" \
     "python3 scripts/fleet-policy-smoke.py"
 
 # 4b. Customer-facing report policy lock. This is intentionally part of the
@@ -101,6 +101,13 @@ run_smoke \
 run_smoke \
     "report-policy-smoke (report QA + expert signoff + visual evidence policy)" \
     "python3 scripts/report-policy-smoke.py"
+
+# 4c. Windows readiness packet smoke. It uses PacketOnly synthetic evidence
+# and skips cleanly outside environments that can launch PowerShell.
+run_smoke \
+    "readiness-gate-smoke (PacketOnly packaging + fail-closed blockers)" \
+    "python3 scripts/readiness-gate-smoke.py" \
+    "command -v uv && (command -v powershell || command -v pwsh)"
 
 # 5. demo-script-a2.md structural lock.
 run_smoke \
@@ -113,21 +120,22 @@ run_smoke \
     "launcher-smoke (bash -n + claude binary + no positional .)" \
     "python3 scripts/launcher-smoke.py"
 
-# 7. Spec/code divergence lock — asserts no doc has re-introduced a bad-half pattern.
+# 7. Spec/code divergence lock — asserts no active file has reintroduced
+#    a bad-half pattern.
 run_smoke \
-    "divergence-smoke (5 active divergences from CLAUDE.md downstream-clean)" \
+    "divergence-smoke (active divergences from CLAUDE.md downstream-clean)" \
     "python3 scripts/divergence-smoke.py"
 
-# 8. Path-existence audit — every backtick-quoted path in glob-discovered
-#    operator docs (~23 currently; auto-grows as new docs/ + agent-config/
-#    + services/*/README.md files are added) resolves to a real file/dir.
+# 8. Path-existence audit — every backtick-quoted path discovered in
+#    operator docs resolves to a real file/dir as new docs, agent config,
+#    and service README files are added.
 run_smoke \
     "path-existence-smoke (every backtick-quoted path resolves to a real file/dir)" \
     "python3 scripts/path-existence-smoke.py"
 
 # 9. Self-test the audit-smoke regexes themselves (protect the protectors).
 run_smoke \
-    "smoke-regex-tests (synthetic +/- cases against the 3 audit-smoke regex tables)" \
+    "smoke-regex-tests (synthetic +/- cases against audit-smoke regex/helper policies)" \
     "python3 scripts/smoke-regex-tests.py"
 
 # 10. Autonomous-loop CLI behavior smoke.
@@ -135,11 +143,10 @@ run_smoke \
     "autonomous-loop-smoke (8h dry-run + tiny empty-queue timing)" \
     "python3 scripts/autonomous-loop-smoke.py"
 
-# 11 + 12 + 13. Lint / format gate.  L0 GHA workflow runs these
-# three; mirror locally so a contributor running this script
-# before commit catches a missing `ruff format` or unformatted
-# Rust before the push.  Each gated on `command -v` so a
-# stripped install SKIPs cleanly.
+# Lint / format gates. L0 GHA workflow runs these too; mirror them locally
+# so a contributor running this script before commit catches a missing
+# `ruff format` or unformatted Rust before the push. Each gate uses
+# `command -v` so a stripped install SKIPs cleanly.
 run_smoke \
     "ruff check . (lint clean across all Python services)" \
     "ruff check ." \
@@ -153,11 +160,10 @@ run_smoke \
     "cargo fmt --all --check" \
     "command -v cargo && [ -f Cargo.toml ]"
 
-# 14 + 15. The remaining two gates from the autonomous-loop directive's
-# verification spec ("cargo test + cargo clippy -D warnings + ruff check
-# + ruff format check").  ruff pair + cargo fmt are above; clippy + test
-# go here.  cargo test is the slowest entry (~20s cached); set
-# SKIP_SLOW_RUST=1 to skip it during fast iteration.
+# Rust lint/test gates from the autonomous-loop verification spec. The ruff
+# pair and cargo fmt are above; clippy and test go here. cargo test is the
+# slowest entry (~20s cached); set SKIP_SLOW_RUST=1 to skip it during fast
+# iteration.
 run_smoke \
     "cargo clippy --deny warnings (Rust lint clean — matches L0 GHA gate)" \
     "cargo clippy --workspace --all-targets --locked -- -D warnings" \
@@ -181,6 +187,6 @@ echo "${c_red}FAIL${c_off} - ${passed} passed, ${skipped} skipped, ${failed} fai
 echo "The CI-equivalent gate runs via docker/l1-compose.yml. If a smoke"
 echo "fails locally and passes in Docker/CI, check toolchain versions:"
 echo "  cargo build --release -p findevil-mcp  (Rust 1.88 per rust-toolchain.toml)"
-echo "  uv sync --extra dev (Python 3.11 in services/agent_mcp)"
+echo "  uv sync --directory services/agent_mcp --extra dev (Python 3.11 in services/agent_mcp)"
 echo "=========================================="
 exit 1

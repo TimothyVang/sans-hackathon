@@ -14,7 +14,7 @@
 # sansforensics user's $HOME.
 #
 # Usage (inside the VM, as the sansforensics user):
-#   curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/main/scripts/sift-vm-setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/master/scripts/sift-vm-setup.sh | bash
 # OR after rsync'ing the repo into the VM:
 #   bash ~/find-evil/scripts/sift-vm-setup.sh
 

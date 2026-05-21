@@ -4,15 +4,15 @@ name: L3 Nightly Goldens
 # Requires KVM on the runner (GHA larger runners with KVM enabled,
 # or a self-hosted runner with /dev/kvm).
 #
-# Budget: 5-20min wall clock. Runs nightly on main at 02:30 UTC and
-# on every push to main (in addition to the cron). Green L3 is
+# Budget: 5-20min wall clock. Runs nightly on master at 02:30 UTC and
+# on every push to master (in addition to the cron). Green L3 is
 # REQUIRED before release.yml will build a `v<N>` tag.
 
 on:
   schedule:
     - cron: '30 2 * * *'
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch: {}
 
 concurrency:
