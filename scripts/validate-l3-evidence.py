@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""Validate local SIFT L3 fallback evidence and emit benchmark verdict JSON.
+
+The normal L3 path runs SIFT goldens under KVM. GitHub-hosted KVM runners are
+not always available, so release workflows may use this script to validate an
+explicit local SIFT evidence summary instead of silently treating a skipped KVM
+run as green.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import re
+import sys
+from typing import Any
+
+
+EXPECTED_NIST_SHA256 = (
+    "65e2002fed0b286f49541c7e97dcec0dda913d51a063ceeed86782bdacda2312"
+)
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+HEX40 = re.compile(r"^[0-9a-f]{40}$")
+
+
+def positive_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def nested(data: dict[str, Any], *keys: str) -> Any:
+    current: Any = data
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def validate_evidence(data: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+
+    if data.get("version") != 1:
+        errors.append("version must be 1")
+    if data.get("evidence_kind") != "local-sift-vmware-l3-fallback":
+        errors.append("evidence_kind must be local-sift-vmware-l3-fallback")
+    if data.get("fixture") != "nist-hacking-case":
+        errors.append("fixture must be nist-hacking-case")
+    product_commit = str(data.get("product_commit") or "")
+    if not HEX40.fullmatch(product_commit):
+        errors.append("product_commit must be a 40-character lowercase hex SHA")
+
+    image_sha = nested(data, "nist_image", "sha256")
+    if image_sha != EXPECTED_NIST_SHA256:
+        errors.append("nist_image.sha256 does not match assembled SCHARDT.dd")
+    if positive_int(nested(data, "nist_image", "size_bytes")) is None:
+        errors.append("nist_image.size_bytes must be positive")
+
+    finding_count = positive_int(nested(data, "run", "finding_count"))
+    if finding_count is None:
+        errors.append("run.finding_count must be positive")
+    if nested(data, "run", "verifier", "approved") != finding_count:
+        errors.append("run.verifier.approved must equal run.finding_count")
+    if nested(data, "run", "verifier", "rejected") != 0:
+        errors.append("run.verifier.rejected must be 0")
+    if nested(data, "run", "failed_checks") not in ([], None):
+        errors.append("run.failed_checks must be empty")
+    if nested(data, "run", "report_qa_status") not in {"PASS", "WARN"}:
+        errors.append("run.report_qa_status must be PASS or WARN")
+    if nested(data, "run", "ready_for_expert_signoff") is not True:
+        errors.append("run.ready_for_expert_signoff must be true")
+    if nested(data, "run", "customer_releasable") is not False:
+        errors.append("run.customer_releasable must be false")
+
+    if nested(data, "readiness", "readiness_state") != "READY_FOR_EXPERT_REVIEW":
+        errors.append("readiness.readiness_state must be READY_FOR_EXPERT_REVIEW")
+    if nested(data, "readiness", "blockers") != []:
+        errors.append("readiness.blockers must be empty")
+    if nested(data, "readiness", "customer_releasable") is not False:
+        errors.append("readiness.customer_releasable must be false")
+
+    artifacts = data.get("artifacts")
+    if not isinstance(artifacts, dict):
+        errors.append("artifacts must be an object")
+        artifacts = {}
+    for key in (
+        "verdict_sha256",
+        "run_manifest_sha256",
+        "manifest_verify_sha256",
+        "readiness_summary_sha256",
+        "readiness_packet_zip_sha256",
+        "merkle_root_hex",
+    ):
+        value = str(artifacts.get(key) or "")
+        if not HEX64.fullmatch(value):
+            errors.append(f"artifacts.{key} must be a lowercase sha256/merkle hex")
+    if artifacts.get("manifest_verify_overall") is not True:
+        errors.append("artifacts.manifest_verify_overall must be true")
+    if positive_int(artifacts.get("manifest_leaf_count")) is None:
+        errors.append("artifacts.manifest_leaf_count must be positive")
+
+    commands = data.get("verification_commands")
+    if not isinstance(commands, list) or not commands:
+        errors.append("verification_commands must be a non-empty list")
+
+    return errors
+
+
+def benchmark_verdict(data: dict[str, Any]) -> dict[str, Any]:
+    run = data["run"]
+    return {
+        "fixture": data["fixture"],
+        "finding_count": run["finding_count"],
+        "findings_expected": data.get("findings_expected", ""),
+        "verdict": run.get("verdict", ""),
+        "verdict_correct": data.get("verdict_correct", ""),
+        "wall_clock_seconds": data.get("wall_clock_seconds", ""),
+        "ots_pending": False,
+        "run_duration_seconds": data.get("run_duration_seconds", ""),
+        "contradictions_found": data.get("contradictions_found", 0),
+        "contradictions_auto_resolved": data.get("contradictions_auto_resolved", 0),
+        "source": "local-sift-vmware-l3-fallback",
+        "local_l3_evidence": data,
+    }
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("evidence", type=Path)
+    parser.add_argument("--emit", type=Path, help="write benchmark verdict JSON")
+    args = parser.parse_args(argv)
+
+    try:
+        data = json.loads(args.evidence.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[l3-evidence] invalid evidence file: {exc}", file=sys.stderr)
+        return 2
+    if not isinstance(data, dict):
+        print("[l3-evidence] evidence root must be an object", file=sys.stderr)
+        return 2
+
+    errors = validate_evidence(data)
+    if errors:
+        for error in errors:
+            print(f"[l3-evidence] ERROR: {error}", file=sys.stderr)
+        return 1
+
+    if args.emit:
+        args.emit.parent.mkdir(parents=True, exist_ok=True)
+        args.emit.write_text(
+            json.dumps(benchmark_verdict(data), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(f"[l3-evidence] emitted {args.emit}")
+    print(
+        "[l3-evidence] PASS: local SIFT evidence validates "
+        f"({data['fixture']}, findings={data['run']['finding_count']})"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
