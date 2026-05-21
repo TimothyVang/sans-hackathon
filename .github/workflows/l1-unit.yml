@@ -57,6 +57,11 @@ jobs:
           fi
           docker image ls findevil/l1-devbase:local
 
+      - name: Prepare writable L1 scratch directory
+        run: |
+          mkdir -p tmp
+          chmod 0777 tmp
+
       - name: Run L1 (cargo test / pytest / pnpm build+test)
         env:
           UID: 1000
