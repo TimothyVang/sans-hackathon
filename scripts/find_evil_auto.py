@@ -136,8 +136,11 @@ class SshMcpClient:
         i = self._next_id
         self._next_id += 1
         msg = {"jsonrpc": "2.0", "id": i, "method": method, "params": params or {}}
-        self.proc.stdin.write(json.dumps(msg, separators=(",", ":")) + "\n")
-        self.proc.stdin.flush()
+        try:
+            self.proc.stdin.write(json.dumps(msg, separators=(",", ":")) + "\n")
+            self.proc.stdin.flush()
+        except OSError as exc:
+            raise RuntimeError(f"{self.label} {method}: server stdin closed") from exc
         deadline = time.monotonic() + timeout
         while True:
             try:
@@ -188,7 +191,10 @@ class SshMcpClient:
 
     def close(self) -> None:
         if self.proc.stdin and not self.proc.stdin.closed:
-            self.proc.stdin.close()
+            try:
+                self.proc.stdin.close()
+            except OSError:
+                pass
         try:
             self.proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
@@ -228,6 +234,13 @@ NETWORK_CLASSES = {"pcap", "zeek", "sysmon_network"}
 VELOCIRAPTOR_ZIP_EXTRACT_CLASSES = (
     EXTRACTED_DISK_CLASSES | NETWORK_CLASSES | {"evtx", "yara_target"}
 )
+SUSPICIOUS_PREFETCH_TOOL_HINTS = (
+    ("CAIN", "Cain password-recovery/network hacking tool", "T1588.002"),
+    ("NETSTUMBLER", "NetStumbler wireless discovery tool", "T1046"),
+    ("ETHEREAL", "Ethereal packet-capture tool", "T1040"),
+    ("MIRC", "mIRC client that can support IRC-based communications", "T1071.001"),
+    ("LOOKATLAN", "Look@LAN network discovery tool", "T1046"),
+)
 MAX_VELOCIRAPTOR_ZIP_MEMBER_BYTES = int(
     os.environ.get("FINDEVIL_VELOCIRAPTOR_ZIP_MAX_MEMBER_BYTES", str(512 * 1024 * 1024))
 )
@@ -264,6 +277,14 @@ def detect_evidence_type(path: str) -> str:
     if p.endswith(".zip"):
         return "velociraptor"
     return "unknown"
+
+
+def suspicious_prefetch_tool_hint(executable_name: str) -> tuple[str, str] | None:
+    upper_name = executable_name.upper()
+    for needle, description, technique in SUSPICIOUS_PREFETCH_TOOL_HINTS:
+        if needle in upper_name:
+            return description, technique
+    return None
 
 
 def classify_artifact_path(path: str) -> dict[str, str | None]:
@@ -4379,6 +4400,30 @@ class Investigation:
                     {"run_count": out.get("run_count", 0), "prefetch_path": path},
                 )
             print(f"  prefetch_parse: {path} runs={out.get('run_count', 0)}")
+            hint = suspicious_prefetch_tool_hint(str(exe))
+            if hint and out.get("run_count", 0):
+                tool_description, technique = hint
+                safe_exe = re.sub(r"[^a-z0-9]+", "-", str(exe).lower()).strip("-")
+                self.findings_pool_b.append(
+                    {
+                        "case_id": self.handle["id"],
+                        "finding_id": self._finding_id_for(
+                            f"f-B-prefetch-{safe_exe}", path
+                        ),
+                        "tool_call_id": tcid,
+                        "artifact_path": path,
+                        "description": (
+                            f"Windows Prefetch contains {exe} with run_count="
+                            f"{out.get('run_count', 0)}; {tool_description} is a "
+                            "NIST Hacking Case triage lead. Treat this as a "
+                            "disk-artifact lead that needs corroboration before any "
+                            "standalone activity claim."
+                        ),
+                        "confidence": "INFERRED",
+                        "pool_origin": "B",
+                        "mitre_technique": technique,
+                    }
+                )
 
         registry_calls = 0
         for entry in by_class["registry"][:20]:
@@ -5048,7 +5093,7 @@ class Investigation:
                     "replay_error": result.get("replay_error"),
                     "replay_artifact": result.get("replay_artifact"),
                 }
-            actions.append(action)
+            actions.append(dict(action))
             action_finding_id = str(action.get("finding_id") or finding_id)
             replay_record_sha256 = self._hash_obj({**action, **replay})
             action["replay_record_sha256"] = replay_record_sha256

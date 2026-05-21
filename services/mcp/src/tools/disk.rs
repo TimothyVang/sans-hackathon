@@ -343,40 +343,31 @@ fn auto_mount(
     if cfg!(windows) {
         return Err(DiskError::UnsupportedPlatform);
     }
+    if is_ewf_image(image_path) {
+        return auto_mount_ewf(image_path, mount_point);
+    }
+    auto_mount_raw(image_path, mount_point)
+}
+
+fn is_ewf_image(image_path: &Path) -> bool {
     let ext = image_path
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if ext == "e01" || ext == "ex01" {
-        let ewf_dir = mount_point.join("ewf");
-        create_dir(&ewf_dir)?;
-        let bin = std::env::var("EWF_MOUNT_BIN").unwrap_or_else(|_| "ewfmount".to_string());
-        let args = vec![
-            image_path.to_string_lossy().to_string(),
-            ewf_dir.to_string_lossy().to_string(),
-        ];
-        let result = run_fixed(&bin, &args)?;
-        if !result.0 {
-            return Err(DiskError::SubprocessFailed {
-                status: result.1,
-                stderr_tail: result.2,
-            });
-        }
-        return Ok((
-            "mounted".to_string(),
-            ewf_dir,
-            std::iter::once(bin).chain(args).collect(),
-            result.2,
-            "mounted EWF container read-only; filesystem volume may require SIFT loop/TSK extraction".to_string(),
-        ));
-    }
-    let bin = std::env::var("FINDEVIL_MOUNT_BIN").unwrap_or_else(|_| "mount".to_string());
+    ext == "e01" || ext == "ex01"
+}
+
+fn auto_mount_ewf(
+    image_path: &Path,
+    mount_point: &Path,
+) -> Result<(String, PathBuf, Vec<String>, String, String), DiskError> {
+    let ewf_dir = mount_point.join("ewf");
+    create_dir(&ewf_dir)?;
+    let bin = std::env::var("EWF_MOUNT_BIN").unwrap_or_else(|_| "ewfmount".to_string());
     let args = vec![
-        "-o".to_string(),
-        "ro,loop".to_string(),
         image_path.to_string_lossy().to_string(),
-        mount_point.to_string_lossy().to_string(),
+        ewf_dir.to_string_lossy().to_string(),
     ];
     let result = run_fixed(&bin, &args)?;
     if !result.0 {
@@ -387,11 +378,148 @@ fn auto_mount(
     }
     Ok((
         "mounted".to_string(),
-        mount_point.to_path_buf(),
+        ewf_dir,
         std::iter::once(bin).chain(args).collect(),
         result.2,
-        "mounted raw image read-only with loop device".to_string(),
+        "mounted EWF container read-only; filesystem volume may require SIFT loop/TSK extraction"
+            .to_string(),
     ))
+}
+
+fn auto_mount_raw(
+    image_path: &Path,
+    mount_point: &Path,
+) -> Result<(String, PathBuf, Vec<String>, String, String), DiskError> {
+    let bin = std::env::var("FINDEVIL_MOUNT_BIN").unwrap_or_else(|_| "mount".to_string());
+    let args = vec![
+        "-o".to_string(),
+        "ro,loop".to_string(),
+        image_path.to_string_lossy().to_string(),
+        mount_point.to_string_lossy().to_string(),
+    ];
+    let result = run_fixed(&bin, &args)?;
+    if result.0 {
+        return Ok((
+            "mounted".to_string(),
+            mount_point.to_path_buf(),
+            std::iter::once(bin).chain(args).collect(),
+            result.2,
+            "mounted raw image read-only with loop device".to_string(),
+        ));
+    }
+
+    let direct_status = result.1;
+    let direct_stderr = result.2;
+    if let Some(offset) = first_partition_byte_offset(image_path) {
+        let offset_args = vec![
+            "-o".to_string(),
+            format!("ro,loop,offset={offset}"),
+            image_path.to_string_lossy().to_string(),
+            mount_point.to_string_lossy().to_string(),
+        ];
+        let offset_result = run_fixed(&bin, &offset_args)?;
+        if offset_result.0 {
+            return Ok((
+                "mounted".to_string(),
+                mount_point.to_path_buf(),
+                std::iter::once(bin).chain(offset_args).collect(),
+                offset_result.2,
+                format!("mounted first filesystem partition read-only with loop offset {offset}"),
+            ));
+        }
+        if bin == "mount" {
+            let sudo_result = run_sudo_fixed(&bin, &offset_args)?;
+            if sudo_result.0 {
+                return Ok((
+                    "mounted".to_string(),
+                    mount_point.to_path_buf(),
+                    std::iter::once("sudo".to_string())
+                        .chain(std::iter::once("-n".to_string()))
+                        .chain(std::iter::once(bin))
+                        .chain(offset_args)
+                        .collect(),
+                    sudo_result.2,
+                    format!(
+                        "mounted first filesystem partition read-only with sudo loop offset {offset}"
+                    ),
+                ));
+            }
+        }
+        return Err(DiskError::SubprocessFailed {
+            status: offset_result.1,
+            stderr_tail: format!(
+                "direct mount failed ({direct_status}): {direct_stderr}\n\
+                 offset mount failed: {}",
+                offset_result.2
+            ),
+        });
+    }
+
+    if bin == "mount" {
+        let sudo_result = run_sudo_fixed(&bin, &args)?;
+        if sudo_result.0 {
+            return Ok((
+                "mounted".to_string(),
+                mount_point.to_path_buf(),
+                std::iter::once("sudo".to_string())
+                    .chain(std::iter::once("-n".to_string()))
+                    .chain(std::iter::once(bin))
+                    .chain(args)
+                    .collect(),
+                sudo_result.2,
+                "mounted raw image read-only with sudo loop device".to_string(),
+            ));
+        }
+        return Err(DiskError::SubprocessFailed {
+            status: sudo_result.1,
+            stderr_tail: format!(
+                "direct mount failed ({direct_status}): {direct_stderr}\n\
+                 sudo mount failed: {}",
+                sudo_result.2
+            ),
+        });
+    }
+
+    Err(DiskError::SubprocessFailed {
+        status: direct_status,
+        stderr_tail: direct_stderr,
+    })
+}
+
+fn first_partition_byte_offset(image_path: &Path) -> Option<u64> {
+    let output = Command::new("mmls").arg(image_path).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_mmls_first_partition_offset(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn parse_mmls_first_partition_offset(output: &str) -> Option<u64> {
+    for line in output.lines() {
+        let lower = line.to_ascii_lowercase();
+        if lower.contains("meta")
+            || lower.contains("unallocated")
+            || !matches_filesystem_description(&lower)
+        {
+            continue;
+        }
+        let start_sector = line
+            .split_whitespace()
+            .find(|field| field.chars().all(|c| c.is_ascii_digit()))?
+            .parse::<u64>()
+            .ok()?;
+        return start_sector.checked_mul(512);
+    }
+    None
+}
+
+fn matches_filesystem_description(line: &str) -> bool {
+    line.contains("ntfs")
+        || line.contains("exfat")
+        || line.contains("fat")
+        || line.contains("linux")
+        || line.contains("hfs")
+        || line.contains("apfs")
 }
 
 fn auto_unmount(mount_point: &Path) -> Result<(String, Vec<String>, String), DiskError> {
@@ -402,6 +530,27 @@ fn auto_unmount(mount_point: &Path) -> Result<(String, Vec<String>, String), Dis
     let args = vec![mount_point.to_string_lossy().to_string()];
     let result = run_fixed(&bin, &args)?;
     if !result.0 {
+        if bin == "umount" {
+            let sudo_result = run_sudo_fixed(&bin, &args)?;
+            if sudo_result.0 {
+                return Ok((
+                    "unmounted".to_string(),
+                    std::iter::once("sudo".to_string())
+                        .chain(std::iter::once("-n".to_string()))
+                        .chain(std::iter::once(bin))
+                        .chain(args)
+                        .collect(),
+                    sudo_result.2,
+                ));
+            }
+            return Err(DiskError::SubprocessFailed {
+                status: sudo_result.1,
+                stderr_tail: format!(
+                    "umount failed ({}): {}\nsudo umount failed: {}",
+                    result.1, result.2, sudo_result.2
+                ),
+            });
+        }
         return Err(DiskError::SubprocessFailed {
             status: result.1,
             stderr_tail: result.2,
@@ -412,6 +561,12 @@ fn auto_unmount(mount_point: &Path) -> Result<(String, Vec<String>, String), Dis
         std::iter::once(bin).chain(args).collect(),
         result.2,
     ))
+}
+
+fn run_sudo_fixed(bin: &str, args: &[String]) -> Result<(bool, String, String), DiskError> {
+    let mut sudo_args = vec!["-n".to_string(), bin.to_string()];
+    sudo_args.extend(args.iter().cloned());
+    run_fixed("sudo", &sudo_args)
 }
 
 fn run_fixed(bin: &str, args: &[String]) -> Result<(bool, String, String), DiskError> {
@@ -672,4 +827,34 @@ fn has_extension(name: &str, ext: &str) -> bool {
 fn tail_utf8_lossy(bytes: &[u8]) -> String {
     let start = bytes.len().saturating_sub(STDERR_TAIL_BYTES);
     String::from_utf8_lossy(&bytes[start..]).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_mmls_first_partition_offset;
+
+    #[test]
+    fn mmls_parser_returns_first_filesystem_partition_offset() {
+        let output = r"DOS Partition Table
+Offset Sector: 0
+Units are in 512-byte sectors
+
+      Slot      Start        End          Length       Description
+000:  Meta      0000000000   0000000000   0000000001   Primary Table (#0)
+001:  -------   0000000000   0000000062   0000000063   Unallocated
+002:  000:000   0000000063   0009510479   0009510417   NTFS / exFAT (0x07)
+";
+
+        assert_eq!(parse_mmls_first_partition_offset(output), Some(63 * 512));
+    }
+
+    #[test]
+    fn mmls_parser_ignores_metadata_and_unallocated_rows() {
+        let output = r"      Slot      Start        End          Length       Description
+000:  Meta      0000000000   0000000000   0000000001   Primary Table (#0)
+001:  -------   0000000000   0000002047   0000002048   Unallocated
+";
+
+        assert_eq!(parse_mmls_first_partition_offset(output), None);
+    }
 }
