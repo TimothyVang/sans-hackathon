@@ -43,7 +43,7 @@ These appear across multiple specs and the agent-config files. Violating any of 
 - **Evidence is read-only.** Original `.e01` opened via libewf; write-only working dir elsewhere. No tool mutates evidence. SHA-256 verified at `case_open`.
 - **Hash-chained audit JSONL is append-only.** Each line has `prev_hash` linking to the previous line. Rewriting history breaks the M2 chain-of-custody pitch. Chain is **3 tiers** post-A5 (audit prev_hash → rs_merkle → sigstore); the 4th OpenTimestamps/Bitcoin tier was removed 2026-04-30. See `docs/cryptographic-attestation.md` and rubric criterion #5.
 - **AGPL/GPL tools (Hayabusa, Chainsaw, Volatility3, Velociraptor, YARA) are subprocess-only — never linked.** Linking contaminates the submission license (must be MIT or Apache-2.0 per SANS rules).
-- **Draft PRs only.** The build swarm never auto-merges or force-pushes `main`. Human merges every PR after morning triage.
+- **Draft PRs only.** The build swarm never auto-merges or force-pushes `master`. Human merges every PR after morning triage.
 - **All timestamps UTC, ISO-8601, trailing `Z`.** SHA-256 preferred over MD5. Never assert attribution.
 - **Judge narrative:** "orchestrator that reduces friction," never "autonomous responder." Rob Lee's explicit preference (memory: `project_judging_signals.md`).
 - **Replay evidence is a customer-PDF blocker.** `verify_finding_replay_embedded` was advisory during Track 3a; Track 3b promotes it to blocker in `agent-config/expert-rules.json` and `scripts/find_evil_auto.py`. Do not downgrade without an explicit policy change.
@@ -197,7 +197,7 @@ For the **build swarm**, only modes 1 and 2 apply. Option B removed all LiteLLM/
 ├── services/agent_mcp/                             # Python MCP server wrapping M2/M4/memory/ACP/expert feedback as 12 typed tools
 ├── services/swarm/                                 # Python build swarm (Option B — Claude CLI subagents)
 ├── .mcp.json                                       # A2: registers findevil-mcp + findevil-agent-mcp for auto-spawn
-├── apps/web/                                       # Next.js 15 + Tailwind v4 + NES.css scaffold (A3 §2.1) — SSE audit-log tail at /api/audit, /debug viewer, pydantic→TS codegen at lib/events.ts
+├── apps/web/                                       # Next.js 15 + Tailwind v4 + NES.css dashboard (A3 §2.1) — SSE audit-log tail at /api/audit, role-state sprite containers, /debug viewer, pydantic→TS codegen at lib/events.ts
 ├── apps/mcp-widgets/                               # M3 widgets — DEFERRED per A2 §2.1 (A3 doesn't need them)
 ├── packer/sift-microvm.pkr.hcl                     # L3 warm-qcow2 build from the OVA
 ├── docker/                                         # l1-compose.yml, l1-devbase.Dockerfile, l2-siftlite.Dockerfile, swarm-postgres.yml
@@ -228,7 +228,7 @@ The pre-A2 `python -m findevil_agent.cli` entry point was dropped by A2; the Doc
 | L0 | GHA `ubuntu-24.04`, no containers | 30–60s | Yes |
 | L1 | Docker Compose + GHA standard runner | 2–5min | Yes |
 | L2 | Sysbox runtime (rootless systemd+FUSE) | 5–10min | No (advisory on PRs) |
-| L3 | QEMU microvm + qcow2 snapshot-restore on GHA KVM larger runner | ~5–20min | Yes for **releases**, nightly on `main` |
+| L3 | QEMU microvm + qcow2 snapshot-restore on GHA KVM larger runner | ~5–20min | Yes for **releases**, nightly on `master` |
 
 L3's warm `.qcow2.zst` is built once by Packer from `sift-2026.03.24.ova` and cached via `actions/cache`. The OVA is in `.gitignore` (`*.ova`) and never committed.
 
@@ -277,7 +277,7 @@ Specs were written 2026-04-23; code has been shipped since 2026-04-24. Where the
 
 ### Current project state
 
-All four subsystems exist. Local smoke gate is `bash scripts/run-all-smokes.sh` (POSIX/Git Bash) or `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-all-smokes.ps1` (native Windows). The Product layer is feature-complete through A3 Phase 4 plus the post-A5 `vol_psxview` addition, the Track 1 disk mount/extract slice, expert miss feedback, `find-evil-auto --run-summary`, and the PowerShell readiness packet gate. Shipped MCP surface: 19 Rust DFIR tools + 12 Python crypto/ACH/memory/ACP/expert-feedback tools. The audit-log SSE tail powers a Next.js + Tailwind v4 + NES.css dashboard scaffold at `apps/web/`. Sprite/chrome design artifacts are research-only unless implemented in `apps/web/`.
+All four subsystems exist. Local smoke gate is `bash scripts/run-all-smokes.sh` (POSIX/Git Bash) or `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-all-smokes.ps1` (native Windows). The Product layer is feature-complete through A3 Phase 4 plus the post-A5 `vol_psxview` addition, the Track 1 disk mount/extract slice, expert miss feedback, `find-evil-auto --run-summary`, and the PowerShell readiness packet gate. Shipped MCP surface: 19 Rust DFIR tools + 12 Python crypto/ACH/memory/ACP/expert-feedback tools. The audit-log SSE tail powers a Next.js + Tailwind v4 + NES.css dashboard at `apps/web/` with role-state sprite containers and `/debug`; only the pixel-art sprite swap and AuditBeadString/HashChainBadge/FindingChip chrome remain design-polish work.
 
 **Before writing code, read the relevant spec and plan** for the subsystem you're touching. Specs define exact file paths, pinned versions, TDD task sequences; silent divergence creates integration mismatches. When spec and code disagree, **code + committed pin files win** (see §11). `CHANGELOG.md` summarizes per-feature; `git log --oneline -20` for recent commits.
 

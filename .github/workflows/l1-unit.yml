@@ -1,14 +1,14 @@
 name: L1 Unit + Build
 
 # Spec #3 §4.2 — runs cargo/pytest/pnpm inside the L1 Ubuntu 22.04
-# dev-base image. Required status check on main per glue Spec #4 §6.
+# dev-base image. Required status check on master per glue Spec #4 §6.
 # Budget: 2-5min wall clock on GHA standard runner.
 
 on:
   push:
     branches: ['**']
   pull_request:
-    branches: [main]
+    branches: [master]
 
 concurrency:
   group: l1-${{ github.ref }}

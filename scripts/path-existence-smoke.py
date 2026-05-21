@@ -20,13 +20,13 @@ root; for service READMEs, also relative to the service's package
 dir (e.g. services/agent/README.md mentioning ``crypto/audit_log.py``
 should resolve at services/agent/findevil_agent/crypto/audit_log.py).
 
-A defined ALLOW_PATTERNS list captures the 43-of-47 false-positive
-shapes the manual audits had to skip past:
+A defined ALLOW_PATTERNS list captures the false-positive shapes the
+manual audits had to skip past:
   * URLs (http://, https://, mailto:)
   * MCP wire-format identifiers (tools/list, tools/call)
   * Runtime user dirs (~/.claude/, ~/hayabusa/...)
   * Install paths in decision runbooks (/usr/bin/, /usr/share/)
-  * Deferred-per-A2 paths (apps/web/, apps/mcp-widgets/)
+  * Deferred-per-A2 widget paths (apps/mcp-widgets/)
   * Dropped-per-A2 modules deliberately quoted in docs
     (findevil_agent/cli.py + 4 siblings)
   * Future-tense fixture files (fixtures/sha256sums.txt etc -
@@ -125,10 +125,9 @@ ALLOW_PATTERNS: tuple[re.Pattern[str], ...] = (
     # in CLAUDE.md "Commands" section + apps/web/README.md for
     # `pnpm --filter` invocations.
     re.compile(r"^@[a-z0-9_-]+/[a-z0-9_-]+$"),
-    # Deferred-per-Amendment-A2 paths (apps/web + apps/mcp-widgets
-    # are scheduled as week-7 polish bonus, not on the critical
-    # path - docs reference them as future surfaces).
-    re.compile(r"^apps/(web|mcp-widgets)(/|$)"),
+    # Deferred-per-Amendment-A2 widget paths. apps/web is live now,
+    # so broken apps/web references should fail this smoke.
+    re.compile(r"^apps/mcp-widgets(/|$)"),
     # Future-deployment paths from Amendment A4 (Managed Agents
     # production runtime).  A4 is purely additive future work,
     # not on the hackathon critical path - the spec at

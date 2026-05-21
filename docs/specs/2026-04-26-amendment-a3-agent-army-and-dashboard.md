@@ -1,6 +1,6 @@
 # Amendment A3 — Agent-Army Bridge + Cross-Case Memory + NES.css Dashboard
 
-> **Status: SHIPPED (Phases 1-4) / PARKED (Phases 5-6).** The three Python MCP tools (`memory_remember`, `memory_recall`, `pool_handoff`), the FTS5 memory store at `services/agent/findevil_agent/memory/store.py`, and the `apps/web/` SSE-audit-tail scaffold all shipped. Phases 5 (5 pixel-art sprites) and 6 (AuditBeadString chrome) are gated on a Claude Design prototyping pass — see `docs/design-briefs/phase-5-6-sprite-design-brief.md`.
+> **Status: SHIPPED (Phases 1-4 + role-state dashboard) / PARKED (pixel-art/chrome polish).** The three Python MCP tools (`memory_remember`, `memory_recall`, `pool_handoff`), the FTS5 memory store at `services/agent/findevil_agent/memory/store.py`, and the `apps/web/` SSE-audit-tail dashboard with role-state sprite containers all shipped. The pixel-art sprite swap and AuditBeadString/HashChainBadge/FindingChip chrome are gated on a Claude Design prototyping pass; see `docs/design-briefs/phase-5-6-sprite-design-brief.md`.
 
 **Date:** 2026-04-26
 **Status:** Active — supersedes Amendment A2 §2.1 (the `apps/web/` deferral) and extends `services/agent_mcp/` with three new tools.
@@ -25,7 +25,7 @@ A3 adds three capabilities on top of the A2 stack:
    - **`memory_recall`** — query the FTS5 index by IOC / hash / TTP / hostname; returns prior-case hits with case_ids and confidence-decayed scores.
    - **`pool_handoff`** — IBM-ACP-shaped agent-to-agent message (role, payload, correlation_id) recorded into the audit JSONL as `kind="acp_handoff"`. Used by Pool A to hand structured findings to Pool B (and either to the judge) without going through Claude Code's natural-language channel.
 
-2. **`apps/web/` resurrected as a NES.css live dashboard** — overrides A2 §2.1's deferral. Five always-on pixel-art sprites (Pool A, Pool B, Verifier, Judge, Correlator), one per role in `agent-config/AGENTS.md`. Reads the existing `audit.jsonl` hash chain over WebSocket; no schema changes. Anthropic Claude Design (<https://www.anthropic.com/news/claude-design-anthropic-labs>, launched 2026-04-17) is the prototyping toolchain for the layout pass.
+2. **`apps/web/` resurrected as a NES.css live dashboard** — overrides A2 §2.1's deferral. The shipped app reads the existing `audit.jsonl` hash chain over SSE at `/api/audit`, derives one role-state card each for Pool A, Pool B, Verifier, Judge, and Correlator, and preserves `/debug` as a raw stream viewer. Pixel-art sprite art and the AuditBeadString chrome remain gated on an Anthropic Claude Design prototyping pass (<https://www.anthropic.com/news/claude-design-anthropic-labs>, launched 2026-04-17); no audit schema changes are required.
 
 3. **`.gitignore` correction.** Add `/git-hub-references/` so the seven cloned external repos under that path (openclaw, hermes-agent, hermes-agent-self-evolution, pixel-agents, claude-agent-sdk-python, claude-agent-sdk-typescript, awesome-openclaw-skills, plus DFIR awesome-lists) cannot leak into a `v-submit` packaging run. The current root-anchored `/openclaw/` pattern doesn't catch the relocated copy; this is documented in `git-hub-references/CLAUDE.md` §"Important: .gitignore gap" and is a hard prerequisite for any `scripts/package-devpost.sh` invocation.
 

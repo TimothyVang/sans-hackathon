@@ -58,7 +58,7 @@ gh repo view <your-username>/find-evil
 git remote -v
 # origin should now be git@github.com:<your-username>/find-evil.git
 
-# Run the post-push setup (branch protection on main).
+# Run the post-push setup (branch protection on master).
 bash scripts/setup-branch-protection.sh
 # Verifies: required L0 + L1 status checks, no force-push,
 # admin-bypass disabled.  Spec #4 §6.
@@ -127,7 +127,7 @@ gh release download v-submit --pattern find-evil-submission.zip
   `git ls-files services/agent/findevil_agent/{cli,graph,api,
   supervisor,specialists}.py` should return nothing.
 * **`setup-branch-protection.sh` fails with 403.**  Branch
-  protection on main requires the repo owner; if `gh auth
+  protection on master requires the repo owner; if `gh auth
   status` shows a different user, switch first.
 
 ---

@@ -56,7 +56,7 @@ claude auth login
 export ANTHROPIC_API_KEY=sk-ant-...   # from console.anthropic.com; <$1/run
 
 # Any of the above, then:
-curl -fsSL https://raw.githubusercontent.com/<OWNER>/<REPO>/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/<OWNER>/<REPO>/master/scripts/install.sh | bash
 ```
 
 `scripts/install.sh` detects credentials in priority order and fails fast with a clear error listing all three options if none are present.

@@ -17,12 +17,16 @@ Scope: scripts/find-evil, scripts/find-evil-auto, scripts/find-evil-sift
 plus every ``*.sh`` in scripts/. Extension-less files are explicitly
 included because the find-evil family deliberately drops ``.sh``.
 
-Wall-clock: ~50ms (dominated by the bash spawn). Wired into
+Wall-clock: usually sub-second, dominated by bash startup. Native
+Windows Git Bash startup can be slower under load, so the per-file
+syntax timeout is configurable with
+``FINDEVIL_LAUNCHER_SMOKE_BASH_TIMEOUT_SECONDS``. Wired into
 docker/l1-compose.yml after demo-script-smoke as the 6th L1 smoke.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
 import subprocess
@@ -57,7 +61,7 @@ BAD_BINARY_PATTERNS = [
     # comments referencing legacy names, and inside the user-facing
     # error message that explains "Install: ...".
     re.compile(r"^\s*(?:exec\s+)?claude-code\b(?!\.md|/install)", re.MULTILINE),
-    re.compile(r"\bcommand\s+-v\s+claude-code\b"),
+    re.compile(r"^(?!\s*#).*?\bcommand\s+-v\s+claude-code\b", re.MULTILINE),
 ]
 
 # `claude` does not take a positional path arg (per `claude --help`).
@@ -68,6 +72,9 @@ BAD_INVOCATION_PATTERNS = [
 
 OK = "[OK  ]"
 FAIL = "[FAIL]"
+DEFAULT_BASH_TIMEOUT_SECONDS = 30
+WINDOWS_BASH_TIMEOUT_SECONDS = 90
+MAX_BASH_TIMEOUT_SECONDS = 300
 
 
 def _has_shell_shebang(p: Path) -> bool:
@@ -104,23 +111,44 @@ def _list_launchers() -> list[Path]:
 def _bash_syntax_check(p: Path) -> tuple[bool, str]:
     """Run ``bash -n <p>``; True on exit 0."""
     attempts = 2
+    timeout_seconds = _bash_timeout_seconds()
     for attempt in range(1, attempts + 1):
         try:
             r = subprocess.run(
                 ["bash", "-n", _path_for_bash(p)],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=timeout_seconds,
                 cwd=REPO,
             )
         except subprocess.TimeoutExpired:
             if attempt == attempts:
-                return False, f"bash -n timed out after 30s x {attempts} attempts"
+                return (
+                    False,
+                    f"bash -n timed out after {timeout_seconds}s x {attempts} attempts",
+                )
             continue
         if r.returncode == 0:
             return True, ""
         return False, (r.stderr or r.stdout).strip()
     return False, "bash -n did not complete"
+
+
+def _bash_timeout_seconds() -> int:
+    raw = os.environ.get("FINDEVIL_LAUNCHER_SMOKE_BASH_TIMEOUT_SECONDS", "")
+    if not raw.strip():
+        return _default_bash_timeout_seconds()
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return _default_bash_timeout_seconds()
+    return max(1, min(parsed, MAX_BASH_TIMEOUT_SECONDS))
+
+
+def _default_bash_timeout_seconds() -> int:
+    if sys.platform == "win32":
+        return WINDOWS_BASH_TIMEOUT_SECONDS
+    return DEFAULT_BASH_TIMEOUT_SECONDS
 
 
 def _path_for_bash(p: Path) -> str:

@@ -91,7 +91,7 @@ def make_run(
     )
     write_json(
         run / "manifest_verify.json",
-        {"overall": not manifest_overall, "signature_present": True},
+        {"overall": manifest_overall, "signature_present": True},
     )
     write_json(
         run / "expert_signoff.json",

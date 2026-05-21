@@ -105,10 +105,10 @@ All files live under `.github/workflows/`. L0/L1/L2/L3 internals are defined in 
 
 | File | Trigger | Purpose |
 |---|---|---|
-| `l0-static.yml` | PR + any branch push | Lint gate — Spec #3 §4.1. Required status check on main. |
-| `l1-unit.yml` | PR + any branch push | Unit/build gate — Spec #3 §4.2. Required status check on main. |
+| `l0-static.yml` | PR + any branch push | Lint gate — Spec #3 §4.1. Required status check on master. |
+| `l1-unit.yml` | PR + any branch push | Unit/build gate — Spec #3 §4.2. Required status check on master. |
 | `l2-sift-lite.yml` | PR + any branch push | Advisory DFIR smoke — Spec #3 §4.3. Non-blocking; posts result comment on PR. |
-| `l3-nightly.yml` | `cron: '30 2 * * *'` + `push: branches: [main]` | Nightly full-SIFT golden run; on pass pushes score to leaderboard; on fail posts to `#ci-alerts`. |
+| `l3-nightly.yml` | `cron: '30 2 * * *'` + `push: branches: [master]` | Nightly full-SIFT golden run; on pass pushes score to leaderboard; on fail posts to `#ci-alerts`. |
 | `l3-weekly-goldens.yml` | `cron: '0 23 * * 0'` (Sunday 23:00 UTC) | Full golden matrix run weekly; score update to leaderboard. |
 | `release.yml` | `push: tags: ['v[0-9]*', 'v-submit']` | Verifies L3 green; builds Docker + `report.html`; uploads release artifacts; Slack `#releases`. |
 | `competitor-watch.yml` | `cron: '0 9 * * 1'` (Monday 09:00 UTC) | Repo delta scan for 3 competitors + topic search; Slack `#competitor-watch`. |
@@ -127,7 +127,7 @@ For every `git tag v<N> && git push origin v<N>` (weeks 1-8):
    ```
    gh run list \
      --workflow=l3-nightly.yml \
-     --branch=main \
+     --branch=master \
      --status=success \
      --limit=5 \
      --json headSha,databaseId \
@@ -173,13 +173,13 @@ All secrets are injected at the job level via `env:` blocks. No workflow-level `
 
 ## 6. Branch Protection Configuration
 
-Apply once to the `main` branch after repo creation. The reviewer for swarm PRs is the critic subagent's GitHub account (must have `write` collaborator access).
+Apply once to the `master` branch after repo creation. The reviewer for swarm PRs is the critic subagent's GitHub account (must have `write` collaborator access).
 
 **`gh` CLI command:**
 
 ```
 gh api \
-  repos/{OWNER}/{REPO}/branches/main/protection \
+  repos/{OWNER}/{REPO}/branches/master/protection \
   --method PUT \
   --field 'required_status_checks[strict]=true' \
   --field 'required_status_checks[contexts][]=l0-static' \
@@ -193,7 +193,7 @@ gh api \
   --field 'allow_deletions=false'
 ```
 
-**Equivalent REST API JSON body** for `PUT /repos/{owner}/{repo}/branches/main/protection`:
+**Equivalent REST API JSON body** for `PUT /repos/{owner}/{repo}/branches/master/protection`:
 
 ```json
 {
@@ -216,10 +216,10 @@ gh api \
 **What each setting does:**
 
 - `contexts: ["l0-static", "l1-unit"]` — only these two are required; `l2-sift-lite` is advisory and deliberately excluded so DFIR tool flakiness cannot stall swarm merges.
-- `strict: true` — the branch must be up-to-date with `main` before the status checks run (prevents race conditions on concurrent swarm PRs).
+- `strict: true` — the branch must be up-to-date with `master` before the status checks run (prevents race conditions on concurrent swarm PRs).
 - `enforce_admins: true` — the repo owner cannot bypass the rules; prevents accidental direct pushes during deadline rush.
 - `required_approving_review_count: 1` — the critic subagent's `gh pr review --approve` satisfies this.
-- `restrictions: null` — any collaborator can push to feature branches; only `main` is protected.
+- `restrictions: null` — any collaborator can push to feature branches; only `master` is protected.
 
 ---
 

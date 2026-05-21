@@ -2,7 +2,7 @@
   "name": "@findevil/web",
   "version": "0.1.0",
   "private": true,
-  "description": "Find Evil! NES.css live dashboard — Phase 4 of Amendment A3 (apps/web/ un-deferral). Scaffold only; sprite components + audit-log live tail land in follow-up PRs.",
+  "description": "Find Evil! NES.css local dashboard with SSE audit tail, role-state views, and Codex operator cockpit.",
   "scripts": {
     "dev": "next dev --turbo",
     "build": "next build",
