@@ -1,6 +1,19 @@
 # docs/ — canonical index
 
-Read this first when navigating the documentation tree. Every markdown file in the project gets one row below with a **status** + a one-line purpose. Status legend:
+Read this first when navigating the documentation tree. The root README is the judge-facing landing page; this file is the maintainer/operator map.
+
+## Start Here
+
+| Need | Read |
+|---|---|
+| Install and run an investigation | [`../QUICKSTART.md`](../QUICKSTART.md) |
+| Understand the architecture | [`architecture.md`](architecture.md) |
+| Verify custody/manifest claims | [`cryptographic-attestation.md`](cryptographic-attestation.md) |
+| Interpret verdicts safely | [`verdict-semantics.md`](verdict-semantics.md) |
+| Review release evidence | [`release-evidence/README.md`](release-evidence/README.md) |
+| See historical plans/specs | `plans/`, `specs/`, and `archive/` |
+
+Status legend:
 
 | Badge | Meaning |
 |---|---|
@@ -22,6 +35,7 @@ The authoritative *precedence* hierarchy (which spec overrides which) lives in `
 | `AGENTS.md` | **ACTIVE** | Codex-compatible adapter instructions that defer to `CLAUDE.md` and preserve the narrow MCP surface. |
 | `README.md` | **ACTIVE** | Public-facing project landing page. |
 | `QUICKSTART.md` | **ACTIVE** | Three-step quickstart for impatient users. |
+| `STARTUP.md` | **RESEARCH** | Team onboarding notes retained for hackathon context. |
 | `CHANGELOG.md` | **ACTIVE** | Chronological project changelog. |
 
 ## `docs/` top level (analyst + judge facing)
@@ -33,7 +47,9 @@ The authoritative *precedence* hierarchy (which spec overrides which) lives in `
 | `cryptographic-attestation.md` | **REQUIRED** | Three-link chain-of-custody story (rubric criterion #5). How `manifest_verify` produces FRE 902(14) self-authenticating evidence post-A5. |
 | `DATASET.md` | **REQUIRED** | Devpost Required Component #5. Every fixture the agent was tested against, with SHA-256 + license + expected findings. |
 | `demo-script-a2.md` | **ACTIVE** | 5-minute Devpost demo video script (A2 flow). Pre-flight checklist + per-beat narration + rubric mapping. |
+| `divergences-resolved.md` | **ACTIVE** | Ledger of settled spec/code divergences moved out of `CLAUDE.md`. |
 | `false-positives.md` | **ACTIVE** | Operator's guide. Three architectural FP layers + four operational habits + per-tool FP risk table. |
+| `replay-determinism.md` | **ACTIVE** | Replay determinism notes for stable verifier behavior. |
 | `verdict-semantics.md` | **ACTIVE** | Analyst-facing meaning of `SUSPICIOUS` / `INDETERMINATE` / `NO_EVIL`; mirrors `compute_verdict` in `scripts/find_evil_auto.py`. |
 
 ### Current automation outputs
@@ -67,7 +83,7 @@ Status-banner-prefixed within each file. Read in CLAUDE.md "Document hierarchy" 
 | `2026-04-23-amendment-option-b-claude-code-mode.md` (**A1**) | **SHIPPED** | Subscription-mode credentials for the swarm; LiteLLM proxy never built. |
 | `2026-04-25-amendment-a2-claude-code-primary-interface.md` (**A2**) | **SHIPPED** | Drops the custom Python orchestrator; Claude Code IS the orchestrator. |
 | `2026-04-26-amendment-a3-agent-army-and-dashboard.md` (**A3**) | **SHIPPED** (Phases 1-4 + role-state dashboard) / **RESEARCH** (pixel-art/chrome polish) | Memory + ACP MCP tools + SSE dashboard with role-state sprite containers; pixel-art and bead/chip chrome remain parked. |
-| `2026-04-27-amendment-a4-managed-agents-runtime.md` (**A4**) | **RESEARCH** | Future-deployment design for hosted Anthropic Managed Agents runtime. Not on the SANS critical path. |
+| `2026-04-27-amendment-a4-managed-agents-runtime.md` (**A4**) | **RESEARCH** | Archived under `docs/archive/`; future-deployment design for hosted Anthropic Managed Agents runtime. Not on the SANS critical path. |
 | `2026-04-23-layered-test-sandbox-design.md` (**Spec #3**) | **SHIPPED** | L0/L1/L2/L3 sandbox stack. L2 advisory only. |
 | `2026-04-24-autonomous-build-swarm-design.md` (**Spec #1**) | **ACTIVE** | Build swarm architecture (still authoritative reference for swarm extension). |
 | `2026-04-25-the-product-design.md` (**Spec #2**) | **SHIPPED** (with A2 + A5 amendments) | The DFIR tool the judges run. |
@@ -77,11 +93,11 @@ Status-banner-prefixed within each file. Read in CLAUDE.md "Document hierarchy" 
 
 ## `docs/plans/` (plans and launch checklist)
 
-The original five implementation plans shipped. Each carries a RETIRED banner naming where the live code lives. Do not execute retired plans as TDD plans. The active launch checklist below is the current path to `v-submit`.
+The original five implementation plans shipped. Each carries a RETIRED banner naming where the live code lives. Do not execute retired plans as TDD plans. The launch checklist is preserved as release history now that `v-submit` exists.
 
 | File | Status | Where it lives now |
 |---|---|---|
-| `2026-05-20-finish-to-v-submit-plan.md` | **ACTIVE** | Launch checklist for commits, readiness refresh, GitHub visibility, L3 evidence, demo URL, `v-submit`, and Devpost upload |
+| `2026-05-20-finish-to-v-submit-plan.md` | **SHIPPED** | Release-history checklist for commits, readiness refresh, GitHub visibility, L3 evidence, demo URL, `v-submit`, and Devpost upload |
 | `2026-04-23-build-swarm-plan.md` | **RETIRED** | `services/swarm/`, `scripts/swarm-*.sh` |
 | `2026-04-23-orchestration-glue-plan.md` | **RETIRED** | `.github/workflows/`, `scripts/package-devpost.sh` |
 | `2026-04-23-product-plan.md` | **RETIRED** | `services/mcp/`, `services/agent/`, `services/agent_mcp/` (with A2 + A5 carve-outs) |
@@ -96,6 +112,14 @@ The original five implementation plans shipped. Each carries a RETIRED banner na
 | `dockerfile-a2-decision.md` | **RESEARCH** (decision archive) | Cut the in-container `find-evil` wrapper + `.deb` packaging (PR #4, 2026-04-27, "Option B"). Body retained as decision record. |
 | `github-remote-bootstrap.md` | **ACTIVE** | Pre-submission ops doc for setting up the public GitHub repo URL Devpost requires. |
 | `practical-sans-dfir-completion-prompt.md` | **ACTIVE** | Strict copy/paste coding-agent prompt for finishing practical SANS DFIR investigation outputs without new crypto work. |
+| `researched-dfir-automation-improvement-prompt.md` | **RESEARCH** | Research-backed prompt for future DFIR automation improvement work. |
+
+## `docs/release-evidence/`
+
+| File | Status | Purpose |
+|---|---|---|
+| `README.md` | **ACTIVE** | Explains why release evidence summaries are committed and what they are not. |
+| `l3-local-sift.json` | **ACTIVE** | Validated local VMware/SIFT L3 fallback evidence for the `v-submit` release path. |
 
 ## `docs/design-briefs/`
 
@@ -111,12 +135,15 @@ The original five implementation plans shipped. Each carries a RETIRED banner na
 |---|---|---|
 | `2026-04-26-agent-army-and-dashboard.md` | **RESEARCH** (origin doc) | Produced Amendment A3 — kept for original brainstorming context. |
 
-## `docs/references/`
+## `docs/archive/`
 
 | File | Status | Purpose |
 |---|---|---|
+| `README.md` | **ACTIVE** | Explains that archived notes are non-authoritative and maps current archive contents. |
 | `protocol-sift-integration-reference.md` | **RESEARCH** (external, NOT authoritative) | Where this disagrees with project specs, specs win — see CLAUDE.md "External 'Protocol SIFT' reference" for reconciled contradictions. |
-| `figures/` | **REFERENCE** | Embedded images for the Protocol SIFT doc. |
+| `2026-04-27-amendment-a4-managed-agents-runtime.md` | **RESEARCH** | Future hosted-agent runtime design; not on the SANS critical path. |
+| `phase-5-6-sprite-design-brief.md` | **RESEARCH** | Archived copy of the parked sprite/chrome brief. |
+| `figures/` | **REFERENCE** | Embedded images for archived Protocol SIFT reference material. |
 
 ## `docs/templates/`
 
