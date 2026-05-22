@@ -3,7 +3,7 @@
 **SANS Find Evil! 2026 hackathon submission.**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-![Status: pre-submission](https://img.shields.io/badge/status-pre--submission-orange.svg)
+![Status: v-submit released](https://img.shields.io/badge/status-v--submit%20released-brightgreen.svg)
 ![Rust 1.88](https://img.shields.io/badge/rust-1.88-orange.svg)
 ![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)
 
@@ -25,6 +25,8 @@ Four claims, all exercised on every CI run:
 
 4. **Self-score inside the cryptographic attestation.** The agent emits 6 `kind=judge_selfscore` audit records (one per SANS rubric criterion) *before* `manifest_finalize`. Because they land before the Merkle tree closes, the agent's own self-assessment is part of the signed manifest — `grep '"kind":"judge_selfscore"' audit.jsonl` and you have the agent's own score against the same rubric you're using.
 
+**Submission artifacts:** [`v-submit`](https://github.com/TimothyVang/sans-hackathon/releases/tag/v-submit) contains the release report and validated submission bundle. The demo video is [`docs/find-evil-demo.mp4`](docs/find-evil-demo.mp4). The local SIFT L3 fallback evidence used when GitHub KVM capacity was unavailable is documented under [`docs/release-evidence/`](docs/release-evidence/README.md).
+
 **The showcase:** [`docs/reports/2026-04-26-srl2018-dc-investigation.md`](docs/reports/2026-04-26-srl2018-dc-investigation.md) (PDF: 1.3 MB) — a real end-to-end investigation of the SANS HACKATHON-2026 *SRL-2018 Compromised Enterprise Network* dataset. Single-host walkthrough plus a 22-host fleet rollup at §9.1: 11 hosts with T1014 (DKOM), 9 with T1055 (Process Injection), and the textbook automated-recon-sweep signature — 6 hosts ran `Autorunsc.exe` at the exact same second.
 
 ---
@@ -34,8 +36,8 @@ Four claims, all exercised on every CI run:
 Three steps, no other config.
 
 ```bash
-git clone https://github.com/<your-org>/find-evil.git
-cd find-evil
+git clone https://github.com/TimothyVang/sans-hackathon.git
+cd sans-hackathon
 
 # Pre-flight + Rust+Python build (detects the three Claude credential modes
 # from CLAUDE.md "Credential modes (Amendment A1)" — pick whichever you have).
@@ -94,8 +96,10 @@ Codex operator support is documented in [docs/codex-compatibility.md](docs/codex
 │   ├── false-positives.md    — three architectural FP layers + four habits
 │   ├── demo-script-a2.md     — 5-minute Devpost video script
 │   ├── reports/              — analyst-facing investigation reports (real evidence)
+│   ├── release-evidence/     — small validated release evidence summaries, no raw data
 │   ├── specs/                — 9 architecture specs (master + 4 amendments + 4 subsystems)
-│   └── plans/                — 5 retired TDD plans (kept for git-log archaeology)
+│   ├── plans/                — active launch checklist + retired TDD plans
+│   └── archive/              — non-authoritative research and parked design artifacts
 └── .mcp.json                 — Claude Code auto-spawn registry for both MCP servers
 ```
 
@@ -136,7 +140,7 @@ The vendored reference clones in `openclaw/`, `hermes-agent/`, `Linear-Coding-Ag
 
 ## Status
 
-This is a hackathon submission, not a maintained product. The code, test suite, agent-config, and demo script are stable; the build swarm and Devpost video are pre-submission work-in-progress. The cryptographic chain-of-custody and the typed MCP tool surface are the load-bearing claims — both are exercised end-to-end on every CI run.
+This is a submitted hackathon project, not a maintained product. The code, test suite, agent-config, demo asset, release workflow, and readiness packet path are stable. The cryptographic chain-of-custody and the typed MCP tool surface are the load-bearing claims — both are exercised end-to-end on CI. Automated readiness stops at `READY_FOR_EXPERT_REVIEW`; customer release still requires human expert approval.
 
 > **For Claude Code agents:** read [CLAUDE.md](CLAUDE.md) first. It encodes the document hierarchy, the non-negotiable invariants, the Karpathy 4 principles, and the spec/code divergence list.
 

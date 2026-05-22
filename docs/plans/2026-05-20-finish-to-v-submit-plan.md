@@ -1,5 +1,7 @@
 # Finish-to-`v-submit` Plan
 
+> **Status: SHIPPED.** `v-submit` was released from commit `f19f587` and the GitHub release contains `report.html` plus the validated submission bundle. This plan is retained as launch history; use [`../release-evidence/README.md`](../release-evidence/README.md) for current release evidence and [`../README.md`](../README.md) for the docs index.
+
 **Created:** 2026-05-20 (26 days before the 2026-06-15 22:45 CDT SANS Find Evil! deadline)
 **Reviewed/updated:** 2026-05-20 against live git, GitHub, readiness, CI, and Devpost packaging state.
 **Scope chosen:** Launch path first; sprite + chrome polish remains optional unless explicitly pulled into the submission scope.
