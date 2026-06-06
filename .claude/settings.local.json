@@ -10,12 +10,13 @@
       "mcp__playwright__browser_click",
       "mcp__playwright__browser_wait_for",
       "mcp__playwright__browser_take_screenshot",
-      "Bash(SKIP_SLOW_RUST=1 bash scripts/run-all-smokes.sh)"
+      "Bash(SKIP_SLOW_RUST=1 bash scripts/run-all-smokes.sh)",
+      "Skill(update-config)"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "findevil-mcp",
     "findevil-agent-mcp"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }
