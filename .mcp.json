@@ -3,21 +3,14 @@
   "mcpServers": {
     "findevil-mcp": {
       "type": "stdio",
-      "command": "cargo",
-      "args": ["run", "--release", "-p", "findevil-mcp", "--quiet"],
+      "command": "bash",
+      "args": ["scripts/run-mcp-rust.sh"],
       "cwd": "."
     },
     "findevil-agent-mcp": {
       "type": "stdio",
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "services/agent_mcp",
-        "python",
-        "-m",
-        "findevil_agent_mcp.server"
-      ],
+      "command": "bash",
+      "args": ["scripts/run-mcp-python.sh"],
       "cwd": "."
     }
   }
