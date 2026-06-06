@@ -51,6 +51,10 @@ dependencies = [
 
   # HTTP client for downstream tooling that imports findevil-agent.
   "httpx>=0.27",
+
+  # Unified multi-provider LLM/embedding factory (OpenRouter, Anthropic,
+  # OpenAI, Groq, Ollama, …). Provider selected via FINDEVIL_LLM_PROVIDER.
+  "esperanto>=2.0,<3.0",
 ]
 
 [project.optional-dependencies]

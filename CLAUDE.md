@@ -188,8 +188,8 @@ For the **build swarm**, only modes 1 and 2 apply. Option B removed all LiteLLM/
 ├── Dockerfile                                      # Production multi-stage → ghcr.io/find-evil/find-evil:v<N>
 ├── LICENSE                                         # Apache-2.0
 ├── sift-2026.03.24.ova                             # 9.3 GB SIFT VM image — Packer input; gitignored (*.ova)
-├── agent-config/                                   # Runtime DFIR agent identity (SOUL/AGENTS/TOOLS/MEMORY/HEARTBEAT/JUDGING/PLAYBOOK/EXPERT)
-├── docs/specs/ + plans/                            # 8 specs (A1/A2/A3 amendments + per-subsystem) + 5 TDD plans
+├── agent-config/                                   # Runtime DFIR agent identity (SOUL/AGENTS/TOOLS/MEMORY/HEARTBEAT/JUDGING/PLAYBOOK/EXPERT + expert-rules.json — 60+ claim rules, severity blocker/warning)
+├── docs/specs/ + plans/                            # 8 specs (A1/A2/A3 amendments + per-subsystem) + 6 TDD plans (most recent: 2026-05-20-finish-to-v-submit-plan.md)
 ├── docs/braindumps/                                # Origin-of-feature scratch docs (A3 spawned from 2026-04-26-agent-army-and-dashboard.md)
 ├── docs/legacy/                                    # v1 docs superseded by v2 + amendments
 ├── services/mcp/                                   # Rust MCP server (19 typed DFIR tools; hand-rolled stdio JSON-RPC 2.0 — see §11)
@@ -197,7 +197,7 @@ For the **build swarm**, only modes 1 and 2 apply. Option B removed all LiteLLM/
 ├── services/agent_mcp/                             # Python MCP server wrapping M2/M4/memory/ACP/expert feedback as 12 typed tools
 ├── services/swarm/                                 # Python build swarm (Option B — Claude CLI subagents)
 ├── .mcp.json                                       # A2: registers findevil-mcp + findevil-agent-mcp for auto-spawn
-├── apps/web/                                       # Next.js 15 + Tailwind v4 + NES.css dashboard (A3 §2.1) — SSE audit-log tail at /api/audit, role-state sprite containers, /debug viewer, pydantic→TS codegen at lib/events.ts
+├── apps/web/                                       # Next.js 15 + Tailwind v4 + NES.css dashboard (A3 §2.1) — SSE audit-log tail at /api/audit, role-state sprite containers, /debug viewer, /codex operator cockpit (prompt suggestions + live state), pydantic→TS codegen at lib/events.ts
 ├── apps/mcp-widgets/                               # M3 widgets — DEFERRED per A2 §2.1 (A3 doesn't need them)
 ├── packer/sift-microvm.pkr.hcl                     # L3 warm-qcow2 build from the OVA
 ├── docker/                                         # l1-compose.yml, l1-devbase.Dockerfile, l2-siftlite.Dockerfile, swarm-postgres.yml

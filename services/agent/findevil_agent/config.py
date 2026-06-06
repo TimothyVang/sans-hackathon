@@ -68,6 +68,23 @@ the Estornell 2025 weak-agent-poisoning failure (see
 ``project_adversarial_agents_pattern.md``).
 """
 
+# Multi-provider LLM knobs (esperanto-backed, see ``findevil_agent.llm``).
+LLM_PROVIDER: Final[str] = os.environ.get("FINDEVIL_LLM_PROVIDER", "anthropic")
+"""esperanto provider name for language-model calls.
+
+Supported: ``anthropic``, ``openrouter``, ``openai``, ``groq``,
+``ollama``, ``gemini``, and any other provider esperanto ships.
+Requires the corresponding API key env var (e.g. ``OPENROUTER_API_KEY``).
+"""
+
+EMBEDDING_PROVIDER: Final[str] = os.environ.get("FINDEVIL_EMBEDDING_PROVIDER", "anthropic")
+"""esperanto provider name for embedding calls (memory-store semantic search)."""
+
+EMBEDDING_MODEL: Final[str] = os.environ.get("FINDEVIL_EMBEDDING_MODEL", "voyage-3")
+"""Default embedding model. ``voyage-3`` works with the ``anthropic``
+provider; swap to ``text-embedding-3-small`` for ``openai``, etc.
+"""
+
 # Judge hard-timeout. Spec #2 §8.1: the judge node commits a decision
 # within 2 minutes of wall clock even if confidence is unresolved.
 JUDGE_WALL_CLOCK_BUDGET_SECONDS: Final[int] = 120
@@ -160,7 +177,10 @@ def resolve_case_home(*, env: os._Environ[str] | dict[str, str] | None = None) -
 
 __all__ = [
     "ACH_MAX_ROUNDS",
+    "EMBEDDING_MODEL",
+    "EMBEDDING_PROVIDER",
     "JUDGE_WALL_CLOCK_BUDGET_SECONDS",
+    "LLM_PROVIDER",
     "MODEL",
     "TOOL_SUBPROCESS_BUDGET_SECONDS",
     "CredentialMode",
