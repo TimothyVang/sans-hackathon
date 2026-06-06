@@ -93,6 +93,7 @@ coverage/
 /hermes-agent/
 /Linear-Coding-Agent-Harness/
 /.playwright-mcp/
+/obsidian-mind/
 # The same reference clones, now relocated under ref-folders/ or
 # git-hub-references/ — also research-only, also never shipped, and
 # ruff should not scan them. The git-hub-references/ tree currently
