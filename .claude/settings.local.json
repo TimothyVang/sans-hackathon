@@ -11,7 +11,11 @@
       "mcp__playwright__browser_wait_for",
       "mcp__playwright__browser_take_screenshot",
       "Bash(SKIP_SLOW_RUST=1 bash scripts/run-all-smokes.sh)",
-      "Skill(update-config)"
+      "Skill(update-config)",
+      "Bash(uv --version)",
+      "Bash(docker --version)",
+      "Bash(systemctl --user status engram-projector)",
+      "Bash(claude mcp *)"
     ]
   },
   "enableAllProjectMcpServers": true,
