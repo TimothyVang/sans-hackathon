@@ -15,7 +15,18 @@
       "Bash(uv --version)",
       "Bash(docker --version)",
       "Bash(systemctl --user status engram-projector)",
-      "Bash(claude mcp *)"
+      "Bash(claude mcp *)",
+      "Bash",
+      "Edit",
+      "Write",
+      "Read",
+      "Glob",
+      "Grep",
+      "WebFetch",
+      "WebSearch",
+      "Bash(git push:*)",
+      "Bash(git push *)",
+      "Skill(qc)"
     ]
   },
   "enableAllProjectMcpServers": true,
