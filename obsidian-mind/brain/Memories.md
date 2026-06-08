@@ -14,6 +14,7 @@ the links. Query [[Skills#Semantic Search (QMD)|QMD]] first when a message touch
 - [[Gotchas]] — environment/dashboard/engine/SIFT/n8n traps + Tier-1 DFIR artifact caveats
 - [[Patterns]] — investigation tradecraft, the ≥2-artifact rule, how to code in this repo
 - [[Skills]] — VERDICT repo commands + the obsidian-mind `/om-*` curation commands
+- [[Engram Harvest]] — 3 ideas kept from the removed `engram-vang` clone (tier-confidence, RRF, vault-as-view)
 
 ## Recent context
 
