@@ -29,7 +29,7 @@ This is the SANS **Find Evil!** 2026 hackathon submission. Deadline **2026-06-15
 
 This vault is the **dev/operator memory layer**. It is **never evidence, never in a case
 `audit.jsonl`, never Merkle-hashed, and never emits a Finding.** That hard line is the same one
-Engram and the n8n grounding feature respect — see [[Key Decisions#Memory is never evidence]].
+the n8n grounding feature respects — see [[Key Decisions#Memory is never evidence]].
 The in-flow *investigation* memory is the Hermes FTS5 `memory_remember`/`memory_recall` tools, a
 different system.
 

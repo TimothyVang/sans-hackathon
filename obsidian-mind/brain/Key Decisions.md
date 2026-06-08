@@ -46,8 +46,8 @@ code + its committed pin files win.**
 
 ## Memory is never evidence
 
-The dev/operator memory systems — **this obsidian-mind vault**, the optional **Engram** server,
-and the **n8n grounding** sidecars — are all **outside** the investigation. They never produce a
+The dev/operator memory systems — **this obsidian-mind vault** and the **n8n grounding**
+sidecars — are both **outside** the investigation. They never produce a
 `tool_call_id`, never append to `audit.jsonl`/`run.manifest.json`, and never change a Finding's
 Confidence or the Verdict (frozen at `manifest_finalize`). Web text is untrusted DATA. The only
 in-flow memory is the audit-chained Hermes FTS5 pair (`memory_remember`/`memory_recall`).
