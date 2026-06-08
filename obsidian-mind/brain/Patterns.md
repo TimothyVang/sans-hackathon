@@ -45,4 +45,24 @@ tags: [brain, patterns]
 - **Node:** `pnpm --frozen-lockfile`, Node 20 for the product/dashboard. The obsidian-mind memory
   layer uses Node 22 side-by-side (nvm) — see [[Skills]].
 
+## Goldens & recall scoring
+
+- A **golden** = the answer key for a case: `goldens/<case-id>/expected-findings.json` listing the
+  findings a correct run must surface (`finding_id`, `description`, `mitre_technique`, `confidence`,
+  `artifact_class`, `artifact_hint`) plus `verdict` and `min_recall_percent`. Evidence = the exam;
+  the agent's run = the answers; the golden = the answer key.
+- **A golden needs a real answer key.** Without published ground truth (NIST answer key, scenario
+  solution), do NOT author one — a guessed golden makes the score meaningless. Competition cases
+  (ROCBA, base-dc) have only *background* briefs → live-run-only, not scoreable. See [[Gotchas]].
+- **Scoring:** `scripts/score-recall.py` reads `<case>/verdict.json` + the golden and computes
+  recall = (expected findings surfaced) / (total expected). Matching is **maximum bipartite
+  matching** (1:1, no run finding satisfies two claims) on description-token **coverage ≥ 0.5**
+  (normalized by the expected token set, not Jaccard); MITRE technique is deliberately NOT a match
+  shortcut (homogeneous techniques would inflate recall). PASS = recall ≥ `min_recall_percent`
+  AND verdict polarity consistent (asymmetric: a NEUTRAL/INDETERMINATE run is never punished, but
+  escalating to a definite verdict when the golden expects uncertainty fails — the false-positive
+  control). Verified by adversarial drop-tests (removing a finding drops exactly its claim).
+- `min_recall_percent` is a deliberate per-case bar, not auto-derived (nitroba 80, NIST 71). Raising
+  it demands real new agent capability, not a config tweak.
+
 Related: [[North Star]] · [[Key Decisions]] · [[Gotchas]] · [[Memories]]

@@ -71,4 +71,34 @@ tags: [brain, gotchas]
 - **Do not self-whitelist MCP tools** in `.claude/settings.local.json` — the auto-mode classifier
   denies it as self-modification. Let tools prompt, or ask the user.
 
+## SANS HACKATHON-2026 evidence corpus + Egnyte downloads
+
+- Evidence lives at the Egnyte folder-link `https://sansorg.egnyte.com/fl/HhH7crTYT4JK` (shared by
+  Rob Lee, anonymous-public, until Jun 17 2026). Three scenarios:
+  - **Compromised APT Attack Scenarios/** — `SRL-2015` and `SRL-2018` enterprise compromises.
+    SRL-2018 = 7 host `.E01` disks (base-dc, base-file, base-rd-01/02, base-wkstn-01/05, dmz-ftp;
+    ~11–17 GB each) + an `SRL-2018/` memory subfolder. The `base-dc-memory.img` already in
+    `evidence/` is this scenario's DC memory.
+  - **Standard Forensic Case/** = **ROCBA** — `rocba-cdrive.e01` (22 GB) + `Rocba-Memory.zip`
+    (5.3 GB) + `ROCBA-BACKGROUND.pptx` (scenario *background*, not an answer key).
+  - **Standard Forensics Case 2/** = **VANKO** — `VANKO.zip` (40.7 GB) + brief.
+- **Download mechanism** (no login): select file(s) → "Download Selected" injects a hidden
+  `<iframe src="https://sansorg.egnyte.com/dd/HhH7crTYT4JK/?entryId=<uuid>">`. Capture that iframe
+  `src` via Playwright/Puppeteer — it's the direct download, supports HTTP range/resume, and `curl`
+  fetches it anonymously with a `Referer: …/fl/HhH7crTYT4JK` header. The row's DOM `data-id` is NOT
+  the `entryId` (different UUIDs). **Office files (.pptx) PREVIEW instead of download**, so the
+  iframe never fires for them. The REST listing endpoints (`/rest/public/1.0/links/info/<id>/contents`)
+  reject GET (405; the SPA POSTs).
+- **Large downloads are throttled** hard — small files ~6 MB/s, the 22 GB e01 crawls at ~100 KB/s
+  (~60 h ETA). Always `curl -C -` (resume); expect big images to take a long time.
+- **Nested-archive gotcha:** `Rocba-Memory.zip` → `Rocba-Memory/Rocba-Memory.7z` → `Rocba-Memory.raw`
+  (19.05 GB raw memory). Extract both layers (`unzip` then `7z e`) before investigating.
+- **ROCBA / base-dc are live-run-only (NOT scoreable).** Their briefs are scenario background, not
+  answer keys, so there is no ground truth to author a golden from — running them yields a Verdict +
+  report but no recall score. Only cases with a real answer key get a golden: currently `nitroba`
+  (100 %) and `nist-hacking-case` (via `SCHARDT.dd`). Never fabricate a golden. See [[Patterns]].
+- **`evidence/` vs `fixtures/` is enforced, not conventional:** `scripts/fetch-fixtures.sh` aborts if
+  `FIXTURES` resolves under `evidence/`, and `l3-run-goldens.sh` only reads `fixtures/<case>`.
+  `evidence/` = ad-hoc live-run drop zone; `fixtures/` = scored benchmark corpus paired with `goldens/`.
+
 Related: [[Key Decisions]] · [[Patterns]] · [[North Star]]
