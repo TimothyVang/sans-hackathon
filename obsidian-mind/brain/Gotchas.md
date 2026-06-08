@@ -101,4 +101,59 @@ tags: [brain, gotchas]
   `FIXTURES` resolves under `evidence/`, and `l3-run-goldens.sh` only reads `fixtures/<case>`.
   `evidence/` = ad-hoc live-run drop zone; `fixtures/` = scored benchmark corpus paired with `goldens/`.
 
+- **CI pins `ruff==0.7.4`** (`.github/workflows/l0-static.yml`). Local `uvx ruff` pulls the LATEST
+  ruff, which formats differently → files pass `ruff format` locally but CI's 0.7.4 `format --check`
+  flags them (cost a red CI cycle 2026-06-08). Match CI: `uvx ruff@0.7.4 format .` + `uvx ruff@0.7.4 check .`.
+  `cargo` lives at `~/.cargo/bin/cargo` (not on default PATH). eslint: use `next/link` `<Link>`, never
+  `<a href="/">` internal nav (`@next/next/no-html-link-for-pages`).
+- **L1 CI (`docker/l1-compose.yml`) green-up (2026-06-08) — `unrs-resolver` was a RED HERRING.**
+  L1's `pnpm install` runs `--ignore-scripts`, so the `unrs-resolver` napi-postinstall never fires;
+  pnpm install/build/test pass and L1 reaches its smoke stage. Don't chase that ghost. The real L1
+  blockers were four things the feature branch added without updating their gates:
+  1. **judge corroboration broke** — `services/agent/findevil_agent/judge.py` `_group_key()` keyed on
+     the free-text finding *description*, so cross-pool Pool-A/Pool-B findings worded differently never
+     merged (broke `test_corroborated_finding_gets_bonus`). Fix: key on
+     `(tool_call_id, artifact_path, mitre_technique)` — drop the description.
+  2. **`selfscore_aggregate` deleted** — the unified-launcher commit (09154c3) accidentally dropped the
+     fleet `judge_selfscore` rollup from `scripts/fleet_correlate.py`, but `fleet-policy-smoke` still
+     locks it → `AttributeError`. Fix: restore the 3 deleted blocks (working tree then matches master).
+  3. **`divergence-smoke` #10 stale** — hard-required exactly 2 `.mcp.json` servers, but the branch
+     added the 4 documented non-product servers (n8n-mcp/playwright/puppeteer/qmd; CLAUDE.md §3/§4).
+     Allow-list them; scope the gateway/shell forbidden-token scan to the product servers only.
+  4. **`path-existence-smoke` passes locally, fails in CI** — on refs that resolve only via gitignored
+     content present on a dev disk but absent from CI's clean checkout (`n8n-references/`, docker
+     `./out/`). Allow-list both. **To reproduce a CI-only path failure locally, stash the gitignored
+     dirs** (`mv n8n-references out /tmp/…`) then run the smoke. Same trick for any "green locally, red
+     in CI" path smoke. Also: a literal ellipsis `…` (U+2026) in a backtick path = placeholder, never
+     a real file — allow-listed.
+
+## The headless engine runs under bare python3 (3.10) — it CANNOT import findevil_agent
+
+`scripts/verdict` launches the engine as `python3 scripts/find_evil_auto.py …` (host system
+python — **3.10 here**), NOT a `findevil_agent` venv. `findevil_agent` requires **3.11+**
+(`from enum import StrEnum`) and its package `__init__` eagerly imports pydantic, so **any**
+`import findevil_agent.*` in `find_evil_auto.py` fails at module load. That's why the playbook
+import (and now the Hermes memory glue) is wrapped in `try/except ImportError` with an **inline
+3.10-safe fallback** — the import is effectively always-False in the real engine.
+
+**Trap:** wiring that imports `findevil_agent` into the engine *compiles, lints, and passes unit
+tests* but **silently no-ops at runtime** (guarded import → `_AVAILABLE=False` → early return).
+You only catch it with a live run. Fix: inline the logic (stdlib-only) in `find_evil_auto.py` and
+unit-test it by importing the module under the 3.11 agent venv
+(`uv run pytest`, `sys.path.insert(scripts/)`) — see `services/agent/tests/test_memory_hooks.py`.
+The MCP *tools* (agent_mcp server) DO have findevil_agent — only the thin host engine doesn't.
+
+## Hermes cross-case memory is now wired (was dormant) — provenance, never evidence
+
+`memory_recall`/`memory_remember` were registered tools but never invoked. Now: `reason()` calls
+`_enrich_findings_with_recall` (recall each finding's MITRE/IOC term → attach hits as a
+NON-evidentiary `prior_observations` field), and `run()` calls `_remember_confirmed` after
+`_emit_final_findings` (remember CONFIRMED findings). Both pass `audit_log_path` so the tool
+**calls** are hash-chained, but the `memory_recall`/`memory_remember` audit kinds are **excluded
+from the Merkle root** (`build_manifest` only leafs `tool_call_output`+`finding_approved`) — so
+memory never inflates `leaf_count` and never becomes a `tool_call_id`. Verified live on the
+DE_1102 evtx: 2nd run recalls the 1st run's finding (`prior_observations` populated), manifest
+still PASSes. Store path = `resolve_memory_store_path` (`$FINDEVIL_MEMORY_STORE` →
+`~/.findevil/memory/memory.sqlite`). See [[Key Decisions#Memory is never evidence]] and [[Patterns]].
+
 Related: [[Key Decisions]] · [[Patterns]] · [[North Star]]
