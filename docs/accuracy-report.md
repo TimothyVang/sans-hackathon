@@ -180,7 +180,7 @@ Every committed sample run is offline-verifiable; these are the actual recorded 
 |---|---|---|---|---|---|---|---|
 | `memory-dc` (live Volatility 3) | INDETERMINATE | 2 | 0 | 0 | 2 | **2/2 (100%)** | `overall=true` |
 | `attack-samples-evtx` | SUSPICIOUS | 3 | 1 | 0 | 2 | **3/3 (100%)** | `overall=true` |
-| `nist-hacking-case` (local, current engine) | SUSPICIOUS | 19 | 8 | 2 | 9 | **19/19 (100%)** | `overall=true` |
+| `nist-hacking-case` (local, current engine) | SUSPICIOUS | 27 | 8 | 0 | 19 | **27/27 (100%)** | `overall=true` |
 | `nist-hacking-case-sift` (SANS SIFT VM, current engine) | SUSPICIOUS | 19 | 8 | 2 | 9 | **19/19 (100%)** | `overall=true` |
 | `fault-injection-redispatch` | SUSPICIOUS | 9 | 8 | 0 | 1 | **9/9 (100%)** | `overall=true` |
 
