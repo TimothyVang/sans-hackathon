@@ -4,6 +4,8 @@
 
 **Demo video:** ${DEMO_VIDEO_URL}
 
+**More walkthroughs:** [educational explainer](https://github.com/TimothyVang/verdict-dfir/releases/download/v0.1.0/verdict-educational-explainer.mp4) · [feature deep-dives](https://github.com/TimothyVang/verdict-dfir/releases/download/v0.1.0/verdict-feature-deep-dives.mp4) · [quickstart](https://github.com/TimothyVang/verdict-dfir/releases/download/v0.1.0/verdict-quickstart.mp4) · [help build VERDICT](https://github.com/TimothyVang/verdict-dfir/releases/download/v0.1.0/verdict-contributor-call.mp4)
+
 **Accuracy story:** in-run memory self-correction, ${ACCURACY}% NIST CFReDS Hacking Case recall
 
 **Release date:** ${DATE}
