@@ -2,8 +2,9 @@
 
 *Devpost Required Component #9. Consolidates how VERDICT is measured for accuracy: the scoring
 method, the recall results against published ground truth, the verdict-calibration / false-positive
-posture, and the honest limits. Every number here is reproducible from committed artifacts or the
-scoring harness — nothing is asserted without a path you can re-run.*
+posture, and the honest limits. Current source checkouts ship the scoring harness, goldens, and
+compact release-evidence summaries; bulky historical run packets are regenerated locally rather
+than committed.*
 
 > **Stance.** VERDICT is graded on two axes at once: **did it surface the real evil** (recall
 > against an answer key) **and did it stay honest about coverage** (a scoped-partial run must say
@@ -40,19 +41,23 @@ The corpus, fetch mechanism, and per-case tiers are in [`DATASET.md`](DATASET.md
 false-positive architecture is in [`false-positives.md`](false-positives.md). Some golden files
 still use the legacy scoring label `CONFIRMED_EVIL`; map that to VERDICT's current top-line
 `SUSPICIOUS` when comparing polarity.
+Local drop-zone evidence that has a committed answer key is listed separately in
+[`evidence-answer-keys.md`](evidence-answer-keys.md); those compact EVTX and fleet-host keys are
+calibration cases for fast local live runs, not substitutes for the larger public benchmark batch.
 
 ---
 
 ## 2. Recall against published ground truth
 
 The golden corpus is **10 scoreable cases** (real published ground truth) + 2 live-run-only
-controls. Fixtures are not committed (license/size); `scripts/fetch-fixtures.sh` pulls them. Status
+controls. Fixtures and bulky run packets are not committed (license/size);
+`scripts/fetch-fixtures.sh` pulls fixtures and `scripts/verdict` regenerates run artifacts. Status
 as of this report:
 
 | # | Case | Class | Golden outcome | Recall bar | Result | Status |
 |---|---|---|---|---|---|---|
-| 1 | `nitroba` | network (pcap) | SUSPICIOUS (legacy label: CONFIRMED_EVIL) | 80% | **5/5 = 100%** · run `INDETERMINATE` | **PASS** (committed: `docs/sample-run/nitroba`) |
-| 2 | `nist-hacking-case` | disk (XP) | SUSPICIOUS (legacy label: CONFIRMED_EVIL) | 71% | **7/14 = 50%** · run `SUSPICIOUS` | **FAIL** — narrowed gap, up from 7% (committed: `docs/sample-run/nist-hacking-case`) |
+| 1 | `nitroba` | network (pcap) | SUSPICIOUS (legacy label: CONFIRMED_EVIL) | 80% | **5/5 = 100%** · run `INDETERMINATE` | **PASS** in historical run packet; regenerate from fixtures |
+| 2 | `nist-hacking-case` | disk (XP) | SUSPICIOUS (legacy label: CONFIRMED_EVIL) | 71% | **7/14 = 50%** · run `SUSPICIOUS` | **FAIL** — narrowed gap, up from 7%; compact receipt in `docs/release-evidence/l3-local-sift.json` |
 | 3 | `nist-data-leakage` | disk | SUSPICIOUS (legacy label: CONFIRMED_EVIL) | 60% | — | staged, scheduled (local TSK / SIFT parity) |
 | 4 | `alihadi-09-encrypt` | disk (FP control) | **INDETERMINATE** | 50% | — | staged, scheduled (local TSK / SIFT parity) |
 | 5 | `alihadi-01-webserver` | disk | SUSPICIOUS (legacy label: CONFIRMED_EVIL) | 60% | — | staged, scheduled (local TSK / SIFT parity) |
@@ -63,15 +68,17 @@ as of this report:
 | 10 | `synthetic-benign` | negative control | **NO_EVIL** (0 findings) | 100% | — | staged, scheduled |
 
 **Honest summary:** 1 of 10 fully scored and passing (`nitroba`, 100%); 1 scored and failing but
-**measurably improving** (`nist-hacking-case`, **50% = 7/14, up from 7% = 1/14**). The committed run
+**measurably improving** (`nist-hacking-case`, **50% = 7/14, up from 7% = 1/14**). The recorded run
 now recalls seven of the golden's fourteen canonical claims — hacking-tool execution (Prefetch /
 UserAssist, 8 CONFIRMED), on-disk tool artifacts, **shellbag** navigation to staged files,
 removable-media **LNK** traces, **Recycle Bin** staging artifacts, the **suspiciously-named account
 `Mr. Evil`** (SAM, T1136.001), and the **recently-opened-file MRU**. It still misses the ACMru search
 history, USB-history, deleted-email, internet-history, legacy event-log, thumbcache, and named-pipe
 artifacts the golden also expects, so it honestly scopes to `SUSPICIOUS` rather than overstate coverage (verdict polarity maps
-to the legacy golden's `CONFIRMED_EVIL` label). The number is reproducible:
-`scripts/score-recall.py docs/sample-run/nist-hacking-case --golden goldens/nist-hacking-case`. The
+to the legacy golden's `CONFIRMED_EVIL` label). The receipt is recorded in
+`docs/release-evidence/l3-local-sift.json`; to reproduce the score, regenerate a run with
+`scripts/verdict` and pass that run directory to `scripts/score-recall.py` with
+`--golden goldens/nist-hacking-case`. The
 remaining 8 goldens are fixture-staged and pending batch execution — **scheduled, not yet run.** We
 publish the gap, and the progress, rather than hide either. The adversarial posture is tracked in
 [`red-team-challenge.md`](red-team-challenge.md): unsupported artifact evil, benign admin activity,
@@ -79,8 +86,8 @@ single-source execution traps, log clearing, DKOM-vs-smear, exfil-without-networ
 cases are expected to pass by staying scoped, preserving limitations, and producing replayable
 citations — not by always finding evil.
 
-`nitroba` is the strongest single result, and it is reproducible from the committed run
-(`scripts/score-recall.py docs/sample-run/nitroba --golden goldens/nitroba` → 5/5 PASS): against a
+`nitroba` is the strongest single result, and it is reproducible by rerunning the fixture and
+scoring with `--golden goldens/nitroba` (historical result: 5/5 PASS): against a
 5-claim network answer key it surfaced all five — anonymous-email contact, source host
 `192.168.15.4`, Gmail-cookie attribution, the authenticated Facebook login, and the
 send-vs-browsing timeline correlation — at 100% recall over an 80% bar. The run verdict is
@@ -121,7 +128,8 @@ floor. Both are staged and scheduled.
   The supervisor's reasoning is in the audit chain as `agent_message` records, and the run is
   ed25519-signed and offline-verifiable (`scripts/trace-finding docs/sample-run/memory-dc`). This is
   the calibration working in code on a first-pass run, not a doc edit.
-- **SRL-2018 22-host fleet** ([`reports/2026-04-26-srl2018-dc-investigation.pdf`](reports/2026-04-26-srl2018-dc-investigation.pdf)):
+- **SRL-2018 22-host fleet** (historical generated report path:
+  `docs/reports/2026-04-26-srl2018-dc-investigation.pdf`):
   the same `vol_pslist` = 0 vs `vol_psscan` = 124 divergence
   now stands in the report as **HYPOTHESIS** (acquisition smear). Full honesty about how it got
   there: the original run over-claimed it as confirmed DKOM, and post-run expert review reconciled
@@ -166,7 +174,8 @@ product's 99%-automation / 1%-expert-signoff doctrine, `agent-config/EXPERT.md`)
    `cd075c9`, ~6 weeks after the run — the git history shows the correction, on purpose), and the
    miss was converted into engine code: the smear-disambiguation rule and the `vol_psxview`
    cross-view tool now in the typed surface, so the same over-claim cannot survive a current run
-   ([`reports/2026-04-26-srl2018-dc-investigation.pdf`](reports/2026-04-26-srl2018-dc-investigation.pdf)).
+   Historical generated report path:
+   `docs/reports/2026-04-26-srl2018-dc-investigation.pdf`.
    This is precisely the failure mode this report exists to document: a confident wrong answer,
    caught, corrected in the open, and engineered against.
 
@@ -228,7 +237,7 @@ modify the evidence"; there is no code path that *can*:
   output SHA-256s; a drifted hash rejects the finding (`verify_finding`, with the
   sha256-drift-rejection path exercised by the `verifier_hash_mismatch_once` fault mode).
 - **The boundaries were tested for bypass, adversarially.**
-  [`services/mcp/tests/bypass_paths.rs`](../services/mcp/tests/bypass_paths.rs) feeds the tool
+  [`services/mcp/tests/bypass_paths.rs`](https://github.com/TimothyVang/verdict-dfir/blob/master/services/mcp/tests/bypass_paths.rs) feeds the tool
   surface a shell-injection payload as a *filename* (`evil; touch HACKED && $(rm -rf ~) | nc …`),
   `../../..` traversal paths, and flag-looking paths (`--output=… -rf`): the payload byte-string is
   hashed as a literal file, traversals resolve to typed `NotFound` errors, nothing shells out, and

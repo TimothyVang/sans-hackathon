@@ -6847,6 +6847,13 @@ class Investigation:
         self.post_finalize_verification: dict[str, Any] | None = None
         self.final_release_gate: dict[str, Any] | None = None
         self.local_run_dir: Path | None = None
+        # Liveness heartbeat: the run dir is created (by the launcher or here)
+        # before any artifact lands, and every artifact except audit.jsonl is
+        # written in one burst at finalize — so for the whole run (~30 min on a
+        # disk image) the dir looks empty/audit-only. status.json lets a watcher
+        # or scripts/verdict tell a live run from a dead one, and lets the
+        # launcher reclaim dirs that never reached a real stage.
+        self._stage = "starting"
         self.tcid_counter = 0
         self.handle: dict[str, Any] = {}
         # HEARTBEAT.md escalation: count consecutive tool failures. A successful
@@ -7037,6 +7044,42 @@ class Investigation:
             else rust.call_tool(tool, args)
         )
 
+    def _heartbeat(self, stage: str | None = None, **extra: Any) -> None:
+        """Best-effort liveness write to ``<case_dir>/status.json``.
+
+        Never raises: a status write must never break an investigation. Only
+        active in local mode, where ``self.case_dir`` is a real host path (in
+        SIFT mode it is an in-VM path the host cannot resolve). Passing a
+        ``stage`` advances the recorded stage; omitting it just refreshes the
+        timestamp and counters (used per tool call for fine-grained liveness).
+        """
+        if not LOCAL_MODE:
+            return
+        if stage is not None:
+            self._stage = stage
+        try:
+            case_dir = Path(self.case_dir)
+            case_dir.mkdir(parents=True, exist_ok=True)
+            status = {
+                "case_id": self.case_id,
+                "run_id": self.run_id,
+                "stage": self._stage,
+                "started_at": self.started_at,
+                "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "tool_calls": self.tcid_counter,
+                "findings_so_far": len(self.findings_pool_a)
+                + len(self.findings_pool_b),
+                **extra,
+            }
+            tmp = case_dir / ".status.json.tmp"
+            tmp.write_text(
+                json.dumps(status, indent=2, sort_keys=True), encoding="utf-8"
+            )
+            tmp.replace(case_dir / "status.json")
+        except Exception:
+            # Liveness is advisory; never let it interrupt the case.
+            pass
+
     def _record_tool(
         self,
         py: SshMcpClient,
@@ -7076,6 +7119,9 @@ class Investigation:
                 **tool_call_extra,
             }
         )
+        # Refresh liveness after each tool call so a long investigation phase
+        # (e.g. a multi-minute disk extract sweep) visibly advances.
+        self._heartbeat(last_tool=tool)
         return tcid
 
     def _output_hash(self, obj: dict[str, Any]) -> str:
@@ -7949,8 +7995,78 @@ class Investigation:
     ) -> None:
         evidence_path = evidence_path or self.evidence
         print("\n=== disk image investigation (auto mount/extract) ===")
+        # Directory/inventory mode opens a Python-only parent case ("dir-<hash>")
+        # that the Rust disk tools cannot resolve: disk_mount -> case_dir() looks
+        # for $FINDEVIL_HOME/cases/<case_id>/ and fails "case not found" because
+        # only the Rust case_open (single-file mode) creates that dir. Register the
+        # disk image as a real Rust case so the disk tools have a case work dir;
+        # fall back to the parent id (custody-only behaviour) if it fails.
+        disk_case_id = self.handle["id"]
+        disk_inventory_entry: dict[str, Any] | None = None
+        if self.evidence_inventory:
+            try:
+                evidence_canonical = str(Path(evidence_path).resolve())
+            except OSError:
+                evidence_canonical = evidence_path
+            disk_inventory_entry = next(
+                (
+                    entry
+                    for entry in inventory_supported_entries(self.evidence_inventory)
+                    if entry.get("artifact_class") == "raw_disk"
+                    and (
+                        entry.get("path") == evidence_path
+                        or entry.get("canonical_path") == evidence_canonical
+                    )
+                ),
+                None,
+            )
+        if str(disk_case_id).startswith("dir-"):
+            case_open_args = {
+                "image_path": evidence_path,
+                "label": Path(evidence_path).name,
+            }
+            if disk_inventory_entry and disk_inventory_entry.get("sha256"):
+                case_open_args["expected_sha256"] = str(disk_inventory_entry["sha256"])
+            opened = rust.call_tool("case_open", case_open_args)
+            if isinstance(opened, dict) and "_error" not in opened and opened.get("id"):
+                disk_case_id = opened["id"]
+                self._record_tool(
+                    py,
+                    "case_open",
+                    opened.get("image_hash", ""),
+                    {
+                        "case_id": disk_case_id,
+                        "parent_case_id": self.handle["id"],
+                        "evidence_type": "disk",
+                        "size_bytes": opened.get("image_size_bytes"),
+                    },
+                    arguments=case_open_args,
+                )
+            else:
+                opened_output = (
+                    opened
+                    if isinstance(opened, dict)
+                    else {"_error": {"message": "invalid case_open response"}}
+                )
+                registration_error = (
+                    opened_output.get("_error", {}).get("message") or "case_open failed"
+                )
+                self._record_tool(
+                    py,
+                    "case_open",
+                    self._output_hash(opened_output),
+                    {
+                        "parent_case_id": self.handle["id"],
+                        "evidence_type": "disk",
+                        "error": registration_error,
+                    },
+                    arguments=case_open_args,
+                )
+                self.analysis_limitations.append(
+                    "Disk case registration failed in directory mode; disk remains custody-only."
+                )
         mount_args = {
-            "case_id": self.handle["id"],
+            "case_id": disk_case_id,
             "image_path": evidence_path,
             "mode": "auto",
         }
@@ -7997,7 +8113,7 @@ class Investigation:
         extracted_entries: list[dict[str, Any]] = []
         try:
             extract_args = {
-                "case_id": self.handle["id"],
+                "case_id": disk_case_id,
                 "mount_id": mount_id,
                 "limit": 500,
             }
@@ -8090,7 +8206,7 @@ class Investigation:
                 )
         finally:
             unmount_args = {
-                "case_id": self.handle["id"],
+                "case_id": disk_case_id,
                 "mount_id": mount_id,
                 "mode": "auto",
             }
@@ -11425,6 +11541,7 @@ class Investigation:
         self, py: SshMcpClient, packet_attestation: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         print("\n=== manifest finalize ===")
+        self._heartbeat("finalizing")
         extra = {
             "image_path": self.evidence,
             "model": "find-evil-auto",
@@ -12048,6 +12165,7 @@ class Investigation:
             return client
 
         self._rust_factory = _spawn_rust
+        self._heartbeat("starting", evidence_type=etype)
 
         try:
             # Initialize handshakes
@@ -12063,6 +12181,7 @@ class Investigation:
                 client.notify("notifications/initialized")
 
             # Phase 1: Investigation
+            self._heartbeat("investigating")
             if etype == "directory":
                 self.case_open_directory(py)
                 self.investigate_inventory(rust, py)
@@ -12100,6 +12219,7 @@ class Investigation:
             self._heartbeat_abort(py)
 
             # Phase 2: Reasoning
+            self._heartbeat("reasoning")
             merged, contras, kept, downgraded = self.reason(py)
             verdict = self.compute_verdict(merged)
             self._narrate(
@@ -12225,6 +12345,11 @@ class Investigation:
             if not LOCAL_MODE:
                 print(f"  Inside VM      : {self.case_dir}/")
             print(f"  On host (local): {local_dir}")
+            self._heartbeat(
+                "complete",
+                verdict=verdict,
+                manifest_verify_overall=manifest_verification.get("overall"),
+            )
             return {
                 "case_id": self.case_id,
                 "verdict": verdict,

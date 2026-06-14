@@ -10,12 +10,12 @@ Read this first when navigating the documentation tree. The root README is the j
 | Pick an environment + run modes | [`../QUICKSTART.md`](../QUICKSTART.md) — the one command is `scripts/verdict <evidence>` |
 | Run it — every flag, run modes, output layout | [`using/running-verdict.md`](using/running-verdict.md) |
 | Full MCP-server / tool / dependency / env inventory | [`reference/mcp-and-tools.md`](reference/mcp-and-tools.md), [`reference/dependencies.md`](reference/dependencies.md), [`reference/environment-variables.md`](reference/environment-variables.md) |
-| The dev/operator memory layer (obsidian-mind) | [`runbooks/obsidian-mind-memory.md`](runbooks/obsidian-mind-memory.md) |
 | Understand the architecture | [`architecture.md`](architecture.md) |
 | Verify custody/manifest claims | [`cryptographic-attestation.md`](cryptographic-attestation.md) |
 | Interpret verdicts safely | [`verdict-semantics.md`](verdict-semantics.md) |
 | Review release evidence | [`release-evidence/README.md`](release-evidence/README.md) |
-| See historical plans/specs | `plans/` and `specs/` |
+| Map local evidence to scoreable answer keys | [`evidence-answer-keys.md`](evidence-answer-keys.md) |
+| Understand what is intentionally omitted | [`release-surface.md`](release-surface.md) |
 
 Status legend:
 
@@ -41,26 +41,29 @@ The authoritative *precedence* hierarchy (which spec overrides which) lives in `
 | `INSTALL.md` | **ACTIVE** | Canonical install guide: clone → install → verify → first run, plus the container path. |
 | `CONTRIBUTING.md` | **ACTIVE** | How to build, test (mirrors CI), and submit changes; the invariants and Conventional-Commit rules. |
 | `QUICKSTART.md` | **ACTIVE** | Three-step quickstart for impatient users. |
-| `STARTUP.md` | **RESEARCH** | Team onboarding notes retained for hackathon context. |
 | `CHANGELOG.md` | **ACTIVE** | Chronological project changelog. |
-| `SUBMISSION_COMPLIANCE.md` | **REQUIRED** | 10-item Devpost compliance checklist — maps every required submission component to an exact file path/URL. First thing judges should read. |
 
 ## `docs/` top level (analyst + judge facing)
 
 | File | Status | Purpose |
 |---|---|---|
 | `architecture.md` | **REQUIRED** | Devpost Required Component #3. Trust-boundary diagram + runtime architecture. The single page judges reach first. |
+| `accuracy-report.md` | **REQUIRED** | Devpost Required Component #9. Scoring method, benchmark status, and honest gaps. |
 | `artifact-semantics.md` | **ACTIVE** | Analyst reference: what each artifact type (Prefetch, Amcache, ShimCache, MFT, EVTX, memory, YARA, etc.) proves and doesn't prove, plus the ≥2 artifact-class corroboration table. |
 | `codex-compatibility.md` | **ACTIVE** | Operator guide for using Codex with the same two product MCP servers, without broad external MCP defaults. |
+| `competitive-analysis.md` | **ACTIVE** | Public positioning against adjacent DFIR and agent tools. |
 | `cryptographic-attestation.md` | **REQUIRED** | Three-link chain-of-custody story (rubric criterion #5). How `manifest_verify` produces FRE 902(14) self-authenticating evidence post-A5. |
 | `DATASET.md` | **REQUIRED** | Devpost Required Component #5. Every fixture the agent was tested against, with SHA-256 + license + expected findings. |
-| `demo-script-a2.md` | **ACTIVE** | 5-minute Devpost demo video script (A2 flow). Pre-flight checklist + per-beat narration + rubric mapping. |
-| `divergences-resolved.md` | **ACTIVE** | Ledger of settled spec/code divergences moved out of `CLAUDE.md`. |
+| `evidence-answer-keys.md` | **ACTIVE** | Local `evidence/` drop-zone cases mapped to committed `goldens/` answer keys and score commands. |
+| `extending-the-tool-surface.md` | **ACTIVE** | How to add typed tools without widening the product into arbitrary shell access. |
 | `glossary.md` | **ACTIVE** | Plain-language definitions (Case/Observable/Finding/Verdict, the three Verdicts, ACH, audit chain) + a short FAQ. |
 | `false-positives.md` | **ACTIVE** | Operator's guide. Three architectural FP layers + four operational habits + per-tool FP risk table. |
 | `finding-to-action.md` | **ACTIVE** | Per-MITRE-technique IR playbook: from a SUSPICIOUS/CONFIRMED finding to analyst next steps (T1014, T1055, T1547, T1543, T1053, T1070, T1041/T1048). |
 | `investigation-phases.md` | **ACTIVE** | Phase-by-phase walkthrough: case_open → Pool A/B → contradictions → verify → judge → correlate → finalize. What each phase produces in audit.jsonl and verdict.json. |
+| `live-test-matrix.md` | **ACTIVE** | Evidence-type live-test expectations and current parser/runtime gaps. |
 | `replay-determinism.md` | **ACTIVE** | Replay determinism notes for stable verifier behavior. |
+| `release-surface.md` | **ACTIVE** | What ships in source, what archive exports intentionally omit, and why. |
+| `troubleshooting.md` | **ACTIVE** | Failure modes and remediation commands for install/run/report issues. |
 | `verdict-semantics.md` | **ACTIVE** | Analyst-facing meaning of `SUSPICIOUS` / `INDETERMINATE` / `NO_EVIL`; mirrors `compute_verdict` in `scripts/find_evil_auto.py`. |
 
 ### Current automation outputs
@@ -71,8 +74,7 @@ The authoritative *precedence* hierarchy (which spec overrides which) lives in `
 - `scripts/readiness-gate.sh` is POSIX strict/check-only. It can print `SUBMISSION_READY` for its legacy checks, but it does not create the readiness packet ZIP.
 - The dev "done" gate is a passing **live test**: run `scripts/verdict <evidence>` against real evidence and confirm a real verdict in `verdict.json` (each Finding citing a `tool_call_id`) plus `manifest_verify.json` `overall=true`. Per-evidence-type expectations and current gaps live in [`live-test-matrix.md`](live-test-matrix.md) and `CLAUDE.md` "Running A Case".
 - Local smoke runners (`bash scripts/run-all-smokes.sh` for POSIX/Git Bash, `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-all-smokes.ps1` for native Windows) are a **CI predictor** — they mirror what L1 runs, not a live test. Do not copy old hard-coded smoke counts; the scripts print the current tally.
-- `bash scripts/make-demo-video.sh` generates `docs/find-evil-demo.mp4` from `docs/demo-script-a2.md` using Remotion (React animated video, headless Chrome) + edge-tts TTS audio. Prerequisites: `pip install edge-tts` + `pnpm install --dir scripts/make-demo-video --ignore-workspace`. If `claude` is on PATH, narration is auto-enriched via `claude -p` before TTS.
-- `python3 scripts/make-demo-video-prep.py --dry-run` verifies beat parsing (9 beats, 300s) without invoking TTS or Remotion.
+- Demo-video tooling is optional release support, not product runtime. `bash scripts/make-demo-video.sh` renders Remotion/edge-tts videos when the script package and source beats are present; reduced source checkouts may omit historical demo scripts and keep only generated release videos.
 
 ## `docs/reference/` (canonical inventories)
 
@@ -112,36 +114,16 @@ These are read by the agent at investigation start (per `CLAUDE.md` "Investigati
 | `agent-config/HEARTBEAT.md` | **ACTIVE** | Per-iteration self-check loop. |
 | `agent-config/JUDGING.md` | **ACTIVE** | Pre-submission self-assessment rubric (6 quality criteria) that `scripts/self-score.py` grades a completed case against. Not part of the investigation pipeline. |
 
-## `docs/specs/` (architecture specs)
+## Historical specs
 
-Status-banner-prefixed within each file. Read in `repo-guide.md` "Document hierarchy" precedence order.
+The large historical `docs/specs/` set is intentionally omitted from reduced source exports. Current architecture and trust boundaries live in [`architecture.md`](architecture.md), [`cryptographic-attestation.md`](cryptographic-attestation.md), and `CLAUDE.md`; omission policy lives in [`release-surface.md`](release-surface.md).
 
-| File | Status | Purpose |
-|---|---|---|
-| `2026-04-23-find-evil-automation-master-design.md` | **SHIPPED** | Master design — originally a 4-subsystem decomposition + 4 differentiators (M1 leaderboard, M2 crypto, M3 widgets, M4 ACH). Build swarm (subsystem #1) removed under A6; now 3 subsystems. |
-| `2026-04-23-amendment-option-b-claude-code-mode.md` (**A1**) | **SHIPPED** (swarm specifics superseded by A6) | Was subscription-mode credentials for the build swarm; LiteLLM proxy never built. Swarm removed under A6; Product still uses the three credential modes. |
-| `2026-04-25-amendment-a2-claude-code-primary-interface.md` (**A2**) | **SHIPPED** | Drops the custom Python orchestrator; Claude Code IS the orchestrator. |
-| `2026-04-26-amendment-a3-agent-army-and-dashboard.md` (**A3**) | **SHIPPED** (Phases 1-4 + role-state dashboard) / **RESEARCH** (pixel-art/chrome polish) | Memory + ACP MCP tools + SSE dashboard with role-state sprite containers; pixel-art and bead/chip chrome remain parked. |
-| `2026-04-30-amendment-a5-ots-removal.md` (**A5**) | **SHIPPED** | Removes the OpenTimestamps/Bitcoin fourth tier; chain collapses to 3 tiers (audit prev_hash → rs_merkle → manifest signature; Ed25519 default, Sigstore identity tier when configured). |
-| `2026-04-23-layered-test-sandbox-design.md` (**Spec #3**) | **SHIPPED** | L0/L1/L2/L3 sandbox stack. L2 advisory only. |
-| `2026-04-25-the-product-design.md` (**Spec #2**) | **SHIPPED** (with A2 + A5 amendments) | The DFIR tool the judges run. |
-| `2026-04-26-orchestration-glue-design.md` (**Spec #4**) | **SHIPPED** | Thin GHA CI pipeline. |
+## Historical implementation plans
 
-(Amendment A5 spec: `2026-04-30-amendment-a5-ots-removal.md` — code-only removal of the OTS/Bitcoin tier; written as a standalone doc to complete the amendment lineage.)
-
-## `docs/plans/` (plans and launch checklist)
-
-The original five implementation plans shipped (the build-swarm plan was removed under A6 when the swarm subsystem was deleted). Each remaining plan carries a RETIRED banner naming where the live code lives. Do not execute retired plans as TDD plans. The launch checklist is preserved as release history now that `v-submit` exists.
-
-| File | Status | Where it lives now |
-|---|---|---|
-| `FINISH-PROMPT.md` | **ACTIVE** | Reusable finishing prompt for the autonomous loop and fresh sessions. Reflects current state: Phases 0–3 + F1–F2 shipped; F3 (smoke gate + PR) and F5 (video render + upload) remain. |
-| `2026-06-06-seamless-integration-and-submission-plan.md` | **SHIPPED** | Phases 0–3 + F1–F2 all landed (commits `ed03182`–`b2dbc71`). F3 smoke gate, F5 video upload, and F6–F7 Devpost remain as human steps. |
-| `2026-05-20-finish-to-v-submit-plan.md` | **SHIPPED** | Release-history checklist for commits, readiness refresh, GitHub visibility, L3 evidence, demo URL, `v-submit`, and Devpost upload |
-| `2026-04-23-orchestration-glue-plan.md` | **RETIRED** | `.github/workflows/`, `scripts/package-devpost.sh` |
-| `2026-04-23-product-plan.md` | **RETIRED** | `services/mcp/`, `services/agent/`, `services/agent_mcp/` (with A2 + A5 carve-outs) |
-| `2026-04-23-sandbox-plan.md` | **RETIRED** | `.github/workflows/l[0-3]-*.yml`, `docker/l1-compose.yml`, `packer/sift-microvm.pkr.hcl` |
-| `2026-04-26-amendment-a3-plan.md` | **RETIRED** (Phases 1-4) / **PARKED** (Phases 5-6) | `services/agent_mcp/findevil_agent_mcp/tools/`, `services/agent/findevil_agent/memory/`, `apps/web/` |
+The `docs/plans/` surface is intentionally omitted from reduced source exports.
+When present in a full development checkout, `parser-coverage-execution.md` is
+planning context for parser coverage and execution-claim corroboration; current
+operator behavior is documented in the active runtime/configuration pages above.
 
 ## `docs/runbooks/` (operational procedures)
 
@@ -149,7 +131,6 @@ The original five implementation plans shipped (the build-swarm plan was removed
 |---|---|---|
 | `ci-smoke-checklist.md` | **ACTIVE** | End-to-end pipeline verification before submission. |
 | `dockerfile-a2-decision.md` | **RESEARCH** (decision archive) | Cut the in-container `find-evil` wrapper + `.deb` packaging (PR #4, 2026-04-27, "Option B"). Body retained as decision record. |
-| `obsidian-mind-memory.md` | **ACTIVE** | The dev/operator **memory layer**: the obsidian-mind vault (QMD semantic recall + `brain/` notes) as VERDICT's project memory. Optional, gitignored, **never evidence, never in the audit chain**. Pairs with `CLAUDE.md` "Non-Negotiable Guardrails". |
 | `github-remote-bootstrap.md` | **HISTORICAL / ACTIVE RELEASE-REMOTE REFERENCE** | Historical bootstrap plus current `release` remote checks for `TimothyVang/verdict-dfir`; `v-submit` is already published. |
 | `local-smoke-gate.md` | **ACTIVE** | Prerequisites, per-smoke coverage map, and common failure → fix pairs for `bash scripts/run-all-smokes.sh`. |
 | `n8n-automation-integration.md` | **ACTIVE** | Optional: wire n8n as an operator-local harness *around* the product — repeatable runs + post-verdict finding-to-action (via `n8n-mcp`, user-scope). Not bundled, not the orchestrator, not in the audit chain. |
@@ -168,28 +149,11 @@ The original five implementation plans shipped (the build-swarm plan was removed
 | `README.md` | **ACTIVE** | Explains why release evidence summaries are committed and what they are not. |
 | `l3-local-sift.json` | **ACTIVE** | Validated local VMware/SIFT L3 fallback evidence for the `v-submit` release path. |
 
-## `docs/templates/`
+## Omitted historical surfaces
 
-| File | Status | Purpose |
-|---|---|---|
-| `devpost-readme.md` | **ACTIVE** | README template that ships in the v-submit bundle (envsubst'd by `scripts/package-devpost.sh`). |
-
-## `docs/legacy/`
-
-| File | Status | Purpose |
-|---|---|---|
-| `BUILD_PLAN_v2.md` | **RETIRED** (moved 2026-05-02) | Pre-A2/A3/A5 9-week roadmap. Pitch surface consolidated into `README.md` per Phase 3c+3d of the doc reorg (SUBMISSION_NOTES.md was deleted in 3d; judge Q&A migrated to README "Anticipated questions"). Kept for git-log archaeology. |
-| `Find_Evil_Research_and_Build_Plan-v1.docx` | **RETIRED** (binary) | Original 72KB research doc; relevant content was promoted into BUILD_PLAN_v2 + the A1/A2/A3 amendments. Cannot carry a banner (binary). |
-
-## `docs/reports/`
-
-Investigation reports + their figures. Currently:
-
-- `docs/reports/2026-04-26-srl2018-dc-investigation.md` (+ `.html` + `.pdf` co-renderings) — 22-host SRL-2018 fleet investigation. Status: **REFERENCE** (showcase example referenced from CLAUDE.md + README).
-- `docs/reports/figures-2026-04-26/` — embedded report images.
+`docs/templates/`, `docs/legacy/`, `docs/plans/`, `docs/specs/`, `docs/sample-run/`, and `docs/reports/` are historical or generated release surfaces and may be absent from this reduced checkout. See [`release-surface.md`](release-surface.md) for the source/export boundary.
 
 ## What this index does NOT cover
 
-- Memory: the **obsidian-mind vault** (`obsidian-mind/`, gitignored) is now the dev/operator memory layer — see [`runbooks/obsidian-mind-memory.md`](runbooks/obsidian-mind-memory.md) + `CLAUDE.md` "Non-Negotiable Guardrails". The user-level `~/.claude/.../memory/MEMORY.md` is a thin index pointing into it.
-- Source code (`services/`, `apps/`, `scripts/`) — see `repo-guide.md` "Repository layout" + per-service `README.md`.
-- External clones (`obsidian-mind/`, `n8n-references/`) — gitignored; see `repo-guide.md` "External clones (gitignored…)".
+- Source code (`services/`, `apps/`, `scripts/`) — see the repository layout in `CLAUDE.md` plus per-service `README.md` files.
+- External clones and local operator memory (`obsidian-mind/`, `n8n-references/`) are gitignored, optional, never evidence, and never audit-chain inputs.

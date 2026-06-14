@@ -33,8 +33,7 @@ Neither number contradicts the other: 43 counts *product tools*, 6 counts *regis
 Merkle-rooted, and signed. Every Finding cites a `tool_call_id` from one of these two.
 
 **Non-product (3–6)** are conveniences for the human operator — automation (`n8n-mcp`), browser
-tasks (`playwright`/`puppeteer`), and **`qmd` dev-memory recall** (see
-[`../runbooks/obsidian-mind-memory.md`](../runbooks/obsidian-mind-memory.md)). They **never touch
+tasks (`playwright`/`puppeteer`), and **`qmd` dev-memory recall**. They **never touch
 evidence, never append to the audit chain, and never emit a Finding.** `qmd` is launched via
 `scripts/run-mcp-qmd.sh`, which resolves Node 22 via nvm and is **inert without Node 22 + QMD** —
 so a fresh clone / a judge without the toolchain simply doesn't get it. Seeing six entries in
@@ -131,8 +130,8 @@ USN/Hayabusa/Sysmon/Zeek/PCAP, `vol_*`, `vel_collect`, and `browser_history` pat
 
 > The `memory_remember`/`memory_recall` pair is the **in-flow investigation memory** (Hermes
 > FTS5, audit-chained). It is distinct from the **obsidian-mind dev/operator memory vault** —
-> see [`../runbooks/obsidian-mind-memory.md`](../runbooks/obsidian-mind-memory.md). Don't
-> conflate them: Hermes lives inside cases and the audit chain; obsidian-mind never does.
+> optional operator memory that may be omitted from reduced source checkouts. Don't conflate them:
+> Hermes lives inside cases and the audit chain; obsidian-mind never does.
 
 ---
 
@@ -164,5 +163,5 @@ limitation reported as BinaryNotFound**, never evidence-absence.
 
 - [`dependencies.md`](dependencies.md) — version pins, licenses, expected-failure matrix.
 - [`environment-variables.md`](environment-variables.md) — the full env-var surface.
-- [`../../agent-config/TOOLS.md`](../../agent-config/TOOLS.md) — per-tool args/returns (agent read-order).
+- [`agent-config/TOOLS.md`](https://github.com/TimothyVang/verdict-dfir/blob/master/agent-config/TOOLS.md) — per-tool args/returns (agent read-order).
 - [`../architecture.md`](../architecture.md) — the trust boundaries and where the surface sits.

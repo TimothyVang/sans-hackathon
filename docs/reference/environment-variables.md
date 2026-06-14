@@ -76,5 +76,6 @@
 | `CLAUDE_PROJECT_DIR` | repo root | vault hook scripts | Resolves the vault hook script paths |
 | `INDEX_PATH` | `~/.cache/qmd/<index>.sqlite` | `qmd-mcp.mjs` | Forces the QMD SQLite store (works around a qmd 2.1.0 `--index` bug) |
 
-See [`../runbooks/obsidian-mind-memory.md`](../runbooks/obsidian-mind-memory.md) for the memory
-layer; the QMD index name lives in `obsidian-mind/vault-manifest.json` (`qmd_index`).
+The obsidian-mind memory layer is optional operator memory. Reduced source checkouts may omit its
+runbook; the QMD index name lives in `obsidian-mind/vault-manifest.json` (`qmd_index`) when that
+gitignored vault is present.

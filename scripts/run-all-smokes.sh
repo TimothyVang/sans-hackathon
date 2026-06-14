@@ -160,6 +160,10 @@ run_smoke \
     "python3 scripts/starter-data-smoke.py"
 
 run_smoke \
+    "golden-answer-key-smoke (all committed expected-findings schemas valid)" \
+    "python3 scripts/golden-answer-key-smoke.py"
+
+run_smoke \
     "verdict-smoke (the one command, --dry-run)" \
     "python3 scripts/verdict-smoke.py"
 
