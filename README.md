@@ -128,6 +128,22 @@ mockup. Full walkthrough gallery: **[`docs/showcase/`](docs/showcase/)**.
 </p>
 <p align="center"><sub><code>scripts/doctor.sh</code> — one preflight, an honest green/amber summary, then you're ready to run.</sub></p>
 
+### Videos
+
+Short, narrated walkthroughs — built from the same Remotion pipeline (`scripts/make-demo-video/`,
+see [`CAPTURE.md`](scripts/make-demo-video/CAPTURE.md)). The mp4s are hosted, not committed.
+
+| Video | What it covers |
+|-------|----------------|
+| [Product showcase (4:35)](https://youtu.be/4RQnVden6L8) | The full end-to-end run, host-by-host on a 22-host enterprise |
+| [Educational explainer](https://github.com/TimothyVang/verdict-dfir/releases/download/v0.1.0/verdict-educational-explainer.mp4) | What VERDICT is — Case → Findings → Verdict, tool-cited receipts, the three verdict words |
+| [Feature deep-dives](https://github.com/TimothyVang/verdict-dfir/releases/download/v0.1.0/verdict-feature-deep-dives.mp4) | Self-correction, the live dashboard, and offline tamper/verify — real footage |
+| [Quickstart](https://github.com/TimothyVang/verdict-dfir/releases/download/v0.1.0/verdict-quickstart.mp4) | Install and your first signed run, in two commands |
+| [**Help build VERDICT**](https://github.com/TimothyVang/verdict-dfir/releases/download/v0.1.0/verdict-contributor-call.mp4) | What it is, the non-negotiable invariants, and the contributor on-ramp |
+
+> Building or re-voicing them: `bash scripts/make-demo-video.sh --all`
+> (local Piper voice by default; `TTS_ENGINE=elevenlabs` for the cloud voice).
+
 ## How it works
 
 Point VERDICT at evidence and it runs the same nine-stage pipeline every time — each stage lands
@@ -218,6 +234,8 @@ under `goldens/`; large fixtures are staged locally with `scripts/fetch-fixtures
 with `scripts/score-recall.py tmp/auto-runs/<case-id> --golden goldens/<case-id>`. The method,
 corpus shape, false-positive controls, and honest limits live in
 **[`docs/accuracy-report.md`](docs/accuracy-report.md)**.
+Local `evidence/` drop-zone cases that have committed score keys are mapped in
+[`docs/evidence-answer-keys.md`](docs/evidence-answer-keys.md).
 The adversarial "break VERDICT" challenge is in
 [`docs/red-team-challenge.md`](docs/red-team-challenge.md).
 

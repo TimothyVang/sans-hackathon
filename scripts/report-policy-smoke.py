@@ -529,13 +529,14 @@ def main() -> int:
         # the split itself is checked separately below.
         text = main_text + "\n" + internal_text
         public_text = "\n".join(
-            [
-                (REPO / "README.md").read_text(encoding="utf-8"),
-                (REPO / "docs" / "templates" / "devpost-readme.md").read_text(
-                    encoding="utf-8"
-                ),
-                (REPO / "QUICKSTART.md").read_text(encoding="utf-8"),
-            ]
+            path.read_text(encoding="utf-8")
+            for path in (
+                REPO / "README.md",
+                REPO / "QUICKSTART.md",
+                REPO / "docs" / "release-surface.md",
+                REPO / "docs" / "release-evidence" / "README.md",
+            )
+            if path.is_file()
         )
         valid_html_text = """<!doctype html><html><body>
             <h1>VERDICT — Forensic Investigation Report</h1>

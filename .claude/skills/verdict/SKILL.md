@@ -62,6 +62,18 @@ In local mode, state the scope honestly: memory, EVTX, PCAP, Velociraptor collec
 
 Use default parallel execution. Pass `--no-dashboard` only when the operator explicitly does not want browser/dashboard behavior.
 
+For large disk evidence, prefer a read-only host evidence mount inside SIFT over copying large images into the VM. If the host evidence root is mounted in the guest, set both roots before running:
+
+```bash
+FINDEVIL_SIFT_HOST_EVIDENCE_ROOT=<host-evidence-root> \
+FINDEVIL_SIFT_GUEST_EVIDENCE_ROOT=<guest-read-only-mount> \
+FIND_EVIL_GUEST_IP=<ip> bash scripts/verdict <host-evidence-path> --sift
+```
+
+The launcher rewrites matching host paths to the guest mount path, verifies the guest path over SSH, requires the mapped path to sit on a read-only mount, checks mapped guest identity against the host artifact (file size plus SHA-256 for files; regular-file count, total bytes, and a relative path/size/SHA-256 manifest for directories), and skips SCP staging. Direct in-VM evidence paths are also required to sit on a read-only mount and pass the same nested-entry validation. If no mapping applies to a host-local path, it falls back to fresh per-run SIFT staging rather than reusing an existing same-name guest file, then verifies the staged guest identity before continuing.
+
+Keep `--run-summary` outputs outside evidence paths. Use `tmp/...` or another non-evidence output directory; the launcher rejects summary paths inside the evidence directory or configured host evidence roots.
+
 ### 4. Locate Case Outputs
 
 Read `tmp/verdict-last-run.json` if it exists, then inspect the referenced Case directory under:

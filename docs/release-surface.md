@@ -43,6 +43,9 @@ work, but they are not part of a clean source archive or judge/customer bundle.
 | `docs/plans/` | Historical implementation plans; useful for archaeology, not runtime docs. |
 | `docs/specs/` | Historical architecture specs; curated public pages link only current decisions. |
 | `docs/legacy/` | Retired material kept for git history context. |
+| `docs/sample-run/` | Historical run packets are large generated artifacts; current source ships compact release-evidence summaries and rerun commands instead. |
+| `docs/reports/` | Generated reports and figures are release artifacts, not required for a clean source checkout. |
+| rendered demo videos | `docs/find-evil-demo.mp4` and `docs/verdict-*.mp4` are hosted release/video assets; source beats and generator scripts ship instead. |
 | evidence extensions and runtime state | `*.E01`, `*.dd`, `*.mem`, `*.evtx`, `*.pcap*`, `.env*`, `tmp/`, `fixtures/`, and `test-forensics/` are archive-excluded as defense in depth. |
 
 Release ZIPs produced for submissions should remain small, deterministic, and

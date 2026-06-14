@@ -118,20 +118,27 @@ signed verdict + report. Add `--sift` to run the DFIR tools inside the SANS SIFT
 
 Examples:
 
+All direct `/mnt/...` SIFT evidence paths must be mounted read-only in the guest.
+
 ```bash
 # Memory image:
 scripts/verdict --sift /mnt/hgfs/evidence/extracted/base-dc/base-dc-memory.img --unattended
 
-# Single EVTX:
-scripts/verdict --sift /home/sansforensics/find-evil/fixtures/single-evtx/Security.evtx --unattended
+# Single EVTX from a read-only SIFT-visible evidence mount:
+scripts/verdict --sift /mnt/hgfs/evidence/single-evtx/Security.evtx --unattended
 
 # Disk image (read-only mount/extract where prerequisites support it; otherwise custody-only):
 scripts/verdict --sift /mnt/hgfs/evidence/disk-images/base-dc-cdrive.E01 --unattended
 
+# Host evidence root mounted read-only inside SIFT; skips multi-GB SCP staging:
+FINDEVIL_SIFT_HOST_EVIDENCE_ROOT=/path/to/evidence \
+FINDEVIL_SIFT_GUEST_EVIDENCE_ROOT=/mnt/verdict-evidence \
+scripts/verdict /path/to/evidence/disk-images/base-dc-cdrive.E01 --sift --unattended
+
 # Mixed case directory (memory, EVTX, disk artifacts, network logs, Velociraptor zips):
 scripts/verdict --sift /mnt/hgfs/evidence/cases/base-dc/ --unattended
 
-# Same run, plus a machine-readable automation summary:
+# Same run, plus a machine-readable automation summary outside evidence paths:
 scripts/verdict --sift /mnt/hgfs/evidence/cases/base-dc/ --unattended --run-summary tmp/run-summary.json
 
 # Velociraptor collection zip:
@@ -146,7 +153,7 @@ What it does in one command (no interactive prompts):
 4. Synthesizes Pool A (persistence-biased) and Pool B (exfil-biased) findings deterministically from tool outputs
 5. Writes `verdict.json` with the verdict (`SUSPICIOUS` / `NO_EVIL` / `INDETERMINATE` — see [`docs/verdict-semantics.md`](docs/verdict-semantics.md)), case completeness, ATT&CK/practitioner coverage, normalized timeline data, evidence-card data, source bibliography, and next analyst actions
 6. Generates a fully-templated PDF investigation report (figures + findings + ATT&CK/practitioner coverage + timeline + visual evidence cards + source bibliography + chain-of-custody attestation)
-7. If `--run-summary <path>` is set, writes a JSON pointer/QA file containing `run_id`, `case_id`, evidence path, local run directory, output artifact paths, report QA, release-gate/expert-signoff state, signer, readiness state, blockers, warnings, and final result
+7. If `--run-summary <path>` is set, writes a JSON pointer/QA file containing `run_id`, `case_id`, evidence path, local run directory, output artifact paths, report QA, release-gate/expert-signoff state, signer, readiness state, blockers, warnings, and final result. Keep this path outside evidence directories; `tmp/run-summary.json` is the recommended local default.
 
 Output (on host):
 ```

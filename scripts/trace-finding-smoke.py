@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -13,7 +14,98 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 TRACE = REPO / "scripts" / "trace-finding"
-SAMPLE = REPO / "docs" / "sample-run" / "attack-samples-evtx"
+_CANONICAL_SEPARATORS = (",", ":")
+
+
+def _canonicalize(obj: object) -> bytes:
+    return json.dumps(
+        obj, sort_keys=True, separators=_CANONICAL_SEPARATORS, ensure_ascii=True
+    ).encode("ascii")
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _write_sample_run(run_dir: Path) -> None:
+    """Create the smallest run that trace-finding should accept.
+
+    The fixture has one tool call, one approved finding, a verdict artifact hash,
+    and a manifest that closes over the audit chain. Tamper cases below then
+    mutate this run exactly as they would mutate a committed sample packet.
+    """
+    run_dir.mkdir(parents=True, exist_ok=True)
+    verdict = {
+        "case_id": "trace-smoke",
+        "verdict": "SUSPICIOUS",
+        "findings": [
+            {
+                "finding_id": "f-trace-smoke",
+                "confidence": "CONFIRMED",
+                "tool_call_id": "tc-evtx-1",
+                "mitre_technique": "T1070.001",
+                "description": "Windows Security event log clear event observed.",
+            }
+        ],
+    }
+    verdict_bytes = _canonicalize(verdict) + b"\n"
+    (run_dir / "verdict.json").write_bytes(verdict_bytes)
+
+    records: list[dict[str, object]] = []
+    prev_hash = ""
+    for kind, payload in (
+        (
+            "tool_call_start",
+            {
+                "tool": "evtx_query",
+                "tool_call_id": "tc-evtx-1",
+                "args": {"case_id": "trace-smoke", "eids": [1102]},
+            },
+        ),
+        (
+            "tool_call_output",
+            {
+                "tool": "evtx_query",
+                "tool_call_id": "tc-evtx-1",
+                "output_hash": "a" * 64,
+            },
+        ),
+        (
+            "finding_approved",
+            {"finding_id": "f-trace-smoke", "finding": verdict["findings"][0]},
+        ),
+        (
+            "verdict_artifact",
+            {"path": "verdict.json", "sha256": _sha256(verdict_bytes)},
+        ),
+    ):
+        record = {
+            "kind": kind,
+            "payload": payload,
+            "prev_hash": prev_hash,
+            "seq": len(records),
+            "ts": "2026-06-14T00:00:00Z",
+        }
+        raw = _canonicalize(record)
+        records.append(record)
+        prev_hash = _sha256(raw)
+
+    audit_path = run_dir / "audit.jsonl"
+    audit_path.write_bytes(
+        b"\n".join(_canonicalize(record) for record in records) + b"\n"
+    )
+    manifest = {
+        "audit_log_final_hash": prev_hash,
+        "audit_log_record_count": len(records),
+        "leaves": [
+            {"record_id": "tc-evtx-1", "kind": "tool_call_output"},
+            {"record_id": "f-trace-smoke", "kind": "finding_approved"},
+        ],
+    }
+    (run_dir / "run.manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _run_trace(run_dir: Path) -> subprocess.CompletedProcess[str]:
@@ -79,7 +171,7 @@ def _write_non_list_manifest_leaves(run_dir: Path) -> None:
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="trace-finding-smoke-") as tmp:
         run_dir = Path(tmp) / "run"
-        shutil.copytree(SAMPLE, run_dir)
+        _write_sample_run(run_dir)
 
         baseline = _run_trace(run_dir)
         if baseline.returncode != 0:
@@ -89,7 +181,7 @@ def main() -> int:
             return 1
 
         manifest_run = Path(tmp) / "manifest-run"
-        shutil.copytree(SAMPLE, manifest_run)
+        shutil.copytree(run_dir, manifest_run)
         _tamper_manifest_final_hash(manifest_run)
         manifest_tampered = _run_trace(manifest_run)
         if manifest_tampered.returncode == 0:
@@ -104,7 +196,7 @@ def main() -> int:
             return 1
 
         malformed_manifest_run = Path(tmp) / "malformed-manifest-run"
-        shutil.copytree(SAMPLE, malformed_manifest_run)
+        shutil.copytree(run_dir, malformed_manifest_run)
         _write_malformed_manifest(malformed_manifest_run)
         malformed_manifest = _run_trace(malformed_manifest_run)
         if malformed_manifest.returncode == 0:
@@ -124,7 +216,7 @@ def main() -> int:
             return 1
 
         semantic_manifest_run = Path(tmp) / "semantic-manifest-run"
-        shutil.copytree(SAMPLE, semantic_manifest_run)
+        shutil.copytree(run_dir, semantic_manifest_run)
         _write_semantically_malformed_manifest(semantic_manifest_run)
         semantic_manifest = _run_trace(semantic_manifest_run)
         if semantic_manifest.returncode == 0:
@@ -148,7 +240,7 @@ def main() -> int:
             return 1
 
         non_list_leaves_run = Path(tmp) / "non-list-leaves-run"
-        shutil.copytree(SAMPLE, non_list_leaves_run)
+        shutil.copytree(run_dir, non_list_leaves_run)
         _write_non_list_manifest_leaves(non_list_leaves_run)
         non_list_leaves = _run_trace(non_list_leaves_run)
         if non_list_leaves.returncode == 0:
