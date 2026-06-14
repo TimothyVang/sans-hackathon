@@ -111,17 +111,17 @@ FIND_EVIL_PACE=0.2 scripts/verdict evidence/SCHARDT.dd
 
 ## Slot 3 (optional) — `ui/manifest-tamper.mp4` (chain-of-custody proof)
 
-A real `manifest_verify` run: `overall=true` on the committed sample run, then flip one byte and
+A real `manifest_verify` run: `overall=true` on a completed case directory, then flip one byte and
 watch it fail. Strongest possible proof for the audit-trail criterion. Not yet wired into a beat
 — add an `<ExhibitVideo src="ui/manifest-tamper.mp4" …>` to `HashChainScene.tsx` if you want it,
 or keep it as B-roll.
 
 ```bash
-# Pass: committed run verifies offline (zero deps).
-scripts/trace-finding docs/sample-run/fault-injection-redispatch
+# Pass: completed run verifies offline (zero deps).
+scripts/trace-finding tmp/auto-runs/<case-id>
 
 # Fail: tamper one byte, re-verify → precise chain-break diagnostic, overall=false.
-cp -r docs/sample-run/fault-injection-redispatch /tmp/tamper-demo
+cp -r tmp/auto-runs/<case-id> /tmp/tamper-demo
 # edit one hex char in /tmp/tamper-demo/audit.jsonl, then:
 scripts/trace-finding /tmp/tamper-demo   # exits non-zero, names the broken seq
 ```
@@ -137,12 +137,43 @@ pnpm studio           # live preview while you drop footage in
 pnpm render           # writes ../../docs/find-evil-demo.mp4
 ```
 
-Then host the mp4 (YouTube/Vimeo/Youku) and record the URL in
-`SUBMISSION_COMPLIANCE.md` §6 and the Devpost submission field.
+Then host the mp4 and record the URL in the release notes or submission field.
+
+## The video slate (beyond the showcase)
+
+The same Remotion pipeline renders four additional videos, each a `<Composition>`
+in `src/Root.tsx` driven by its own beats file in `src/beats/` and its own
+narration subdir in `public/audio/<prefix>/`. The narration is authored as data
+(the `narration` field), and on-screen copy comes from the `scene` / `headline`
+/ `body` / `points` / `command` / `exhibit` fields on each `Beat` (see
+`ConceptCard.tsx` and `ExhibitChapter.tsx`).
+
+| Composition | Beats file | What it's for | Output |
+|-------------|-----------|----------------|--------|
+| `FindEvilDemo` | `beats-data.ts` | The ~4.5 min showcase | `docs/find-evil-demo.mp4` |
+| `EducationalExplainer` | `explainer-beats.ts` | What VERDICT is + core concepts | `docs/verdict-educational-explainer.mp4` |
+| `FeatureDeepDives` | `deepdive-beats.ts` | Standout features w/ real footage | `docs/verdict-feature-deep-dives.mp4` |
+| `Quickstart` | `quickstart-beats.ts` | Install + first run | `docs/verdict-quickstart.mp4` |
+| `ContributorCall` | `contributor-beats.ts` | "Help build VERDICT" | `docs/verdict-contributor-call.mp4` |
+
+Build one (TTS + render in one step):
+
+```bash
+bash scripts/make-demo-video.sh --composition Quickstart      # one video
+bash scripts/make-demo-video.sh --all                         # the whole slate
+bash scripts/make-demo-video.sh --composition Quickstart --preview   # fast 90-frame check
+```
+
+`FeatureDeepDives` reuses the real exhibit clips already in `public/ui/`
+(terminal self-correction, live dashboard, offline tamper) — no new capture
+needed. Host each mp4 and surface the explainer + contributor URLs in `README.md`
+(those are the "educate / help build" links). The showcase URL alone is the one
+registered as `DEMO_VIDEO_URL`.
 
 ## Honesty note
 
 The fault injection in Slot 1 is deliberate and **declared in the audit chain** (a
 `fault_injection` record precedes the rejection) and on screen via the engine's stderr banner.
 The recovery itself is the production code path — the same re-dispatch fires on any real transient
-replay failure. The committed reference run is `docs/sample-run/fault-injection-redispatch/`.
+replay failure. Use a fresh `FIND_EVIL_FAULT_INJECT=verifier_reject_once:...` case run when
+recording this shot.

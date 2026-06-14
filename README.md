@@ -128,6 +128,22 @@ mockup. Full walkthrough gallery: **[`docs/showcase/`](docs/showcase/)**.
 </p>
 <p align="center"><sub><code>scripts/doctor.sh</code> — one preflight, an honest green/amber summary, then you're ready to run.</sub></p>
 
+### Videos
+
+Short, narrated walkthroughs — built from the same Remotion pipeline (`scripts/make-demo-video/`,
+see [`CAPTURE.md`](scripts/make-demo-video/CAPTURE.md)). The mp4s are hosted, not committed.
+
+| Video | What it covers |
+|-------|----------------|
+| [Product showcase (4:35)](https://youtu.be/4RQnVden6L8) | The full end-to-end run, host-by-host on a 22-host enterprise |
+| Educational explainer | What VERDICT is — Case → Findings → Verdict, tool-cited receipts, the three verdict words *(URL: TODO)* |
+| Feature deep-dives | Self-correction, the live dashboard, and offline tamper/verify — real footage *(URL: TODO)* |
+| Quickstart | Install and your first signed run, in two commands *(URL: TODO)* |
+| **Help build VERDICT** | What it is, the non-negotiable invariants, and the contributor on-ramp *(URL: TODO)* |
+
+> Building or re-voicing them: `bash scripts/make-demo-video.sh --all`
+> (local Piper voice by default; `TTS_ENGINE=elevenlabs` for the cloud voice).
+
 ## How it works
 
 Point VERDICT at evidence and it runs the same nine-stage pipeline every time — each stage lands
