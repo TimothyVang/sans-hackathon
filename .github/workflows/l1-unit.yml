@@ -29,7 +29,7 @@ jobs:
           lfs: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # GHA cache keyed on the Dockerfile hash so we only rebuild when
       # toolchain versions change, not on every commit.
