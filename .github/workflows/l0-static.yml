@@ -152,28 +152,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: verify spec->plan cross-references
+      - name: verify current documentation surface
         run: |
-          # Every spec must have a matching plan; every plan must cite its spec.
-          # Per-subsystem specs (Spec #1-#4):
-          for spec in docs/specs/2026-04-23-layered-test-sandbox-design.md \
-                     docs/specs/2026-04-25-the-product-design.md \
-                     docs/specs/2026-04-26-orchestration-glue-design.md; do
-            test -f "$spec" || { echo "missing spec: $spec"; exit 1; }
-          done
-          # Master design + active amendments (CLAUDE.md "Document hierarchy"
-          # treats these as load-bearing; deletion would silently break the
-          # ordering rules).
-          for amend in docs/specs/2026-04-23-find-evil-automation-master-design.md \
-                       docs/specs/2026-04-23-amendment-option-b-claude-code-mode.md \
-                       docs/specs/2026-04-25-amendment-a2-claude-code-primary-interface.md; do
-            test -f "$amend" || { echo "missing master/amendment: $amend"; exit 1; }
-          done
-          for plan in docs/plans/2026-04-23-sandbox-plan.md \
-                     docs/plans/2026-04-23-product-plan.md \
-                     docs/plans/2026-04-23-orchestration-glue-plan.md; do
-            test -f "$plan" || { echo "missing plan: $plan"; exit 1; }
-          done
+          # The public source tree now ships a reduced current-docs surface:
+          # historical specs/plans/templates/sample runs are intentionally omitted
+          # and documented in docs/release-surface.md. Guard the current canonical
+          # surface rather than re-requiring archived material.
           # Root operator docs (README + INSTALL + QUICKSTART + CHANGELOG +
           # CLAUDE.md) - deleting any of these breaks the front-page
           # contract for judges/contributors.
@@ -183,14 +167,26 @@ jobs:
           # Canonical analyst-facing docs under docs/ (referenced from
           # CLAUDE.md, README.md, QUICKSTART.md as deep-dives).
           for doc in docs/architecture.md \
+                     docs/accuracy-report.md \
                      docs/DATASET.md \
                      docs/cryptographic-attestation.md \
                      docs/verdict-semantics.md \
                      docs/false-positives.md \
                      docs/glossary.md \
-                     docs/demo-script-a2.md; do
+                     docs/evidence-answer-keys.md \
+                     docs/release-surface.md \
+                     docs/reference/mcp-and-tools.md \
+                     docs/reference/dependencies.md \
+                     docs/reference/environment-variables.md \
+                     docs/using/running-verdict.md; do
             test -f "$doc" || { echo "missing canonical doc: $doc"; exit 1; }
           done
+          grep -q 'docs/specs/' docs/release-surface.md || {
+            echo "release surface must document omitted docs/specs/"; exit 1;
+          }
+          grep -q 'docs/sample-run/' docs/release-surface.md || {
+            echo "release surface must document omitted docs/sample-run/"; exit 1;
+          }
           # agent-config/ files - the runtime DFIR agent identity
           # ingested by Claude Code on session start (per CLAUDE.md
           # "Agent investigation prompt"). Deleting any breaks the
