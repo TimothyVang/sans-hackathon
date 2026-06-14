@@ -118,11 +118,12 @@ These are read by the agent at investigation start (per `CLAUDE.md` "Investigati
 
 The large historical `docs/specs/` set is intentionally omitted from reduced source exports. Current architecture and trust boundaries live in [`architecture.md`](architecture.md), [`cryptographic-attestation.md`](cryptographic-attestation.md), and `CLAUDE.md`; omission policy lives in [`release-surface.md`](release-surface.md).
 
-## `docs/plans/` (current retained plans)
+## Historical implementation plans
 
-| File | Status | Where it lives now |
-|---|---|---|
-| `parser-coverage-execution.md` | **ACTIVE** | Parser coverage and execution-claim corroboration work. |
+The `docs/plans/` surface is intentionally omitted from reduced source exports.
+When present in a full development checkout, `parser-coverage-execution.md` is
+planning context for parser coverage and execution-claim corroboration; current
+operator behavior is documented in the active runtime/configuration pages above.
 
 ## `docs/runbooks/` (operational procedures)
 
@@ -150,7 +151,7 @@ The large historical `docs/specs/` set is intentionally omitted from reduced sou
 
 ## Omitted historical surfaces
 
-`docs/templates/`, `docs/legacy/`, `docs/specs/`, `docs/sample-run/`, and `docs/reports/` are historical or generated release surfaces and may be absent from this reduced checkout. See [`release-surface.md`](release-surface.md) for the source/export boundary.
+`docs/templates/`, `docs/legacy/`, `docs/plans/`, `docs/specs/`, `docs/sample-run/`, and `docs/reports/` are historical or generated release surfaces and may be absent from this reduced checkout. See [`release-surface.md`](release-surface.md) for the source/export boundary.
 
 ## What this index does NOT cover
 

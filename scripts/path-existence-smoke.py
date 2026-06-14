@@ -227,6 +227,7 @@ ALLOW_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^(?:docs/)?sample-run(/|$)"),
     re.compile(r"^(?:docs/)?reports(/|$)"),
     re.compile(r"^reports/"),
+    re.compile(r"^docs/plans(/|$)"),
     re.compile(r"^docs/specs(/|$)"),
     re.compile(r"^docs/templates(/|$)"),
     re.compile(r"^docs/legacy(/|$)"),
