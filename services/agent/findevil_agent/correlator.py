@@ -126,6 +126,119 @@ def correlate(
 
 
 # ---------------------------------------------------------------------------
+# Cross-source PID discrepancy check (memory vs. on-disk execution records).
+# ---------------------------------------------------------------------------
+
+# Kernel / session-0 processes that never leave a Prefetch (.pf) record — their
+# absence from disk execution artifacts is expected, not suspicious, so they are
+# excluded from the discrepancy check.
+_NO_PREFETCH_PROCESSES: frozenset[str] = frozenset(
+    {
+        "system",
+        "system idle process",
+        "idle",
+        "registry",
+        "memcompression",
+        "memory compression",
+        "smss.exe",
+        "csrss.exe",
+        "wininit.exe",
+        "winlogon.exe",
+        "services.exe",
+        "lsass.exe",
+        "lsaiso.exe",
+        "svchost.exe",
+        "fontdrvhost.exe",
+    }
+)
+
+
+@dataclass(frozen=True)
+class MemoryProcess:
+    """A process observed in a memory image (one ``vol_pslist``/``vol_psscan`` row).
+
+    ``tool_call_id`` is the audit id of the memory tool call this came from; any
+    Finding the discrepancy check emits cites it so the verifier can replay the
+    memory-side evidence.
+    """
+
+    pid: int
+    name: str
+    tool_call_id: str
+    source: str = "pslist"  # "pslist" | "psscan"
+
+
+def _basename_lower(name: str) -> str:
+    """Normalize a process/executable name to its lowercase basename.
+
+    Prefetch stores names uppercase (``CMD.EXE``); memory rows are mixed case and
+    Amcache rows may carry a full path. Matching is basename + case-insensitive.
+    """
+    return name.strip().replace("\\", "/").rsplit("/", 1)[-1].lower()
+
+
+def cross_artifact_pid_check(
+    memory_processes: list[MemoryProcess],
+    disk_executables: set[str],
+    *,
+    case_id: str,
+    memory_artifact_path: str,
+) -> list[Finding]:
+    """Flag memory-resident processes with no on-disk execution record.
+
+    A cross-source DEPTH lead (Spec #2 §8.1 — the disk-vs-memory discrepancy the
+    Judge Pack names): when a case carries BOTH memory process evidence and
+    on-disk execution records (Prefetch / Amcache), a process present in memory
+    but absent from every disk execution artifact is worth a HYPOTHESIS lead.
+
+    Honesty constraints (deliberate):
+    - Returns ``[]`` unless BOTH sources are present — a mixed-case-only signal.
+    - Returns ``[]`` when ``disk_executables`` is empty: Prefetch may be disabled
+      (SSD / ``EnablePrefetcher=0``), so absence would prove nothing and every
+      process would spuriously flag.
+    - Emits HYPOTHESIS only — it is a discrepancy lead, not proof of injection or
+      of non-execution.
+    - The description is verb-neutral so ``is_execution_claim`` stays False and the
+      correlator's execution >=2-artifact gate never fires on it.
+    - Kernel/session-0 processes that never produce Prefetch are excluded.
+
+    Pure logic — no LLM calls, no I/O. Deterministic given the same inputs.
+    """
+    disk = {_basename_lower(d) for d in disk_executables if d and d.strip()}
+    if not memory_processes or not disk:
+        return []
+
+    findings: list[Finding] = []
+    seen: set[str] = set()
+    for proc in memory_processes:
+        name = _basename_lower(proc.name)
+        if not name or name in _NO_PREFETCH_PROCESSES:
+            continue
+        if name in disk or name in seen:
+            continue
+        seen.add(name)
+        slug = re.sub(r"[^a-z0-9]+", "-", name).strip("-")
+        findings.append(
+            Finding(
+                case_id=case_id,
+                finding_id=f"f-A-xartifact-nodisk-{slug}",
+                tool_call_id=proc.tool_call_id,
+                artifact_path=memory_artifact_path,
+                confidence="HYPOTHESIS",
+                description=(
+                    f"memory-resident process {proc.name} (PID {proc.pid}, {proc.source}) "
+                    f"has no matching Prefetch (.pf) or Amcache entry on disk — a cross-source "
+                    f"discrepancy worth review (possible prefetch-disabled host, in-memory-only "
+                    f"or injected code, or a timeline gap); not proof of compromise"
+                ),
+                pool_origin="A",
+                mitre_technique=None,
+            )
+        )
+    return findings
+
+
+# ---------------------------------------------------------------------------
 # Internals.
 # ---------------------------------------------------------------------------
 
@@ -144,4 +257,9 @@ def _downgrade(f: Finding) -> Finding:
     return f.model_copy(update={"confidence": new_label})
 
 
-__all__ = ["CorrelationOutcome", "correlate"]
+__all__ = [
+    "CorrelationOutcome",
+    "MemoryProcess",
+    "correlate",
+    "cross_artifact_pid_check",
+]
