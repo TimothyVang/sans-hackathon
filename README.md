@@ -136,10 +136,10 @@ see [`CAPTURE.md`](scripts/make-demo-video/CAPTURE.md)). The mp4s are hosted, no
 | Video | What it covers |
 |-------|----------------|
 | [Product showcase (4:35)](https://youtu.be/4RQnVden6L8) | The full end-to-end run, host-by-host on a 22-host enterprise |
-| Educational explainer | What VERDICT is — Case → Findings → Verdict, tool-cited receipts, the three verdict words *(URL: TODO)* |
-| Feature deep-dives | Self-correction, the live dashboard, and offline tamper/verify — real footage *(URL: TODO)* |
-| Quickstart | Install and your first signed run, in two commands *(URL: TODO)* |
-| **Help build VERDICT** | What it is, the non-negotiable invariants, and the contributor on-ramp *(URL: TODO)* |
+| [Educational explainer](https://github.com/TimothyVang/verdict-dfir/releases/download/v0.1.0/verdict-educational-explainer.mp4) | What VERDICT is — Case → Findings → Verdict, tool-cited receipts, the three verdict words |
+| [Feature deep-dives](https://github.com/TimothyVang/verdict-dfir/releases/download/v0.1.0/verdict-feature-deep-dives.mp4) | Self-correction, the live dashboard, and offline tamper/verify — real footage |
+| [Quickstart](https://github.com/TimothyVang/verdict-dfir/releases/download/v0.1.0/verdict-quickstart.mp4) | Install and your first signed run, in two commands |
+| [**Help build VERDICT**](https://github.com/TimothyVang/verdict-dfir/releases/download/v0.1.0/verdict-contributor-call.mp4) | What it is, the non-negotiable invariants, and the contributor on-ramp |
 
 > Building or re-voicing them: `bash scripts/make-demo-video.sh --all`
 > (local Piper voice by default; `TTS_ENGINE=elevenlabs` for the cloud voice).
